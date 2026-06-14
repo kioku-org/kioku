@@ -1,0 +1,44 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/cc-cli",
+    "crates/cc-companion",
+    "crates/cc-auth",
+    "crates/cc-upgrade",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["companion-lab"]
+repository = "https://github.com/companion-lab/app"
+
+[workspace.dependencies]
+tokio        = { version = "1", features = ["full"] }
+reqwest        = { version = "0.12", features = ["json", "stream", "multipart", "rustls-tls"], default-features = false }
+serde        = { version = "1", features = ["derive"] }
+serde_json   = { version = "1" }
+clap         = { version = "4", features = ["derive", "env"] }
+anyhow       = "1"
+thiserror    = "2"
+tracing              = "0.1"
+tracing-subscriber   = { version = "0.3", features = ["env-filter", "json"] }
+chrono       = { version = "0.4", features = ["serde"] }
+dirs         = "5"
+uuid           = { version = "1", features = ["v4"] }
+rprompt       = "2"
+
+cc-companion   = { path = "crates/cc-companion" }
+cc-auth        = { path = "crates/cc-auth" }
+cc-upgrade     = { path = "crates/cc-upgrade" }
+
+[profile.release]
+opt-level     = 3
+lto           = "thin"
+codegen-units = 1
+strip         = true
+
+[profile.dev]
+opt-level = 0
+debug     = true

@@ -1,0 +1,442 @@
+name: companion-platform
+
+services:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # POSTGRES (replaces entire Supabase stack — hivemind has its own auth)
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: companion-postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    environment:
+      POSTGRES_USER: ${DB_USER:-companion}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-companion}
+      POSTGRES_DB: ${DB_NAME:-companion}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-companion} -d ${DB_NAME:-companion}"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # QDRANT (Vector DB for Hivemind RAG)
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  qdrant:
+    image: qdrant/qdrant:v1.10.1
+    container_name: companion-qdrant
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # COMPANION-VOICE (VEXA) STACK
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  vexa-api-gateway:
+    build:
+      context: ${COMPANION_VOICE_PATH:-../voice}
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: companion-vexa-api-gateway
+    environment:
+      - ADMIN_API_URL=http://vexa-admin-api:8001
+      - MEETING_API_URL=http://vexa-meeting-api:8080
+      - TRANSCRIPTION_COLLECTOR_URL=http://vexa-meeting-api:8080
+      - MCP_URL=http://vexa-mcp:18888
+      - AGENT_API_URL=http://vexa-agent-api:8100
+      - REDIS_URL=redis://vexa-redis:6379/0
+      - PUBLIC_BASE_URL=${VEXA_PUBLIC_URL:-http://localhost:8056}
+      - TRANSCRIPT_SHARE_TTL_SECONDS=900
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
+      - VEXA_ENV=${VEXA_ENV:-production}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-companion}
+      - DB_USER=${DB_USER:-companion}
+      - DB_PASSWORD=${DB_PASSWORD:-companion}
+      - DB_SCHEMA=vexa
+      - DB_SSL_MODE=disable
+    init: true
+    depends_on:
+      vexa-admin-api:
+        condition: service_started
+      vexa-meeting-api:
+        condition: service_started
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-admin-api:
+    build:
+      context: ${COMPANION_VOICE_PATH:-../voice}
+      dockerfile: services/admin-api/Dockerfile
+    container_name: companion-vexa-admin-api
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-companion}
+      - DB_USER=${DB_USER:-companion}
+      - DB_PASSWORD=${DB_PASSWORD:-companion}
+      - DB_SCHEMA=vexa
+      - DB_SSL_MODE=disable
+      - DB_POOL_SIZE=5
+      - DB_MAX_OVERFLOW=5
+      - DB_POOL_TIMEOUT=30
+      - ADMIN_API_TOKEN=${VEXA_ADMIN_API_TOKEN}
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
+      - VEXA_ENV=${VEXA_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-meeting-api:
+    build:
+      context: ${COMPANION_VOICE_PATH:-../voice}
+      dockerfile: services/meeting-api/Dockerfile
+    container_name: companion-vexa-meeting-api
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-companion}
+      - DB_USER=${DB_USER:-companion}
+      - DB_PASSWORD=${DB_PASSWORD:-companion}
+      - DB_SSL_MODE=disable
+      - DB_POOL_SIZE=20
+      - DB_MAX_OVERFLOW=20
+      - DB_POOL_TIMEOUT=10
+      - REDIS_URL=redis://vexa-redis:6379/0
+      - REDIS_HOST=vexa-redis
+      - REDIS_PORT=6379
+      - REDIS_STREAM_NAME=transcription_segments
+      - REDIS_CONSUMER_GROUP=collector_group
+      - REDIS_STREAM_READ_COUNT=10
+      - REDIS_STREAM_BLOCK_MS=2000
+      - TRANSCRIPTION_COLLECTOR_URL=http://vexa-meeting-api:8080
+      - TRANSCRIPTION_SERVICE_URL=http://vexa-transcription-service:80
+      - REMOTE_TRANSCRIBER_URL=http://vexa-transcription-service:80/v1/audio/transcriptions
+      - REMOTE_TRANSCRIBER_API_KEY=${VEXA_TRANSCRIBER_API_KEY:-}
+      - TTS_SERVICE_URL=http://vexa-tts-service:8002
+      - RUNTIME_API_URL=http://vexa-meeting-api:8080
+      - MEETING_API_URL=http://vexa-meeting-api:8080
+      - BOT_IMAGE_NAME=${VEXA_BOT_IMAGE:-vexa-bot:dev}
+      - DOCKER_NETWORK=companion-network
+      - DOCKER_HOST=unix://var/run/docker.sock
+      - ADMIN_TOKEN=${VEXA_ADMIN_API_TOKEN}
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - VEXA_ENV=${VEXA_ENV:-production}
+      - ZOOM_CLIENT_ID=${ZOOM_CLIENT_ID:-}
+      - ZOOM_CLIENT_SECRET=${ZOOM_CLIENT_SECRET:-}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-minio}
+      - MINIO_ENDPOINT=vexa-minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-vexa-access-key}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-vexa-secret-key}
+      - MINIO_BUCKET=${MINIO_BUCKET:-vexa-recordings}
+      - MINIO_SECURE=false
+      - RECORDING_ENABLED=${RECORDING_ENABLED:-false}
+      - CAPTURE_MODES=audio
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - vexa-recordings-data:/data/recordings
+    init: true
+    depends_on:
+      vexa-redis:
+        condition: service_started
+      vexa-tts-service:
+        condition: service_started
+      vexa-transcription-service:
+        condition: service_started
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-agent-api:
+    build:
+      context: ${COMPANION_VOICE_PATH:-../voice}
+      dockerfile: services/agent-api/Dockerfile
+    container_name: companion-vexa-agent-api
+    environment:
+      - REDIS_URL=redis://vexa-redis:6379/0
+      - RUNTIME_API_URL=http://vexa-meeting-api:8080
+      - ADMIN_API_URL=http://vexa-admin-api:8001
+      - ADMIN_API_TOKEN=${VEXA_ADMIN_API_TOKEN:-}
+      - AGENT_API_INTERNAL_URL=http://vexa-agent-api:8100
+      - DOCKER_NETWORK=companion-network
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
+      - VEXA_ENV=${VEXA_ENV:-production}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    init: true
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-transcription-service:
+    build:
+      context: ${COMPANION_VOICE_PATH:-../voice}/services/transcription-service
+      dockerfile: Dockerfile.cpu
+    container_name: companion-vexa-transcription-service
+    environment:
+      - API_TOKEN=${VEXA_TRANSCRIBER_API_KEY:-}
+      - MODEL_SIZE=large-v3-turbo
+      - COMPUTE_TYPE=int8
+      - DEVICE=cpu
+      - VEXA_ENV=${VEXA_ENV:-production}
+    expose:
+      - "80"
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-mcp:
+    build:
+      context: ${COMPANION_VOICE_PATH:-../voice}
+      dockerfile: services/mcp/Dockerfile
+    container_name: companion-vexa-mcp
+    environment:
+      - API_GATEWAY_URL=http://vexa-api-gateway:8000
+      - VEXA_ENV=${VEXA_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    init: true
+    depends_on:
+      vexa-api-gateway:
+        condition: service_started
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-tts-service:
+    build:
+      context: ${COMPANION_VOICE_PATH:-../voice}
+      dockerfile: services/tts-service/Dockerfile
+    container_name: companion-vexa-tts-service
+    environment:
+      - TTS_API_TOKEN=${TTS_API_TOKEN:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com}
+      - VEXA_ENV=${VEXA_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    init: true
+    expose:
+      - "8002"
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-redis:
+    image: redis:7.0-alpine
+    container_name: companion-vexa-redis
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - vexa-redis-data:/data
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-minio:
+    image: minio/minio:latest
+    container_name: companion-vexa-minio
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-vexa-access-key}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-vexa-secret-key}
+    volumes:
+      - vexa-minio-data:/data
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-minio-init:
+    image: minio/mc:latest
+    container_name: companion-vexa-minio-init
+    depends_on:
+      - vexa-minio
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        sleep 5
+        mc alias set vexa http://vexa-minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}
+        mc mb --ignore-existing vexa/$${MINIO_BUCKET:-vexa-recordings}
+        mc anonymous set download vexa/$${MINIO_BUCKET:-vexa-recordings} || true
+        exit 0
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-vexa-access-key}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-vexa-secret-key}
+    networks:
+      - companion-network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # OLLAMA (Embeddings for Hivemind RAG)
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: companion-ollama
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - companion-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 12G
+        reservations:
+          memory: 1G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: companion-ollama-pull
+    depends_on:
+      - ollama
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Pulling nomic-embed-text-v2-moe embedding model..."
+        until ollama pull nomic-embed-text-v2-moe; do
+          echo "Retrying pull in 10s..."
+          sleep 10
+        done
+        echo "Model pull complete."
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    networks:
+      - companion-network
+    restart: "no"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # COMPANION-HIVEMIND (Rust backend)
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  companion-hivemind:
+    build:
+      context: ${HIVEMIND_PATH:-../hivemind}
+    container_name: companion-hivemind
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-companion}
+      - DB_USER=${DB_USER:-companion}
+      - DB_PASSWORD=${DB_PASSWORD:-companion}
+      - DB_MAX_CONNECTIONS=10
+      - DB_SCHEMA=hivemind
+      - JWT_SECRET=${HIVEMIND_JWT_SECRET}
+      - JWT_TTL_SECONDS=2592000
+      - ENCRYPTION_SECRET=${HIVEMIND_ENCRYPTION_SECRET}
+      - VEXA_API_URL=http://vexa-api-gateway:8000
+      - VEXA_ADMIN_API_URL=http://vexa-admin-api:8001
+      - VEXA_ADMIN_TOKEN=${VEXA_ADMIN_API_TOKEN}
+      - HOST=0.0.0.0
+      - PORT=9100
+      - EMBEDDING_API_URL=http://ollama:11434
+      - EMBEDDING_MODEL=nomic-embed-text-v2-moe
+      - QDRANT_URL=http://qdrant:6334
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      ollama:
+        condition: service_started
+      ollama-pull:
+        condition: service_completed_successfully
+    networks:
+      - companion-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9100/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # CADDY (Reverse proxy — auto HTTPS via Let's Encrypt)
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: companion-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      companion-hivemind:
+        condition: service_healthy
+      vexa-api-gateway:
+        condition: service_started
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: companion-cloudflared
+    command: tunnel --config /etc/cloudflared/config.yml run
+    volumes:
+      - /home/growit/.cloudflared:/etc/cloudflared:ro
+    depends_on:
+      companion-hivemind:
+        condition: service_healthy
+      vexa-api-gateway:
+        condition: service_started
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # VOLUMES & NETWORKS
+  # ─────────────────────────────────────────────────────────────────────────────
+
+volumes:
+  postgres-data:
+    name: companion-postgres-data
+  qdrant-data:
+    name: companion-qdrant-data
+  vexa-redis-data:
+    name: companion-vexa-redis-data
+  vexa-minio-data:
+    name: companion-vexa-minio-data
+  vexa-recordings-data:
+    name: companion-vexa-recordings-data
+  ollama-data:
+    name: companion-ollama-data
+  caddy-data:
+    name: companion-caddy-data
+  caddy-config:
+    name: companion-caddy-config
+
+networks:
+  companion-network:
+    name: companion-network
+    driver: bridge

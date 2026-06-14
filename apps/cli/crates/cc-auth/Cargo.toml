@@ -1,0 +1,12 @@
+[package]
+name = "cc-auth"
+description = "Auth token storage for Companion CLI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde          = { workspace = true }
+serde_json     = { workspace = true }
+anyhow         = { workspace = true }
+dirs           = { workspace = true }

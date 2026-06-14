@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dist-electron/
+target/
+*.pyc
+__pycache__/
+.env
+.env.machine
+*.log
+.DS_Store
+CHECKPOINT.md
+backups/
+ollama-data/
