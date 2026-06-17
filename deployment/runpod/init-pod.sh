@@ -45,31 +45,46 @@ fi
 # ─── 2. Start Docker daemon ──────────────────────────────────────────────────
 info "Starting Docker daemon..."
 
-# RunPod containers need special dockerd flags
-dockerd --iptables=false --ip-masq=false --bridge=none &>/var/log/dockerd.log &
-DOCKERD_PID=$!
-sleep 3
+# Remove policy that blocks service startup
+rm -f /usr/sbin/policy-rc.d
+rm -f /usr/bin/policy-rc.d
 
-if ! docker info &>/dev/null 2>&1; then
-    # Try with default bridge
-    kill $DOCKERD_PID 2>/dev/null || true
-    sleep 1
-    dockerd &>/var/log/dockerd.log &
-    DOCKERD_PID=$!
-    sleep 5
-fi
+# Kill any stale docker processes
+pkill dockerd 2>/dev/null || true
+pkill containerd 2>/dev/null || true
+sleep 1
+
+# Clean up stale pid/lock files
+rm -f /var/run/docker.pid /var/run/docker.sock /var/run/containerd/containerd.pid
+mkdir -p /var/run/docker
+
+# Start containerd first
+containerd &>/var/log/containerd.log &
+sleep 2
+
+# Start dockerd with containerd
+dockerd --containerd /run/containerd/containerd.sock --iptables=false &>/var/log/dockerd.log &
+sleep 5
 
 if docker info &>/dev/null 2>&1; then
     info "Docker daemon running"
 else
-    warn "Docker daemon issues, checking logs..."
-    tail -20 /var/log/dockerd.log 2>/dev/null
-    # Last resort - try starting with host network
-    kill $DOCKERD_PID 2>/dev/null || true
-    sleep 1
-    dockerd --host=unix:///var/run/docker.sock &>/var/log/dockerd.log &
+    warn "First attempt failed, trying alternative..."
+    tail -5 /var/log/dockerd.log 2>/dev/null
+    pkill dockerd 2>/dev/null || true
+    pkill containerd 2>/dev/null || true
+    sleep 2
+    
+    # Try with host network and vfs storage
+    containerd &>/var/log/containerd.log &
+    sleep 2
+    dockerd --containerd /run/containerd/containerd.sock --iptables=false --storage-driver=vfs &>/var/log/dockerd.log &
     sleep 5
-    docker info &>/dev/null 2>&1 && info "Docker daemon running (fallback)" || error "Docker daemon failed to start"
+    
+    docker info &>/dev/null 2>&1 && info "Docker daemon running (vfs)" || {
+        tail -10 /var/log/dockerd.log 2>/dev/null
+        error "Docker daemon failed to start"
+    }
 fi
 
 # ─── 3. Clone/pull repo ──────────────────────────────────────────────────────
