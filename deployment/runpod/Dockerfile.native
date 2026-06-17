@@ -19,7 +19,7 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y \
-    curl wget gnupg2 lsb-release sudo \
+    curl wget gnupg2 lsb-release sudo zstd \
     postgresql postgresql-common postgresql-client \
     redis-server \
     python3 python3-pip python3-venv \
@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Qdrant
-RUN curl -sL https://github.com/qdrant/qdrant/releases/download/v1.10.1/qdrant-v1.10.1-x86_64-unknown-linux-gnu.tar.gz | tar xz -C /usr/local/bin/
+RUN curl -sL https://github.com/qdrant/qdrant/releases/download/v1.10.1/qdrant-x86_64-unknown-linux-gnu.tar.gz | tar xz -C /usr/local/bin/
 
 # Ollama
 RUN curl -fsSL https://ollama.com/install.sh | sh

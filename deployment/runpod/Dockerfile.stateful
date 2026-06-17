@@ -1,0 +1,33 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    curl wget gnupg2 sudo zstd \
+    postgresql postgresql-common postgresql-client \
+    redis-server \
+    supervisor \
+    && rm -rf /var/lib/apt/lists/*
+
+# Qdrant
+RUN curl -sL https://github.com/qdrant/qdrant/releases/download/v1.10.1/qdrant-x86_64-unknown-linux-gnu.tar.gz | tar xz -C /usr/local/bin/
+
+# Ollama
+RUN curl -fsSL https://ollama.com/install.sh | sh
+
+# MinIO
+RUN curl -sL https://dl.min.io/server/minio/release/linux-amd64/minio -o /usr/local/bin/minio && chmod +x /usr/local/bin/minio
+
+# PostgreSQL setup
+RUN mkdir -p /var/run/postgresql && chown postgres:postgres /var/run/postgresql
+
+# Supervisord config
+COPY deployment/runpod/supervisord-stateful.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Entrypoint
+COPY deployment/runpod/entrypoint-stateful.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 5432 6379 6334 9000 9001 11434
+
+ENTRYPOINT ["/entrypoint.sh"]
