@@ -11,3 +11,9 @@ __pycache__/
 CHECKPOINT.md
 backups/
 ollama-data/
+
+# RunPod deployment (contains secrets)
+deployment/runpod/.env
+deployment/runpod/*.json
+deployment/runpod/.runpod/
+deployment/runpod/model/
