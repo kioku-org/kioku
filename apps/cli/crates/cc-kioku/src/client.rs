@@ -3,13 +3,13 @@ use anyhow::{Context, Result};
 use reqwest::{multipart, Client, StatusCode};
 use std::path::Path;
 
-pub struct CompanionClient {
+pub struct KiokuClient {
     base_url: String,
     client: Client,
     token: Option<String>,
 }
 
-impl CompanionClient {
+impl KiokuClient {
     pub fn new(base_url: &str) -> Self {
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
@@ -149,7 +149,7 @@ impl CompanionClient {
         }
         let resp = req.send().await.context("whoami request failed")?;
         if resp.status() == StatusCode::UNAUTHORIZED {
-            return Err(anyhow::anyhow!("not authenticated — run `companion signin`"));
+            return Err(anyhow::anyhow!("not authenticated — run `kioku signin`"));
         }
         if !resp.status().is_success() {
             return Err(Self::handle_error(resp).await);

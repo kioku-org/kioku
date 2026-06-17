@@ -1,6 +1,6 @@
 [package]
-name = "cc-companion"
-description = "Hivemind API client for the Companion CLI"
+name = "cc-kioku"
+description = "Hivemind API client for the Kioku CLI"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -1,18 +1,18 @@
 use anyhow::{Context, Result};
 use cc_auth::AuthFile;
-use cc_companion::CompanionClient;
+use cc_kioku::KiokuClient;
 use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
 use tracing_subscriber::{fmt, EnvFilter};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const REPO: &str = "companion-lab/app";
+const REPO: &str = "kioku-org/kioku";
 
 #[derive(Parser)]
 #[command(
-    name = "companion",
+    name = "kioku",
     version,
-    about = "Companion CLI — context infrastructure client"
+    about = "Kioku CLI — context infrastructure client"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -112,11 +112,11 @@ enum Commands {
 
 fn require_auth() -> Result<AuthFile> {
     AuthFile::load()?
-        .ok_or_else(|| anyhow::anyhow!("not signed in — run `companion signin`"))
+        .ok_or_else(|| anyhow::anyhow!("not signed in — run `kioku signin`"))
 }
 
-fn make_client(auth: &AuthFile) -> CompanionClient {
-    CompanionClient::with_token(&auth.server_url, &auth.token)
+fn make_client(auth: &AuthFile) -> KiokuClient {
+    KiokuClient::with_token(&auth.server_url, &auth.token)
 }
 
 #[tokio::main]
@@ -138,8 +138,8 @@ async fn main() -> Result<()> {
         None => {
             use std::io::Write;
             let mut stdout = std::io::stdout().lock();
-            writeln!(stdout, "companion — context infrastructure client")?;
-            writeln!(stdout, "Run `companion help` for available commands.")?;
+            writeln!(stdout, "kioku — context infrastructure client")?;
+            writeln!(stdout, "Run `kioku help` for available commands.")?;
             Ok(())
         }
         Some(cmd) => run(cmd).await,
@@ -149,9 +149,9 @@ async fn main() -> Result<()> {
 async fn run(cmd: Commands) -> Result<()> {
     match cmd {
         Commands::Signin { api_key } => {
-            let base_url = std::env::var("COMPANION_SERVER")
+            let base_url = std::env::var("KIOKU_SERVER")
                 .unwrap_or_else(|_| "https://api.coolcmyk.dev".to_string());
-            let client = CompanionClient::new(&base_url);
+            let client = KiokuClient::new(&base_url);
             if let Some(key) = api_key {
                 let session = client.signin_api_key(&key).await?;
                 let auth = AuthFile {
@@ -334,7 +334,7 @@ async fn run(cmd: Commands) -> Result<()> {
             let auth = require_auth()?;
             println!("{}", serde_json::to_string_pretty(&serde_json::json!({
                 "mcpServers": {
-                    "Companion": {
+                    "Kioku": {
                         "url": format!("{}/mcp", auth.server_url.trim_end_matches('/')),
                         "headers": {
                             "Authorization": format!("Bearer {}", auth.token)

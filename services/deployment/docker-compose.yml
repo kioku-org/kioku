@@ -44,7 +44,7 @@ services:
 
   vexa-api-gateway:
     build:
-      context: ${COMPANION_VOICE_PATH:-../voice}
+      context: ${KIOKU_VOICE_PATH:-../voice}
       dockerfile: services/api-gateway/Dockerfile
     container_name: companion-vexa-api-gateway
     environment:
@@ -79,7 +79,7 @@ services:
 
   vexa-admin-api:
     build:
-      context: ${COMPANION_VOICE_PATH:-../voice}
+      context: ${KIOKU_VOICE_PATH:-../voice}
       dockerfile: services/admin-api/Dockerfile
     container_name: companion-vexa-admin-api
     environment:
@@ -107,7 +107,7 @@ services:
 
   vexa-meeting-api:
     build:
-      context: ${COMPANION_VOICE_PATH:-../voice}
+      context: ${KIOKU_VOICE_PATH:-../voice}
       dockerfile: services/meeting-api/Dockerfile
     container_name: companion-vexa-meeting-api
     environment:
@@ -169,7 +169,7 @@ services:
 
   vexa-agent-api:
     build:
-      context: ${COMPANION_VOICE_PATH:-../voice}
+      context: ${KIOKU_VOICE_PATH:-../voice}
       dockerfile: services/agent-api/Dockerfile
     container_name: companion-vexa-agent-api
     environment:
@@ -191,7 +191,7 @@ services:
 
   vexa-transcription-service:
     build:
-      context: ${COMPANION_VOICE_PATH:-../voice}/services/transcription-service
+      context: ${KIOKU_VOICE_PATH:-../voice}/services/transcription-service
       dockerfile: Dockerfile.cpu
     container_name: companion-vexa-transcription-service
     environment:
@@ -208,7 +208,7 @@ services:
 
   vexa-mcp:
     build:
-      context: ${COMPANION_VOICE_PATH:-../voice}
+      context: ${KIOKU_VOICE_PATH:-../voice}
       dockerfile: services/mcp/Dockerfile
     container_name: companion-vexa-mcp
     environment:
@@ -225,7 +225,7 @@ services:
 
   vexa-tts-service:
     build:
-      context: ${COMPANION_VOICE_PATH:-../voice}
+      context: ${KIOKU_VOICE_PATH:-../voice}
       dockerfile: services/tts-service/Dockerfile
     container_name: companion-vexa-tts-service
     environment:

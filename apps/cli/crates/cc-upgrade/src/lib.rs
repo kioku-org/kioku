@@ -47,7 +47,7 @@ pub async fn check_for_update(repo: &str, current_version: &str) -> Result<Upgra
     let client = reqwest::Client::new();
     let resp = client
         .get(&url)
-        .header("User-Agent", "companion-cli")
+        .header("User-Agent", "kioku-cli")
         .send()
         .await
         .context("checking for updates")?;
@@ -91,7 +91,7 @@ pub async fn perform_upgrade(repo: &str, current_version: &str) -> Result<String
         .ok_or_else(|| anyhow::anyhow!("no download URL found for your platform"))?;
 
     println!(
-        "Upgrading companion v{} → v{}",
+        "Upgrading kioku v{} → v{}",
         current_version, info.latest_version
     );
     println!("Downloading {}...", info.asset_name.unwrap_or_default());
@@ -99,7 +99,7 @@ pub async fn perform_upgrade(repo: &str, current_version: &str) -> Result<String
     let client = reqwest::Client::new();
     let resp = client
         .get(&download_url)
-        .header("User-Agent", "companion-cli")
+        .header("User-Agent", "kioku-cli")
         .send()
         .await
         .context("downloading update")?;

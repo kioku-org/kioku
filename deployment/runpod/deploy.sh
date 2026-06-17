@@ -36,7 +36,7 @@ RESPONSE=$(curl -s -X POST "https://rest.runpod.io/v1/pods" \
     -d @- <<PAYLOAD
 {
     "name": "${RUNPOD_POD_NAME:-kioku-platform}",
-    "imageName": "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04",
+    "imageName": "ghcr.io/kioku-org/kioku-runpod:latest",
     "cloudType": "SECURE",
     "gpuTypeIds": ["${RUNPOD_GPU_TYPE:-NVIDIA RTX 3090}"],
     "gpuCount": ${RUNPOD_GPU_COUNT:-1},
@@ -51,7 +51,7 @@ RESPONSE=$(curl -s -X POST "https://rest.runpod.io/v1/pods" \
         "DB_USER": "${DB_USER:-kioku}",
         "DB_PASSWORD": "${DB_PASSWORD:-kioku}"
     },
-    "dockerEntrypoint": ["/bin/bash", "-c", "curl -sL https://raw.githubusercontent.com/kioku-org/kioku/feat/runpod/deployment/runpod/init-pod.sh -o /tmp/init.sh && chmod +x /tmp/init.sh && /tmp/init.sh"]
+    "dockerEntrypoint": []
 }
 PAYLOAD
 )

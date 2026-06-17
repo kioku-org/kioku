@@ -17,7 +17,7 @@ impl AuthFile {
     pub fn path() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("companion")
+            .join("kioku")
             .join("auth.json")
     }
 

@@ -526,7 +526,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "companion-hivemind"
+name = "kioku-hivemind"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",

@@ -124,7 +124,7 @@ Always verify changes by running tests and linting the codebase
 
 - Safely assume git is pre-installed
 - Safely assume github cli (gh) is pre-installed
-- Always use `Co-Authored-By: Companion Lab <noreply@companion-lab.dev>` for git commits and Github comments
+- Always use `Co-Authored-By: Kioku <noreply@kioku.chat>` for git commits and Github comments
 
 ## Service Implementation Guidelines
 

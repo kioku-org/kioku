@@ -83,7 +83,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "companion-hivemind-integration-tests"
+name = "kioku-hivemind-integration-tests"
 version = "0.1.0"
 dependencies = [
  "chrono",

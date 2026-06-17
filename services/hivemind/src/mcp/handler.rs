@@ -16,7 +16,7 @@ fn json_schema(value: serde_json::Value) -> Arc<JsonObject> {
 }
 
 #[derive(Clone)]
-pub struct CompanionMcpService {
+pub struct KiokuMcpService {
     pub db: PgPool,
     pub vector_store: Arc<HivemindVectorStore>,
 }
@@ -67,8 +67,8 @@ fn parse_args<T: serde::de::DeserializeOwned>(args: Option<&JsonObject>) -> Resu
 fn all_tools() -> Vec<Tool> {
     vec![
         Tool::new(
-            "companion_search",
-            "Search the Companion knowledge base for meeting transcripts and documents.",
+            "kioku_search",
+            "Search the Kioku knowledge base for meeting transcripts and documents.",
             json_schema(serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -79,12 +79,12 @@ fn all_tools() -> Vec<Tool> {
             })),
         ),
         Tool::new(
-            "companion_list_meetings",
-            "List meetings stored in Companion.",
+            "kioku_list_meetings",
+            "List meetings stored in Kioku.",
             json_schema(serde_json::json!({"type": "object", "properties": {}})),
         ),
         Tool::new(
-            "companion_get_transcript",
+            "kioku_get_transcript",
             "Get the full transcript for a specific meeting by UUID.",
             json_schema(serde_json::json!({
                 "type": "object",
@@ -93,7 +93,7 @@ fn all_tools() -> Vec<Tool> {
             })),
         ),
         Tool::new(
-            "companion_get_meeting",
+            "kioku_get_meeting",
             "Get details of a specific meeting by UUID.",
             json_schema(serde_json::json!({
                 "type": "object",
@@ -102,12 +102,12 @@ fn all_tools() -> Vec<Tool> {
             })),
         ),
         Tool::new(
-            "companion_list_documents",
+            "kioku_list_documents",
             "List uploaded PDF documents.",
             json_schema(serde_json::json!({"type": "object", "properties": {}})),
         ),
         Tool::new(
-            "companion_delete_document",
+            "kioku_delete_document",
             "Delete a PDF document and its embeddings.",
             json_schema(serde_json::json!({
                 "type": "object",
@@ -116,7 +116,7 @@ fn all_tools() -> Vec<Tool> {
             })),
         ),
         Tool::new(
-            "companion_ingest_meeting",
+            "kioku_ingest_meeting",
             "Ingest a meeting transcript into the knowledge base.",
             json_schema(serde_json::json!({
                 "type": "object",
@@ -145,7 +145,7 @@ fn all_tools() -> Vec<Tool> {
     ]
 }
 
-impl ServerHandler for CompanionMcpService {
+impl ServerHandler for KiokuMcpService {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::default()
     }
@@ -175,20 +175,20 @@ impl ServerHandler for CompanionMcpService {
             let args = request.arguments.as_ref();
 
             match name.as_ref() {
-                "companion_search" => self.handle_search(args).await,
-                "companion_list_meetings" => self.handle_list_meetings(&context).await,
-                "companion_get_transcript" => self.handle_get_transcript(args).await,
-                "companion_get_meeting" => self.handle_get_meeting(args, &context).await,
-                "companion_list_documents" => self.handle_list_documents(&context).await,
-                "companion_delete_document" => self.handle_delete_document(args, &context).await,
-                "companion_ingest_meeting" => self.handle_ingest_meeting(args, &context).await,
+                "kioku_search" => self.handle_search(args).await,
+                "kioku_list_meetings" => self.handle_list_meetings(&context).await,
+                "kioku_get_transcript" => self.handle_get_transcript(args).await,
+                "kioku_get_meeting" => self.handle_get_meeting(args, &context).await,
+                "kioku_list_documents" => self.handle_list_documents(&context).await,
+                "kioku_delete_document" => self.handle_delete_document(args, &context).await,
+                "kioku_ingest_meeting" => self.handle_ingest_meeting(args, &context).await,
                 _ => Err(ErrorData::method_not_found::<rmcp::model::CallToolRequestMethod>()),
             }
         }
     }
 }
 
-impl CompanionMcpService {
+impl KiokuMcpService {
     async fn handle_search(&self, args: Option<&JsonObject>) -> Result<CallToolResult, ErrorData> {
         let params: SearchParams = parse_args(args)?;
         let company_id = extract_company_id_from_args(args)?;

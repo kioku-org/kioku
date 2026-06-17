@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "crates/cc-cli",
-    "crates/cc-companion",
+    "crates/cc-kioku",
     "crates/cc-auth",
     "crates/cc-upgrade",
 ]
@@ -11,8 +11,8 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-authors = ["companion-lab"]
-repository = "https://github.com/companion-lab/app"
+authors = ["kioku"]
+repository = "https://github.com/kioku-org/kioku"
 
 [workspace.dependencies]
 tokio        = { version = "1", features = ["full"] }
@@ -29,7 +29,7 @@ dirs         = "5"
 uuid           = { version = "1", features = ["v4"] }
 rprompt       = "2"
 
-cc-companion   = { path = "crates/cc-companion" }
+cc-kioku   = { path = "crates/cc-kioku" }
 cc-auth        = { path = "crates/cc-auth" }
 cc-upgrade     = { path = "crates/cc-upgrade" }
 

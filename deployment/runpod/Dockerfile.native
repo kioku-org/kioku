@@ -1,0 +1,37 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    curl wget gnupg2 lsb-release sudo \
+    postgresql postgresql-common postgresql-client \
+    redis-server \
+    python3 python3-pip python3-venv \
+    gcc g++ make pkg-config libssl-dev \
+    supervisor \
+    && rm -rf /var/lib/apt/lists/*
+
+# Qdrant
+RUN curl -sL https://github.com/qdrant/qdrant/releases/download/v1.10.1/qdrant-v1.10.1-x86_64-unknown-linux-gnu.tar.gz | tar xz -C /usr/local/bin/
+
+# Ollama
+RUN curl -fsSL https://ollama.com/install.sh | sh
+
+# Rust (for building hivemind)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# PostgreSQL setup
+RUN mkdir -p /var/run/postgresql && chown postgres:postgres /var/run/postgresql
+RUN echo "host all all 0.0.0.0/0 trust" >> /etc/postgresql/14/main/pg_hba.conf && \
+    echo "listen_addresses='*'" >> /etc/postgresql/14/main/postgresql.conf
+
+WORKDIR /workspace
+
+COPY deployment/runpod/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY deployment/runpod/entrypoint-native.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 80 443 5432 6334 8000 8056 8057 9001 9100 11434 18888
+
+ENTRYPOINT ["/entrypoint.sh"]

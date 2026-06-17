@@ -17,9 +17,9 @@ use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
 use crate::AppState;
-use crate::mcp::handler::CompanionMcpService;
+use crate::mcp::handler::KiokuMcpService;
 
-type McpService = StreamableHttpService<CompanionMcpService, LocalSessionManager>;
+type McpService = StreamableHttpService<KiokuMcpService, LocalSessionManager>;
 
 pub fn mcp_routes(state: &AppState) -> Router<AppState> {
     let mcp_service = create_mcp_service(state);
@@ -54,7 +54,7 @@ fn create_mcp_service(state: &AppState) -> McpService {
 
     StreamableHttpService::new(
         move || {
-            Ok(CompanionMcpService {
+            Ok(KiokuMcpService {
                 db: db.clone(),
                 vector_store: vector_store.clone(),
             })

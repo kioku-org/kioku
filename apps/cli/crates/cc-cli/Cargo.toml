@@ -1,16 +1,16 @@
 [package]
-name = "companion-cli"
-description = "Companion CLI — context infrastructure client"
+name = "kioku-cli"
+description = "Kioku CLI — context infrastructure client"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "companion"
+name = "kioku"
 path = "src/main.rs"
 
 [dependencies]
-cc-companion   = { workspace = true }
+cc-kioku   = { workspace = true }
 cc-auth        = { workspace = true }
 cc-upgrade     = { workspace = true }
 clap           = { workspace = true }

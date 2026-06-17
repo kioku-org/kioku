@@ -1,6 +1,6 @@
 [package]
 name = "cc-auth"
-description = "Auth token storage for Companion CLI"
+description = "Auth token storage for Kioku CLI"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

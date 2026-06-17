@@ -1,6 +1,6 @@
 [package]
 name = "cc-upgrade"
-description = "Self-update for Companion CLI via GitHub releases"
+description = "Self-update for Kioku CLI via GitHub releases"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

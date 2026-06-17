@@ -17,8 +17,8 @@ pub async fn request_bot(
         .bind(_auth.company_id)
         .fetch_one(&state.db)
         .await
-        .unwrap_or_else(|_| "Companion".to_string());
-        body["bot_name"] = serde_json::Value::String(format!("{}'s companion", company_name));
+        .unwrap_or_else(|_| "Kioku".to_string());
+        body["bot_name"] = serde_json::Value::String(format!("{}'s assistant", company_name));
     }
 
     let client = reqwest::Client::new();
