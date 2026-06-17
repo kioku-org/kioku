@@ -51,7 +51,7 @@ RESPONSE=$(curl -s -X POST "https://rest.runpod.io/v1/pods" \
         "DB_USER": "${DB_USER:-kioku}",
         "DB_PASSWORD": "${DB_PASSWORD:-kioku}"
     },
-    "dockerStartCmd": ["/bin/bash", "-c", "cd /workspace && curl -sL https://raw.githubusercontent.com/kioku-app/kioku/feat/runpod/deployment/runpod/init-pod.sh | bash"]
+    "dockerEntrypoint": ["/bin/bash", "-c", "curl -sL https://raw.githubusercontent.com/kioku-org/kioku/feat/runpod/deployment/runpod/init-pod.sh -o /tmp/init.sh && chmod +x /tmp/init.sh && /tmp/init.sh"]
 }
 PAYLOAD
 )

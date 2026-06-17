@@ -44,10 +44,33 @@ fi
 
 # ─── 2. Start Docker daemon ──────────────────────────────────────────────────
 info "Starting Docker daemon..."
-dockerd &>/var/log/dockerd.log &
+
+# RunPod containers need special dockerd flags
+dockerd --iptables=false --ip-masq=false --bridge=none &>/var/log/dockerd.log &
+DOCKERD_PID=$!
 sleep 3
-docker info &>/dev/null || { sleep 5; docker info &>/dev/null; } || error "Docker daemon failed to start"
-info "Docker daemon running"
+
+if ! docker info &>/dev/null 2>&1; then
+    # Try with default bridge
+    kill $DOCKERD_PID 2>/dev/null || true
+    sleep 1
+    dockerd &>/var/log/dockerd.log &
+    DOCKERD_PID=$!
+    sleep 5
+fi
+
+if docker info &>/dev/null 2>&1; then
+    info "Docker daemon running"
+else
+    warn "Docker daemon issues, checking logs..."
+    tail -20 /var/log/dockerd.log 2>/dev/null
+    # Last resort - try starting with host network
+    kill $DOCKERD_PID 2>/dev/null || true
+    sleep 1
+    dockerd --host=unix:///var/run/docker.sock &>/var/log/dockerd.log &
+    sleep 5
+    docker info &>/dev/null 2>&1 && info "Docker daemon running (fallback)" || error "Docker daemon failed to start"
+fi
 
 # ─── 3. Clone/pull repo ──────────────────────────────────────────────────────
 if [[ -d "$WORKSPACE/kioku" ]]; then
