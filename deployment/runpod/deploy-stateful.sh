@@ -41,7 +41,7 @@ RESPONSE=$(curl -s -X POST "https://rest.runpod.io/v1/pods" \
     "volumeInGb": 50,
     "volumeMountPath": "/data",
     "ports": ["5432/tcp", "6379/tcp", "6334/http", "9000/http", "9001/http", "11434/http", "22/tcp"],
-    "dockerStartCmd": ["/bin/bash", "-c", "curl -sL ${INIT_URL} -o /tmp/init.sh && chmod +x /tmp/init.sh && /tmp/init.sh"]
+    "dockerStartCmd": ["/bin/bash", "-c", "apt-get update > /dev/null 2>&1 && apt-get install -y curl wget > /dev/null 2>&1 && curl -sL ${INIT_URL} -o /tmp/init.sh && chmod +x /tmp/init.sh && /tmp/init.sh"]
 }
 PAYLOAD
 )
