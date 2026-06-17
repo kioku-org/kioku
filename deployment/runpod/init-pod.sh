@@ -16,7 +16,7 @@ warn()  { echo -e "${YELLOW}[KIOKU]${NC} $*"; }
 error() { echo -e "${RED}[KIOKU]${NC} $*"; exit 1; }
 
 WORKSPACE="/workspace"
-REPO_URL="https://github.com/kioku-app/kioku.git"
+REPO_URL="https://github.com/kioku-org/kioku.git"
 BRANCH="feat/runpod"
 
 cd "$WORKSPACE"
