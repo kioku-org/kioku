@@ -33,10 +33,10 @@ RESPONSE=$(curl -s -X POST "https://rest.runpod.io/v1/pods" \
     -d @- <<PAYLOAD
 {
     "name": "kioku-stateful",
-    "imageName": "runpod/ubuntu:22.04",
+    "imageName": "ubuntu:22.04",
     "cloudType": "SECURE",
     "computeType": "CPU",
-    "cpuFlavorIds": ["cpu5c"],
+    "cpuFlavorIds": ["cpu5m"],
     "containerDiskInGb": 30,
     "volumeInGb": 50,
     "volumeMountPath": "/data",
