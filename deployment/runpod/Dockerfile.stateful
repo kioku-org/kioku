@@ -28,6 +28,7 @@ RUN mkdir -p /var/run/postgresql && chown postgres:postgres /var/run/postgresql
 
 # Supervisord config
 COPY deployment/runpod/supervisord-stateful.conf /etc/supervisor/conf.d/supervisord.conf
+COPY deployment/runpod/qdrant-config.yaml /etc/qdrant/config.yaml
 
 # Entrypoint
 COPY deployment/runpod/entrypoint-stateful.sh /entrypoint.sh
