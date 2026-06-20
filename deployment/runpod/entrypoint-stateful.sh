@@ -37,4 +37,16 @@ if [ ! -f /var/lib/postgresql/data/PG_VERSION ]; then
 fi
 
 echo "[KIOKU] Starting all services via supervisord..."
-exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
+exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf &
+
+# Wait for Ollama to start, then pull the embedding model
+sleep 5
+echo "[KIOKU] Pulling nomic-embed-text-v2-moe embedding model..."
+until ollama pull nomic-embed-text-v2-moe; do
+    echo "[KIOKU] Retrying model pull in 10s..."
+    sleep 10
+done
+echo "[KIOKU] Model pulled successfully"
+
+# Keep supervisord in foreground
+wait
