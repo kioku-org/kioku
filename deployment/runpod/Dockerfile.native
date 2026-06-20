@@ -49,13 +49,13 @@ COPY deployment/runpod/entrypoint-native.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Install Python deps for voice services
-COPY services/voice/services/api-gateway/requirements.txt /tmp/api-gateway-requirements.txt
-COPY services/voice/services/admin-api/requirements.txt /tmp/admin-api-requirements.txt
-COPY services/voice/services/meeting-api/requirements.txt /tmp/meeting-api-requirements.txt
-COPY services/voice/services/agent-api/requirements.txt /tmp/agent-api-requirements.txt
-COPY services/voice/services/transcription-service/requirements.txt /tmp/transcription-requirements.txt
-COPY services/voice/services/tts-service/requirements.txt /tmp/tts-requirements.txt
-COPY services/voice/services/mcp/requirements.txt /tmp/mcp-requirements.txt
+COPY services/vexa/services/api-gateway/requirements.txt /tmp/api-gateway-requirements.txt
+COPY services/vexa/services/admin-api/requirements.txt /tmp/admin-api-requirements.txt
+COPY services/vexa/services/meeting-api/requirements.txt /tmp/meeting-api-requirements.txt
+COPY services/vexa/services/agent-api/requirements.txt /tmp/agent-api-requirements.txt
+COPY services/vexa/services/transcription-service/requirements.txt /tmp/transcription-requirements.txt
+COPY services/vexa/services/tts-service/requirements.txt /tmp/tts-requirements.txt
+COPY services/vexa/services/mcp/requirements.txt /tmp/mcp-requirements.txt
 
 RUN pip3 install --no-cache-dir \
     -r /tmp/api-gateway-requirements.txt \
@@ -67,7 +67,7 @@ RUN pip3 install --no-cache-dir \
     -r /tmp/mcp-requirements.txt 2>&1 | tail -5
 
 # Copy voice services source
-COPY services/voice/ /workspace/kioku/services/voice/
+COPY services/vexa/ /workspace/kioku/services/vexa/
 
 # Pull ollama model at build time (cached)
 RUN ollama pull nomic-embed-text-v2-moe || true

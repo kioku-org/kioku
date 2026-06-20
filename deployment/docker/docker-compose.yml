@@ -44,7 +44,7 @@ services:
 
   vexa-api-gateway:
     build:
-      context: ${KIOKU_VOICE_PATH:-../../services/voice}
+      context: ${KIOKU_VEXA_PATH:-../../services/vexa}
       dockerfile: services/api-gateway/Dockerfile
     container_name: kioku-vexa-api-gateway
     environment:
@@ -79,7 +79,7 @@ services:
 
   vexa-admin-api:
     build:
-      context: ${KIOKU_VOICE_PATH:-../../services/voice}
+      context: ${KIOKU_VEXA_PATH:-../../services/vexa}
       dockerfile: services/admin-api/Dockerfile
     container_name: kioku-vexa-admin-api
     environment:
@@ -107,7 +107,7 @@ services:
 
   vexa-meeting-api:
     build:
-      context: ${KIOKU_VOICE_PATH:-../../services/voice}
+      context: ${KIOKU_VEXA_PATH:-../../services/vexa}
       dockerfile: services/meeting-api/Dockerfile
     container_name: kioku-vexa-meeting-api
     environment:
@@ -169,7 +169,7 @@ services:
 
   vexa-agent-api:
     build:
-      context: ${KIOKU_VOICE_PATH:-../../services/voice}
+      context: ${KIOKU_VEXA_PATH:-../../services/vexa}
       dockerfile: services/agent-api/Dockerfile
     container_name: kioku-vexa-agent-api
     environment:
@@ -191,7 +191,7 @@ services:
 
   vexa-transcription-service:
     build:
-      context: ${KIOKU_VOICE_PATH:-../../services/voice}/services/transcription-service
+      context: ${KIOKU_VEXA_PATH:-../../services/vexa}/services/transcription-service
       dockerfile: Dockerfile.cpu
     container_name: kioku-vexa-transcription-service
     environment:
@@ -208,7 +208,7 @@ services:
 
   vexa-mcp:
     build:
-      context: ${KIOKU_VOICE_PATH:-../../services/voice}
+      context: ${KIOKU_VEXA_PATH:-../../services/vexa}
       dockerfile: services/mcp/Dockerfile
     container_name: kioku-vexa-mcp
     environment:
@@ -225,7 +225,7 @@ services:
 
   vexa-tts-service:
     build:
-      context: ${KIOKU_VOICE_PATH:-../../services/voice}
+      context: ${KIOKU_VEXA_PATH:-../../services/vexa}
       dockerfile: services/tts-service/Dockerfile
     container_name: kioku-vexa-tts-service
     environment:
