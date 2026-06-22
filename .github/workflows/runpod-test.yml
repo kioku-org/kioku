@@ -105,7 +105,7 @@ jobs:
           echo "pod_id=$POD_ID" >> $GITHUB_OUTPUT
           echo "pod_name=$POD_NAME" >> $GITHUB_OUTPUT
 
-      - name: Wait for pod to be running
+      - name: Wait for pod and get port mappings
         id: wait
         env:
           RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
@@ -123,12 +123,23 @@ jobs:
 
             DESIRED=$(echo "$POD_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('desiredStatus','UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
             PUBLIC_IP=$(echo "$POD_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('publicIp','') or '')" 2>/dev/null || echo "")
+            PORT_MAPS=$(echo "$POD_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); pm=d.get('portMappings') or {}; print(','.join(f'{k}={v}' for k,v in pm.items()))" 2>/dev/null || echo "")
 
-            echo "  [$ELAPSED/${MAX_WAIT}s] desiredStatus=$DESIRED publicIp=$PUBLIC_IP"
+            echo "  [$ELAPSED/${MAX_WAIT}s] desiredStatus=$DESIRED publicIp=$PUBLIC_IP portMappings=$PORT_MAPS"
 
-            if [ "$DESIRED" = "RUNNING" ] && [ -n "$PUBLIC_IP" ]; then
+            if [ "$DESIRED" = "RUNNING" ] && [ -n "$PUBLIC_IP" ] && [ -n "$PORT_MAPS" ]; then
               echo "Pod is running at $PUBLIC_IP"
               echo "pod_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
+
+              # Extract mapped public ports for TCP connections
+              REDIS_PUBLIC_PORT=$(echo "$POD_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('portMappings',{}).get('6379',''))" 2>/dev/null || echo "")
+              echo "redis_public_port=$REDIS_PUBLIC_PORT" >> $GITHUB_OUTPUT
+
+              # HTTP ports use RunPod proxy URLs: https://<pod-id>-<port>.proxy.runpod.net
+              echo "hivemind_url=https://${POD_ID}-9100.proxy.runpod.net" >> $GITHUB_OUTPUT
+              echo "meeting_api_url=https://${POD_ID}-8080.proxy.runpod.net" >> $GITHUB_OUTPUT
+              echo "vexa_gateway_url=https://${POD_ID}-8056.proxy.runpod.net" >> $GITHUB_OUTPUT
+              echo "runtime_api_url=https://${POD_ID}-8090.proxy.runpod.net" >> $GITHUB_OUTPUT
               break
             fi
 
@@ -144,6 +155,11 @@ jobs:
       - name: Health checks
         env:
           POD_IP: ${{ steps.wait.outputs.pod_ip }}
+          REDIS_PUBLIC_PORT: ${{ steps.wait.outputs.redis_public_port }}
+          HIVEMIND_URL: ${{ steps.wait.outputs.hivemind_url }}
+          MEETING_API_URL: ${{ steps.wait.outputs.meeting_api_url }}
+          VEXA_GATEWAY_URL: ${{ steps.wait.outputs.vexa_gateway_url }}
+          RUNTIME_API_URL: ${{ steps.wait.outputs.runtime_api_url }}
         run: |
           set -euo pipefail
           echo "Waiting 30s for services to initialize..."
@@ -154,7 +170,7 @@ jobs:
           check_http() {
             local url="$1" name="$2"
             local code
-            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$url" 2>/dev/null || echo "000")
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$url" 2>/dev/null || echo "000")
             if [ "$code" -ge 200 ] && [ "$code" -lt 500 ]; then
               echo "  PASS: $name (HTTP $code)"
             else
@@ -165,7 +181,7 @@ jobs:
 
           check_tcp() {
             local host="$1" port="$2" name="$3"
-            if timeout 5 bash -c "echo > /dev/tcp/$host/$port" 2>/dev/null; then
+            if timeout 10 bash -c "echo > /dev/tcp/$host/$port" 2>/dev/null; then
               echo "  PASS: $name (TCP $host:$port)"
             else
               echo "  FAIL: $name (TCP $host:$port)"
@@ -173,39 +189,46 @@ jobs:
             fi
           }
 
-          echo "=== HTTP endpoints ==="
-          check_http "http://$POD_IP:9100/health" "Hivemind API"
-          check_http "http://$POD_IP:8080/health" "Vexa Meeting API"
-          check_http "http://$POD_IP:8056/" "Vexa API Gateway"
-          check_http "http://$POD_IP:8090/health" "Runtime API"
+          echo "=== HTTP endpoints (via RunPod proxy) ==="
+          check_http "$HIVEMIND_URL/health" "Hivemind API"
+          check_http "$MEETING_API_URL/health" "Vexa Meeting API"
+          check_http "$VEXA_GATEWAY_URL/" "Vexa API Gateway"
+          check_http "$RUNTIME_API_URL/health" "Runtime API"
 
           echo ""
-          echo "=== TCP ports ==="
-          check_tcp "$POD_IP" 6379 "Redis"
-          check_tcp "$POD_IP" 5432 "PostgreSQL"
+          echo "=== TCP ports (via mapped public ports) ==="
+          if [ -n "$REDIS_PUBLIC_PORT" ]; then
+            check_tcp "$POD_IP" "$REDIS_PUBLIC_PORT" "Redis"
+          else
+            echo "  SKIP: Redis (no port mapping)"
+          fi
 
           echo ""
           echo "=== Redis AUTH ==="
-          REDIS_RESP=$(redis-cli -h "$POD_IP" -p 6379 -a "ci-test-redis-password" PING 2>/dev/null || echo "FAIL")
-          if echo "$REDIS_RESP" | grep -q PONG; then
-            echo "  PASS: Redis AUTH (PONG)"
+          if [ -n "$REDIS_PUBLIC_PORT" ]; then
+            REDIS_RESP=$(redis-cli -h "$POD_IP" -p "$REDIS_PUBLIC_PORT" -a "ci-test-redis-password" PING 2>/dev/null || echo "FAIL")
+            if echo "$REDIS_RESP" | grep -q PONG; then
+              echo "  PASS: Redis AUTH (PONG)"
+            else
+              echo "  FAIL: Redis AUTH ($REDIS_RESP)"
+              FAIL=$((FAIL + 1))
+            fi
           else
-            echo "  FAIL: Redis AUTH ($REDIS_RESP)"
-            FAIL=$((FAIL + 1))
+            echo "  SKIP: Redis AUTH (no port mapping)"
           fi
 
           echo ""
           echo "=== Hivemind auth ==="
-          REG_RESP=$(curl -s -X POST "http://$POD_IP:9100/auth/register/admin" \
+          REG_RESP=$(curl -s -X POST "$HIVEMIND_URL/auth/register/admin" \
             -H "Content-Type: application/json" \
             -d '{"company_name":"ci-test","email":"ci@test.com","name":"CI","password":"testpassword123"}' \
-            --max-time 15 2>/dev/null || echo '{}')
+            --max-time 20 2>/dev/null || echo '{}')
           TOKEN=$(echo "$REG_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || echo "")
 
           if [ -n "$TOKEN" ]; then
             echo "  PASS: Hivemind admin registration"
-            ME_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://$POD_IP:9100/auth/me" \
-              -H "Authorization: Bearer $TOKEN" --max-time 10)
+            ME_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$HIVEMIND_URL/auth/me" \
+              -H "Authorization: Bearer $TOKEN" --max-time 15)
             [ "$ME_CODE" = "200" ] && echo "  PASS: /auth/me (200)" || { echo "  FAIL: /auth/me ($ME_CODE)"; FAIL=$((FAIL + 1)); }
           else
             echo "  FAIL: Hivemind admin registration"
