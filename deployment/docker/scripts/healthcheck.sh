@@ -10,7 +10,20 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-check() {
+check_container() {
+    local name="$1"
+    local status
+    status=$(docker inspect --format '{{.State.Status}}' "$name" 2>/dev/null || echo "missing")
+    if [[ "$status" == "running" ]]; then
+        echo -e "  ${GREEN}✓${NC} $name — running"
+        return 0
+    else
+        echo -e "  ${RED}✗${NC} $name — $status"
+        return 1
+    fi
+}
+
+check_http() {
     local url="$1"
     local name="$2"
     local http_code
@@ -24,27 +37,17 @@ check() {
     fi
 }
 
-check_container() {
-    local name="$1"
-    local status
-    status=$(docker compose ps --format json "$name" 2>/dev/null | jq -r '.State' 2>/dev/null || echo "missing")
-    if [[ "$status" == "running" ]]; then
-        echo -e "  ${GREEN}✓${NC} $name — running"
-        return 0
-    else
-        echo -e "  ${RED}✗${NC} $name — $status"
-        return 1
-    fi
-}
-
 echo "═══════════════════════════════════════════"
 echo "  Kioku Platform Health Check"
 echo "═══════════════════════════════════════════"
 echo ""
 
-echo "Containers:"
+echo "Stateful containers:"
 check_container "kioku-postgres"
 check_container "kioku-qdrant"
+
+echo ""
+echo "Stateless containers:"
 check_container "kioku-ollama"
 check_container "kioku-hivemind"
 check_container "kioku-vexa-api-gateway"
@@ -59,11 +62,11 @@ check_container "kioku-vexa-minio"
 
 echo ""
 echo "HTTP Endpoints:"
-check "http://localhost:8056" "Vexa API Gateway"
-check "http://localhost:8057" "Vexa Admin API"
-check "http://localhost:9100/health" "Hivemind API"
-check "http://localhost:18888" "Vexa MCP"
-check "http://localhost:9001" "Minio Console"
+check_http "http://localhost:9100/health" "Hivemind API"
+check_http "http://localhost:8056"        "Vexa API Gateway"
+check_http "http://localhost:8057"        "Vexa Admin API"
+check_http "http://localhost:18888"       "Vexa MCP"
+check_http "http://localhost:9001"        "Minio Console"
 
 echo ""
 echo "═══════════════════════════════════════════"

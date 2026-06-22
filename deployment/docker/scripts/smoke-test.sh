@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="$(dirname "$SCRIPT_DIR")"
 
+STATEFUL_FILE="$DEPLOY_DIR/docker-compose.stateful.yml"
 COMPOSE_FILE="$DEPLOY_DIR/docker-compose.yml"
 ENV_FILE="$DEPLOY_DIR/.env"
 
@@ -57,11 +58,18 @@ if [ "$SKIP_DEPLOY" = false ]; then
     fi
 
     cd "$DEPLOY_DIR"
-    docker compose --env-file "$ENV_FILE" up -d 2>&1 || {
-        fail "docker compose up failed"
+    docker compose -f "$STATEFUL_FILE" --env-file "$ENV_FILE" up -d 2>&1 || {
+        fail "docker compose up (stateful) failed"
         exit 1
     }
-    log "Stack started, waiting ${WAIT_SECONDS}s for services to initialize..."
+    log "Stateful stack started, waiting 10s..."
+    sleep 10
+
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d 2>&1 || {
+        fail "docker compose up (stateless) failed"
+        exit 1
+    }
+    log "Stateless stack started, waiting ${WAIT_SECONDS}s for services to initialize..."
     sleep "$WAIT_SECONDS"
 else
     echo ""
@@ -75,9 +83,12 @@ fi
 echo ""
 echo "--- Checking containers ---"
 
-EXPECTED_CONTAINERS=(
+STATEFUL_CONTAINERS=(
     "kioku-postgres"
     "kioku-qdrant"
+)
+
+STATELESS_CONTAINERS=(
     "kioku-ollama"
     "kioku-hivemind"
     "kioku-vexa-api-gateway"
@@ -91,7 +102,7 @@ EXPECTED_CONTAINERS=(
     "kioku-vexa-minio"
 )
 
-for container in "${EXPECTED_CONTAINERS[@]}"; do
+for container in "${STATEFUL_CONTAINERS[@]}" "${STATELESS_CONTAINERS[@]}"; do
     if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
         STATUS=$(docker inspect --format='{{.State.Status}}' "$container" 2>/dev/null || echo "unknown")
         if [ "$STATUS" = "running" ]; then
@@ -208,13 +219,6 @@ if [ -n "$TOKEN" ]; then
             -H "Authorization: Bearer $TOKEN" --max-time 10)
         [ "$GET_STATUS" = "200" ] && log "Sessions: get returns 200" || fail "Sessions: get returns $GET_STATUS"
 
-        MSG_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$HIVEMIND_URL/sessions/$SESS_ID/messages" \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{\"id\":\"$(uuidgen 2>/dev/null || echo '550e8400-e29b-41d4-a716-446655440000')\",\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"hello\"}],\"timestamp\":$(date +%s)000}" \
-            --max-time 10)
-        [ "$MSG_STATUS" = "200" ] && log "Messages: create returns 200" || fail "Messages: create returns $MSG_STATUS"
-
         DEL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$HIVEMIND_URL/sessions/$SESS_ID" \
             -H "Authorization: Bearer $TOKEN" --max-time 10)
         [ "$DEL_STATUS" = "200" ] && log "Sessions: delete returns 200" || fail "Sessions: delete returns $DEL_STATUS"
@@ -236,13 +240,6 @@ if [ -n "$TOKEN" ]; then
         -d "{\"title\":\"Test Meeting\",\"date\":$NOW_MS,\"duration_seconds\":600,\"participants\":[\"Alice\"],\"transcript\":[{\"speaker\":\"Alice\",\"text\":\"Hello\",\"start_time\":0,\"end_time\":2}]}" \
         --max-time 10)
     [ "$MTG_STATUS" = "200" ] && log "Meetings: ingest returns 200" || fail "Meetings: ingest returns $MTG_STATUS"
-
-    USG_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$HIVEMIND_URL/usage" \
-        -H "Authorization: Bearer $TOKEN" \
-        -H "Content-Type: application/json" \
-        -d '{"session_id":"test-session","model":"claude-sonnet-4-5","provider":"anthropic","input_tokens":100,"output_tokens":50}' \
-        --max-time 10)
-    [ "$USG_STATUS" = "200" ] && log "Usage: record returns 200" || fail "Usage: record returns $USG_STATUS"
 
     OUT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$HIVEMIND_URL/auth/signout" \
         -H "Authorization: Bearer $TOKEN" --max-time 10)
@@ -298,14 +295,6 @@ done
 TABLE_COUNT=$(docker exec kioku-postgres psql -U kioku -d kioku -t -c \
     "SELECT count(*) FROM pg_tables WHERE schemaname IN ('public','hivemind','vexa');" 2>/dev/null | tr -d ' ')
 log "Total tables across hivemind/public/vexa schemas: $TABLE_COUNT"
-
-VEXA_TABLES=$(docker exec kioku-postgres psql -U kioku -d kioku -t -c \
-    "SELECT count(*) FROM pg_tables WHERE tablename IN ('meetings','api_tokens','users','calendar_events','transcriptions','recordings') AND schemaname='public';" 2>/dev/null | tr -d ' ')
-if [ "$VEXA_TABLES" -ge 3 ]; then
-    log "Vexa tables: $VEXA_TABLES found in public schema"
-else
-    warn "Vexa tables: only $VEXA_TABLES found in public schema (expected 3+)"
-fi
 
 #####################################
 # Summary

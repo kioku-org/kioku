@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$DEPLOY_DIR"
 
+STATEFUL_FILE="docker-compose.stateful.yml"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -14,17 +16,14 @@ info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 
+compose_stateful()  { docker compose -f "$STATEFUL_FILE" "$@"; }
+compose_stateless() { docker compose "$@"; }
+
 # ─── Pre-flight checks ────────────────────────────────────────────────────────
 
 check_prerequisites() {
-    info "Checking prerequisites..."
-
     command -v docker >/dev/null 2>&1 || error "Docker is not installed"
     command -v docker compose >/dev/null 2>&1 || error "Docker Compose is not installed"
-
-    local compose_version
-    compose_version=$(docker compose version --short)
-    info "Docker Compose version: $compose_version"
 
     if [[ ! -f .env ]]; then
         warn ".env not found. Copying from .env.example..."
@@ -32,134 +31,106 @@ check_prerequisites() {
         warn "Please edit .env with your secrets before starting."
         exit 1
     fi
-
-    info "Prerequisites OK"
 }
 
 # ─── Commands ─────────────────────────────────────────────────────────────────
 
+cmd_start_stateful() {
+    check_prerequisites
+    info "Starting stateful services (postgres, qdrant)..."
+    compose_stateful up -d
+    info "Stateful services started."
+}
+
+cmd_stop_stateful() {
+    info "Stopping stateful services..."
+    compose_stateful stop
+    info "Stateful services stopped."
+}
+
+cmd_down_stateful() {
+    warn "This will remove stateful containers (data volumes preserved)."
+    read -rp "Continue? (y/N) " confirm
+    [[ "$confirm" =~ ^[Yy]$ ]] || { info "Aborted"; exit 0; }
+    compose_stateful down
+}
+
 cmd_start() {
     check_prerequisites
-    info "Starting Kioku Platform..."
-    docker compose up -d --build
-    info "Waiting for services to be healthy..."
+    info "Starting stateful services (postgres, qdrant)..."
+    compose_stateful up -d
+    info "Waiting for stateful services to be healthy..."
     sleep 5
-    docker compose ps
+    info "Starting stateless services..."
+    compose_stateless up -d --build
     info ""
     info "Platform is starting. Services will be available at:"
-    info "  Postgres:          localhost:5432"
-    info "  Hivemind API:      http://localhost:9100"
-    info "  Vexa API:          http://localhost:8056"
-    info "  Vexa Admin:        http://localhost:8057"
-    info "  Qdrant:            http://localhost:6334"
-    info "  Ollama:            http://localhost:11434"
-    info "  Minio Console:     http://localhost:9001"
+    info "  Hivemind API:   http://localhost:9100"
+    info "  Vexa API:       http://localhost:8056"
+    info "  Vexa Admin:     http://localhost:8057"
+    info "  Qdrant:         http://localhost:6334"
+    info "  Ollama:         http://localhost:11434"
+    info "  Minio Console:  http://localhost:9001"
     info ""
     info "Check health: ./scripts/healthcheck.sh"
 }
 
 cmd_stop() {
-    info "Stopping Kioku Platform..."
-    docker compose stop
-    info "All services stopped"
+    info "Stopping stateless services..."
+    compose_stateless stop
+    info "Stopping stateful services..."
+    compose_stateful stop
+    info "All services stopped."
 }
 
 cmd_down() {
-    info "Shutting down Kioku Platform..."
-    docker compose down
-    info "All services removed"
+    info "Shutting down stateless services..."
+    compose_stateless down
+    info "Shutting down stateful services..."
+    compose_stateful down
+    info "All services removed."
 }
 
 cmd_down_volumes() {
-    warn "This will destroy ALL data including databases and recordings!"
+    warn "This will destroy ALL data including databases!"
     read -rp "Are you sure? (y/N) " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        info "Destroying all data and services..."
-        docker compose down -v --remove-orphans
-        info "All data destroyed"
+        info "Destroying stateless services and data..."
+        compose_stateless down -v --remove-orphans
+        info "Destroying stateful services and data..."
+        compose_stateful down -v --remove-orphans
+        info "All data destroyed."
     else
         info "Aborted"
     fi
 }
 
 cmd_restart() {
-    info "Restarting Kioku Platform..."
-    docker compose restart
-    info "Services restarted"
+    info "Restarting all services..."
+    compose_stateful restart
+    compose_stateless restart
+    info "Services restarted."
 }
 
 cmd_status() {
-    info "Service Status:"
+    info "Stateful services:"
+    compose_stateful ps
     echo ""
-    docker compose ps
+    info "Stateless services:"
+    compose_stateless ps
     echo ""
     info "Resource Usage:"
     docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}" \
-        $(docker compose ps -q) 2>/dev/null || warn "No running containers"
+        $(docker ps --format '{{.Names}}' | grep '^kioku-' | tr '\n' ' ') 2>/dev/null || warn "No running containers"
 }
 
 cmd_logs() {
     local service="${1:-}"
     if [[ -n "$service" ]]; then
-        docker compose logs -f "$service"
+        # Try stateless first, fall back to stateful
+        compose_stateless logs -f "$service" 2>/dev/null || compose_stateful logs -f "$service"
     else
-        docker compose logs -f
-    fi
-}
-
-cmd_healthcheck() {
-    info "Running health checks..."
-    echo ""
-
-    local all_ok=true
-
-    if docker exec kioku-postgres pg_isready -U kioku -d kioku >/dev/null 2>&1; then
-        echo -e "  ${GREEN}✓${NC} Postgres: accepting connections"
-    else
-        echo -e "  ${RED}✗${NC} Postgres: not accepting connections"
-        all_ok=false
-    fi
-
-    check_service "kioku-vexa-api-gateway" "http://localhost:8056" "Vexa API" || all_ok=false
-    check_service "kioku-hivemind" "http://localhost:9100/health" "Hivemind API" || all_ok=false
-    check_service "kioku-qdrant" "http://localhost:6334/collections" "Qdrant" || all_ok=false
-    check_service "kioku-ollama" "http://localhost:11434/api/tags" "Ollama" || warn "Ollama may need more time"
-    check_service "kioku-vexa-minio" "http://localhost:9001" "Minio Console" || true
-
-    echo ""
-    if $all_ok; then
-        info "All services healthy"
-    else
-        warn "Some services are not healthy. Check logs: ./scripts/manage.sh logs <service>"
-    fi
-}
-
-check_service() {
-    local container="$1"
-    local url="$2"
-    local name="$3"
-
-    local container_status
-    container_status=$(docker compose ps --format json "$container" 2>/dev/null | jq -r '.State' 2>/dev/null || echo "unknown")
-
-    if [[ "$container_status" != "running" ]]; then
-        echo -e "  ${RED}✗${NC} $name — container not running ($container_status)"
-        return 1
-    fi
-
-    if command -v curl >/dev/null 2>&1; then
-        local http_code
-        http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "$url" 2>/dev/null || echo "000")
-        if [[ "$http_code" =~ ^[23] ]]; then
-            echo -e "  ${GREEN}✓${NC} $name — HTTP $http_code"
-            return 0
-        else
-            echo -e "  ${YELLOW}~${NC} $name — container running, HTTP $http_code (may still be starting)"
-            return 1
-        fi
-    else
-        echo -e "  ${GREEN}✓${NC} $name — container running"
-        return 0
+        compose_stateless logs -f
     fi
 }
 
@@ -169,19 +140,19 @@ cmd_backup() {
     local backup_dir="$DEPLOY_DIR/backups"
     mkdir -p "$backup_dir"
 
-    info "Backing up database to $backup_dir/kioku_$timestamp.sql..."
-    docker compose exec -T postgres pg_dump -U kioku -d kioku --no-owner --no-privileges \
-        > "$backup_dir/kioku_$timestamp.sql" 2>/dev/null
+    info "Backing up full database to $backup_dir/kioku_$timestamp.sql..."
+    compose_stateful exec -T postgres pg_dump -U kioku -d kioku --no-owner --no-privileges \
+        > "$backup_dir/kioku_$timestamp.sql"
 
     info "Backing up hivemind schema..."
-    docker compose exec -T postgres pg_dump -U kioku -d kioku \
+    compose_stateful exec -T postgres pg_dump -U kioku -d kioku \
         --schema=hivemind --no-owner --no-privileges \
-        > "$backup_dir/hivemind_$timestamp.sql" 2>/dev/null
+        > "$backup_dir/hivemind_$timestamp.sql"
 
     info "Backing up vexa schema..."
-    docker compose exec -T postgres pg_dump -U kioku -d kioku \
+    compose_stateful exec -T postgres pg_dump -U kioku -d kioku \
         --schema=vexa --no-owner --no-privileges \
-        > "$backup_dir/vexa_$timestamp.sql" 2>/dev/null
+        > "$backup_dir/vexa_$timestamp.sql"
 
     info "Backup complete:"
     ls -lh "$backup_dir/"*"$timestamp"*
@@ -204,19 +175,23 @@ cmd_restore() {
     fi
 
     info "Restoring from $backup_file..."
-    docker compose exec -T postgres psql -U kioku -d kioku < "$backup_file"
-    info "Restore complete"
+    compose_stateful exec -T postgres psql -U kioku -d kioku < "$backup_file"
+    info "Restore complete."
 }
 
 cmd_shell() {
     local service="${1:-postgres}"
     info "Opening shell in $service..."
-    docker compose exec "$service" /bin/sh || docker compose exec "$service" /bin/bash
+    if [[ "$service" == "postgres" || "$service" == "qdrant" ]]; then
+        compose_stateful exec "$service" /bin/sh || compose_stateful exec "$service" /bin/bash
+    else
+        compose_stateless exec "$service" /bin/sh || compose_stateless exec "$service" /bin/bash
+    fi
 }
 
 cmd_db_shell() {
     info "Opening psql shell..."
-    docker compose exec postgres psql -U kioku -d kioku
+    compose_stateful exec postgres psql -U kioku -d kioku
 }
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -227,43 +202,48 @@ Kioku Platform Manager
 
 Usage: $0 <command> [args]
 
-Commands:
-  start           Start all services (build + up -d)
-  stop            Stop all services (keep data)
-  down            Stop and remove containers
-  down-volumes    Stop and destroy ALL data (databases, recordings, etc.)
-  restart         Restart all services
-  status          Show service status and resource usage
-  logs [service]  Follow logs (optionally for a specific service)
-  healthcheck     Run health checks on all services
-  backup          Backup all databases to backups/
-  restore <file>  Restore database from backup file
-  shell [service] Open shell in a service container (default: postgres)
-  db-shell        Open psql shell to the database
-  help            Show this help
+Full-stack commands (stateful + stateless):
+  start              Start all services
+  stop               Stop all services (keep data)
+  down               Stop and remove all containers
+  down-volumes       Destroy ALL data (databases, volumes, etc.)
+  restart            Restart all services
+  status             Show service status and resource usage
+  logs [service]     Follow logs (optionally for a specific service)
+  backup             Backup all databases to backups/
+  restore <file>     Restore database from backup file
+  shell [service]    Open shell in a service container (default: postgres)
+  db-shell           Open psql shell to the database
+
+Stateful-only commands (postgres, qdrant):
+  start-stateful     Start only postgres and qdrant
+  stop-stateful      Stop only postgres and qdrant
+  down-stateful      Remove stateful containers (preserves volumes)
 
 Examples:
   $0 start
-  $0 logs vexa-api-gateway
-  $0 healthcheck
+  $0 logs kioku-hivemind
   $0 backup
   $0 restore backups/kioku_20260401_120000.sql
+  $0 start-stateful          # bring up just postgres+qdrant
 EOF
 }
 
 case "${1:-help}" in
-    start)          cmd_start ;;
-    stop)           cmd_stop ;;
-    down)           cmd_down ;;
-    down-volumes)   cmd_down_volumes ;;
-    restart)        cmd_restart ;;
-    status)         cmd_status ;;
-    logs)           cmd_logs "${2:-}" ;;
-    healthcheck)    cmd_healthcheck ;;
-    backup)         cmd_backup ;;
-    restore)        cmd_restore "${2:-}" ;;
-    shell)          cmd_shell "${2:-}" ;;
-    db-shell)       cmd_db_shell ;;
-    help|--help|-h) usage ;;
-    *)              error "Unknown command: $1. Run '$0 help' for usage." ;;
+    start)            cmd_start ;;
+    stop)             cmd_stop ;;
+    down)             cmd_down ;;
+    down-volumes)     cmd_down_volumes ;;
+    restart)          cmd_restart ;;
+    status)           cmd_status ;;
+    logs)             cmd_logs "${2:-}" ;;
+    backup)           cmd_backup ;;
+    restore)          cmd_restore "${2:-}" ;;
+    shell)            cmd_shell "${2:-}" ;;
+    db-shell)         cmd_db_shell ;;
+    start-stateful)   cmd_start_stateful ;;
+    stop-stateful)    cmd_stop_stateful ;;
+    down-stateful)    cmd_down_stateful ;;
+    help|--help|-h)   usage ;;
+    *)                error "Unknown command: $1. Run '$0 help' for usage." ;;
 esac

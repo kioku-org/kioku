@@ -17,3 +17,4 @@ deployment/runpod/.env
 deployment/runpod/*.json
 deployment/runpod/.runpod/
 deployment/runpod/model/
+deployment/runpod/PLAN.md

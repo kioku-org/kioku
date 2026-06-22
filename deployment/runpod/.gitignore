@@ -1,3 +1,4 @@
 .env
 .pod-info
+.stateful-pod
 .DS_Store

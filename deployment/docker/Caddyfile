@@ -1,7 +1,0 @@
-api.kioku.chat {
-	reverse_proxy kioku-hivemind:9100
-}
-
-meetings.kioku.chat {
-	reverse_proxy vexa-api-gateway:8000
-}

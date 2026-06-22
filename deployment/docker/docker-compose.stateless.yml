@@ -1,47 +1,6 @@
-name: kioku-platform
+name: kioku-stateless
 
 services:
-  # ─────────────────────────────────────────────────────────────────────────────
-  # POSTGRES (replaces entire Supabase stack — hivemind has its own auth)
-  # ─────────────────────────────────────────────────────────────────────────────
-
-  postgres:
-    image: pgvector/pgvector:pg16
-    container_name: kioku-postgres
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    environment:
-      POSTGRES_USER: ${DB_USER:-kioku}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-kioku}
-      POSTGRES_DB: ${DB_NAME:-kioku}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-kioku} -d ${DB_NAME:-kioku}"]
-      interval: 3s
-      timeout: 3s
-      retries: 10
-      start_period: 5s
-    networks:
-      - kioku-network
-    restart: unless-stopped
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # QDRANT (Vector DB for Hivemind RAG)
-  # ─────────────────────────────────────────────────────────────────────────────
-
-  qdrant:
-    image: qdrant/qdrant:v1.10.1
-    container_name: kioku-qdrant
-    volumes:
-      - qdrant-data:/qdrant/storage
-    networks:
-      - kioku-network
-    restart: unless-stopped
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # COMPANION-VOICE (VEXA) STACK
-  # ─────────────────────────────────────────────────────────────────────────────
-
   vexa-api-gateway:
     build:
       context: ${KIOKU_VEXA_PATH:-../../services/vexa}
@@ -60,7 +19,7 @@ services:
       - VEXA_ENV=${VEXA_ENV:-production}
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - DB_HOST=postgres
+      - DB_HOST=${DB_HOST:-postgres}
       - DB_PORT=5432
       - DB_NAME=${DB_NAME:-kioku}
       - DB_USER=${DB_USER:-kioku}
@@ -83,7 +42,7 @@ services:
       dockerfile: services/admin-api/Dockerfile
     container_name: kioku-vexa-admin-api
     environment:
-      - DB_HOST=postgres
+      - DB_HOST=${DB_HOST:-postgres}
       - DB_PORT=5432
       - DB_NAME=${DB_NAME:-kioku}
       - DB_USER=${DB_USER:-kioku}
@@ -98,9 +57,6 @@ services:
       - VEXA_ENV=${VEXA_ENV:-production}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     init: true
-    depends_on:
-      postgres:
-        condition: service_healthy
     networks:
       - kioku-network
     restart: unless-stopped
@@ -111,7 +67,7 @@ services:
       dockerfile: services/meeting-api/Dockerfile
     container_name: kioku-vexa-meeting-api
     environment:
-      - DB_HOST=postgres
+      - DB_HOST=${DB_HOST:-postgres}
       - DB_PORT=5432
       - DB_NAME=${DB_NAME:-kioku}
       - DB_USER=${DB_USER:-kioku}
@@ -244,7 +200,8 @@ services:
   vexa-redis:
     image: redis:7.0-alpine
     container_name: kioku-vexa-redis
-    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    command:
+      ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     volumes:
       - vexa-redis-data:/data
     networks:
@@ -273,20 +230,16 @@ services:
       - /bin/sh
       - -c
       - |
-        sleep 5
-        mc alias set vexa http://vexa-minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}
+        until mc alias set vexa http://vexa-minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}; do
+          echo "Waiting for MinIO..."; sleep 3
+        done
         mc mb --ignore-existing vexa/$${MINIO_BUCKET:-vexa-recordings}
-        mc anonymous set download vexa/$${MINIO_BUCKET:-vexa-recordings} || true
         exit 0
     environment:
       - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-vexa-access-key}
       - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-vexa-secret-key}
     networks:
       - kioku-network
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # OLLAMA (Embeddings for Hivemind RAG)
-  # ─────────────────────────────────────────────────────────────────────────────
 
   ollama:
     image: ollama/ollama:latest
@@ -328,16 +281,12 @@ services:
       - kioku-network
     restart: "no"
 
-  # ─────────────────────────────────────────────────────────────────────────────
-  # KIOKU-HIVEMIND (Rust backend)
-  # ─────────────────────────────────────────────────────────────────────────────
-
   kioku-hivemind:
     build:
       context: ${HIVEMIND_PATH:-../../services/hivemind}
     container_name: kioku-hivemind
     environment:
-      - DB_HOST=postgres
+      - DB_HOST=${DB_HOST:-postgres}
       - DB_PORT=5432
       - DB_NAME=${DB_NAME:-kioku}
       - DB_USER=${DB_USER:-kioku}
@@ -354,13 +303,9 @@ services:
       - PORT=9100
       - EMBEDDING_API_URL=http://ollama:11434
       - EMBEDDING_MODEL=nomic-embed-text-v2-moe
-      - QDRANT_URL=http://qdrant:6334
+      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6334}
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
     depends_on:
-      postgres:
-        condition: service_healthy
-      qdrant:
-        condition: service_started
       ollama:
         condition: service_started
       ollama-pull:
@@ -375,36 +320,13 @@ services:
       retries: 3
       start_period: 30s
 
-  # ─────────────────────────────────────────────────────────────────────────────
-  # CADDY (Reverse proxy — auto HTTPS via Let's Encrypt)
-  # ─────────────────────────────────────────────────────────────────────────────
-
-  caddy:
-    image: caddy:2-alpine
-    container_name: kioku-caddy
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      kioku-hivemind:
-        condition: service_healthy
-      vexa-api-gateway:
-        condition: service_started
-    networks:
-      - kioku-network
-    restart: unless-stopped
-
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: kioku-cloudflared
     command: tunnel --config /etc/cloudflared/config.yml run
     volumes:
-      - /home/growit/.cloudflared:/etc/cloudflared:ro
+      - ./cloudflared.yml:/etc/cloudflared/config.yml:ro
+      - ${CLOUDFLARED_CREDENTIALS_DIR:-~/.cloudflared}:/etc/cloudflared/creds:ro
     depends_on:
       kioku-hivemind:
         condition: service_healthy
@@ -414,15 +336,7 @@ services:
       - kioku-network
     restart: unless-stopped
 
-  # ─────────────────────────────────────────────────────────────────────────────
-  # VOLUMES & NETWORKS
-  # ─────────────────────────────────────────────────────────────────────────────
-
 volumes:
-  postgres-data:
-    name: kioku-postgres-data
-  qdrant-data:
-    name: kioku-qdrant-data
   vexa-redis-data:
     name: kioku-vexa-redis-data
   vexa-minio-data:
@@ -431,12 +345,9 @@ volumes:
     name: kioku-vexa-recordings-data
   ollama-data:
     name: kioku-ollama-data
-  caddy-data:
-    name: kioku-caddy-data
-  caddy-config:
-    name: kioku-caddy-config
+
 
 networks:
   kioku-network:
     name: kioku-network
-    driver: bridge
+    external: true

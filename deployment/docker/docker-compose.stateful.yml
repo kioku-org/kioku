@@ -1,0 +1,56 @@
+name: kioku-stateful
+
+services:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # POSTGRES
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: kioku-postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    environment:
+      POSTGRES_USER: ${DB_USER:-kioku}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-kioku}
+      POSTGRES_DB: ${DB_NAME:-kioku}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-kioku} -d ${DB_NAME:-kioku}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - kioku-network
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # QDRANT
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  qdrant:
+    image: qdrant/qdrant:v1.10.1
+    container_name: kioku-qdrant
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - kioku-network
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+    name: kioku-postgres-data
+  qdrant-data:
+    name: kioku-qdrant-data
+
+networks:
+  kioku-network:
+    name: kioku-network
+    driver: bridge

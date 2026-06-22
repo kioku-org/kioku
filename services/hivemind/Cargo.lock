@@ -526,44 +526,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kioku-hivemind"
-version = "0.1.0"
-dependencies = [
- "aes-gcm",
- "anyhow",
- "async-trait",
- "axum 0.7.9",
- "bcrypt",
- "config",
- "dotenvy",
- "futures",
- "hex",
- "http-body-util",
- "jsonwebtoken",
- "langchain-rust-openrouter",
- "ollama-rs",
- "pdf-extract",
- "qdrant-client",
- "rand 0.8.5",
- "reqwest 0.12.28",
- "rmcp",
- "schemars",
- "serde",
- "serde_json",
- "sha2",
- "sqlx",
- "thiserror 1.0.69",
- "tokio",
- "tokio-util",
- "tower 0.5.3",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "url",
- "uuid",
-]
-
-[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1955,6 +1917,44 @@ dependencies = [
  "serde",
  "serde_json",
  "simple_asn1",
+]
+
+[[package]]
+name = "kioku-hivemind"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "anyhow",
+ "async-trait",
+ "axum 0.7.9",
+ "bcrypt",
+ "config",
+ "dotenvy",
+ "futures",
+ "hex",
+ "http-body-util",
+ "jsonwebtoken",
+ "langchain-rust-openrouter",
+ "ollama-rs",
+ "pdf-extract",
+ "qdrant-client",
+ "rand 0.8.5",
+ "reqwest 0.12.28",
+ "rmcp",
+ "schemars",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "tower 0.5.3",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
 ]
 
 [[package]]
