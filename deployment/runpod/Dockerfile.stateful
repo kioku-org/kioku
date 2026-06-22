@@ -1,39 +1,45 @@
-FROM ubuntu:22.04
+FROM debian:bookworm-slim
 
-ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=noninteractive \
+    PG_MAJOR=16 \
+    OLLAMA_HOST=0.0.0.0:11434 \
+    OLLAMA_MODELS=/data/ollama/models
 
-RUN apt-get update && apt-get install -y \
-    curl wget gnupg2 sudo zstd lsb-release \
-    && sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
-    && curl -sL https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        gnupg \
+        openssh-server \
+        redis-server \
+        supervisor \
+        sudo \
+        wget \
+        zstd \
+    && install -d -m 0755 /etc/apt/keyrings \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+        | gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+        > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
-    && apt-get install -y \
-    postgresql-14 postgresql-client-14 \
-    postgresql-14-pgvector \
-    redis-server \
-    supervisor \
+    && apt-get install -y --no-install-recommends \
+        postgresql-16 \
+        postgresql-16-pgvector \
+        postgresql-client-16 \
+    && curl -fsSL https://github.com/qdrant/qdrant/releases/download/v1.10.1/qdrant-x86_64-unknown-linux-gnu.tar.gz \
+        -o /tmp/qdrant.tar.gz \
+    && tar xzf /tmp/qdrant.tar.gz -C /usr/local/bin qdrant \
+    && rm -f /tmp/qdrant.tar.gz \
+    && chmod +x /usr/local/bin/qdrant \
+    && curl -fsSL https://ollama.com/install.sh | sh \
+    && curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio \
+        -o /usr/local/bin/minio \
+    && chmod +x /usr/local/bin/minio \
     && rm -rf /var/lib/apt/lists/*
 
-# Qdrant
-RUN curl -sL https://github.com/qdrant/qdrant/releases/download/v1.10.1/qdrant-x86_64-unknown-linux-gnu.tar.gz | tar xz -C /usr/local/bin/
-
-# Ollama
-RUN curl -fsSL https://ollama.com/install.sh | sh
-
-# MinIO
-RUN curl -sL https://dl.min.io/server/minio/release/linux-amd64/minio -o /usr/local/bin/minio && chmod +x /usr/local/bin/minio
-
-# PostgreSQL setup
-RUN mkdir -p /var/run/postgresql && chown postgres:postgres /var/run/postgresql
-
-# Supervisord config
-COPY deployment/runpod/supervisord-stateful.conf /etc/supervisor/conf.d/supervisord.conf
-COPY deployment/runpod/qdrant-config.yaml /etc/qdrant/config.yaml
-
-# Entrypoint
-COPY deployment/runpod/entrypoint-stateful.sh /entrypoint.sh
+COPY deployment/runpod/entrypoint-stateful-runtime.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 5432 6379 6334 9000 9001 11434
+EXPOSE 22 5432 6379 6334 9000 9001 11434
 
 ENTRYPOINT ["/entrypoint.sh"]

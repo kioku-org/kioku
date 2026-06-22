@@ -12,6 +12,14 @@ info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 
+USE_LOCAL=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --local) USE_LOCAL=true; shift ;;
+        *) error "Unknown argument: $1" ;;
+    esac
+done
+
 set -a
 while IFS='=' read -r key value; do
     [[ "$key" =~ ^#.*$ || -z "$key" ]] && continue
@@ -25,7 +33,14 @@ set +a
 
 info "Creating stateful CPU Pod..."
 
-INIT_URL="https://raw.githubusercontent.com/kioku-org/kioku/feat/runpod/deployment/runpod/entrypoint-stateful.sh"
+if [[ "$USE_LOCAL" == true ]]; then
+    info "Using local entrypoint-stateful.sh..."
+    ENTRYPOINT_B64="$(base64 -w0 "$SCRIPT_DIR/entrypoint-stateful.sh")"
+    START_CMD="[\"/bin/bash\", \"-c\", \"apt-get update > /dev/null 2>&1 && apt-get install -y curl wget gnupg lsb-release sudo tzdata zstd > /dev/null 2>&1 && echo '${ENTRYPOINT_B64}' | base64 -d > /tmp/init.sh && chmod +x /tmp/init.sh && /tmp/init.sh\"]"
+else
+    INIT_URL="https://raw.githubusercontent.com/kioku-org/kioku/feat/runpod/deployment/runpod/entrypoint-stateful.sh"
+    START_CMD="[\"/bin/bash\", \"-c\", \"apt-get update > /dev/null 2>&1 && apt-get install -y curl wget > /dev/null 2>&1 && curl -sL ${INIT_URL} -o /tmp/init.sh && chmod +x /tmp/init.sh && /tmp/init.sh\"]"
+fi
 
 RESPONSE=$(curl -s -X POST "https://rest.runpod.io/v1/pods" \
     -H "Authorization: Bearer $RUNPOD_API_KEY" \
@@ -41,7 +56,7 @@ RESPONSE=$(curl -s -X POST "https://rest.runpod.io/v1/pods" \
     "volumeInGb": 50,
     "volumeMountPath": "/data",
     "ports": ["5432/tcp", "6379/tcp", "6334/http", "9000/http", "9001/http", "11434/http", "22/tcp"],
-    "dockerStartCmd": ["/bin/bash", "-c", "apt-get update > /dev/null 2>&1 && apt-get install -y curl wget > /dev/null 2>&1 && curl -sL ${INIT_URL} -o /tmp/init.sh && chmod +x /tmp/init.sh && /tmp/init.sh"]
+    "dockerStartCmd": ${START_CMD}
 }
 PAYLOAD
 )
