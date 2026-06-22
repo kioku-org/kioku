@@ -1,7 +1,0 @@
-api.coolcmyk.dev {
-	reverse_proxy companion-hivemind:9100
-}
-
-meetings.coolcmyk.dev {
-	reverse_proxy vexa-api-gateway:8000
-}

@@ -1,9 +1,0 @@
-tunnel: 1c11ebdd-f78a-4078-a780-74ecd1f73d56
-credentials-file: /etc/cloudflared/1c11ebdd-f78a-4078-a780-74ecd1f73d56.json
-
-ingress:
-  - hostname: api.coolcmyk.dev
-    service: http://companion-hivemind:9100
-  - hostname: meetings.coolcmyk.dev
-    service: http://vexa-api-gateway:8000
-  - service: http_status:404
