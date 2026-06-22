@@ -21,12 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install runpodctl
-        run: |
-          curl -sSL https://github.com/runpod/runpodctl/releases/latest/download/runpodctl-linux-amd64 -o /usr/local/bin/runpodctl
-          chmod +x /usr/local/bin/runpodctl
-          runpodctl version
-
       - name: Deploy stateful pod
         id: deploy
         env:
@@ -34,57 +28,74 @@ jobs:
         run: |
           set -euo pipefail
 
-          POD_NAME="ci-kioku-stateful-${GITHUB_SHA::7}"
-
-          echo "Creating stateful pod: $POD_NAME"
-
-          runpodctl create pod \
-            --name "$POD_NAME" \
-            --imageName "kyomoto/kioku-stateful:latest" \
-            --containerDiskSize 40 \
-            --volumeSize 20 \
-            --volumePath "/data" \
-            --ports "22/tcp,6379/tcp,8080/http,9100/http,8056/http" \
-            --env "DB_NAME=kioku" \
-            --env "DB_USER=kioku" \
-            --env "DB_PASSWORD=kioku" \
-            --env "REDIS_PASSWORD=ci-test-redis-password" \
-            --env "HIVEMIND_JWT_SECRET=$(openssl rand -hex 32)" \
-            --env "HIVEMIND_ENCRYPTION_SECRET=$(openssl rand -hex 32)" \
-            --env "VEXA_ADMIN_API_TOKEN=ci-test-admin-token" \
-            --env "INTERNAL_API_SECRET=ci-test-internal-secret" \
-            --env "ORCHESTRATOR_BACKEND=runpod" \
-            --env "RUNPOD_API_KEY=${RUNPOD_API_KEY}" \
-            --env "BOT_IMAGE=kyomoto/kioku-stateless:latest" \
-            --env "VEXA_PUBLIC_URL=http://localhost:8056" \
-            --env "CORS_ORIGINS=*" \
-            --env "LOG_LEVEL=INFO" \
-            --env "VEXA_ENV=production" \
-            --env "STORAGE_BACKEND=minio" \
-            --env "MINIO_ACCESS_KEY=kioku" \
-            --env "MINIO_SECRET_KEY=ci-test-minio-password" \
-            --env "MINIO_BUCKET=vexa-recordings" \
-            --env "RECORDING_ENABLED=false" \
-            --env "RUNPOD_GPU_TYPE=NVIDIA GeForce RTX 3090" \
-            --env "RUNPOD_CLOUD_TYPE=COMMUNITY"
-
-          echo "Waiting for pod to be ready..."
-          sleep 30
-
-          POD_INFO=$(runpodctl get pod 2>&1 || true)
-          echo "Pod info: $POD_INFO"
-
-          POD_ID=$(echo "$POD_INFO" | grep "$POD_NAME" | awk '{print $1}' | head -1)
-          echo "Pod ID: $POD_ID"
-          echo "pod_id=$POD_ID" >> $GITHUB_OUTPUT
-          echo "pod_name=$POD_NAME" >> $GITHUB_OUTPUT
-
-          if [ -z "$POD_ID" ]; then
-            echo "ERROR: Could not find pod ID"
+          if [ -z "$RUNPOD_API_KEY" ]; then
+            echo "ERROR: RUNPOD_API_KEY secret is not set"
             exit 1
           fi
 
-      - name: Wait for services to start
+          POD_NAME="ci-kioku-stateful-${GITHUB_SHA::7}"
+          echo "Creating CPU pod: $POD_NAME"
+
+          JWT_SECRET=$(openssl rand -hex 32)
+          ENC_SECRET=$(openssl rand -hex 32)
+
+          PAYLOAD=$(cat <<EOF
+          {
+            "name": "$POD_NAME",
+            "imageName": "kyomoto/kioku-stateful:latest",
+            "computeType": "CPU",
+            "vcpuCount": 4,
+            "containerDiskInGb": 40,
+            "volumeInGb": 20,
+            "volumeMountPath": "/data",
+            "ports": ["22/tcp", "6379/tcp", "8080/http", "9100/http", "8056/http"],
+            "env": {
+              "DB_NAME": "kioku",
+              "DB_USER": "kioku",
+              "DB_PASSWORD": "kioku",
+              "REDIS_PASSWORD": "ci-test-redis-password",
+              "HIVEMIND_JWT_SECRET": "$JWT_SECRET",
+              "HIVEMIND_ENCRYPTION_SECRET": "$ENC_SECRET",
+              "VEXA_ADMIN_API_TOKEN": "ci-test-admin-token",
+              "INTERNAL_API_SECRET": "ci-test-internal-secret",
+              "ORCHESTRATOR_BACKEND": "runpod",
+              "RUNPOD_API_KEY": "$RUNPOD_API_KEY",
+              "BOT_IMAGE": "kyomoto/kioku-stateless:latest",
+              "VEXA_PUBLIC_URL": "http://localhost:8056",
+              "CORS_ORIGINS": "*",
+              "LOG_LEVEL": "INFO",
+              "VEXA_ENV": "production",
+              "STORAGE_BACKEND": "minio",
+              "MINIO_ACCESS_KEY": "kioku",
+              "MINIO_SECRET_KEY": "ci-test-minio-password",
+              "MINIO_BUCKET": "vexa-recordings",
+              "RECORDING_ENABLED": "false",
+              "RUNPOD_GPU_TYPE": "NVIDIA GeForce RTX 3090",
+              "RUNPOD_CLOUD_TYPE": "COMMUNITY"
+            }
+          }
+          EOF
+          )
+
+          RESP=$(curl -s -X POST "https://rest.runpod.io/v1/pods" \
+            -H "Authorization: Bearer $RUNPOD_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+          echo "Create response: $RESP"
+
+          POD_ID=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
+
+          if [ -z "$POD_ID" ]; then
+            echo "ERROR: Failed to create pod"
+            exit 1
+          fi
+
+          echo "Pod created with ID: $POD_ID"
+          echo "pod_id=$POD_ID" >> $GITHUB_OUTPUT
+          echo "pod_name=$POD_NAME" >> $GITHUB_OUTPUT
+
+      - name: Wait for pod to be running
         id: wait
         env:
           RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
@@ -92,7 +103,7 @@ jobs:
           set -euo pipefail
           POD_ID="${{ steps.deploy.outputs.pod_id }}"
 
-          echo "Polling pod status via RunPod API..."
+          echo "Polling pod $POD_ID status..."
           MAX_WAIT=300
           ELAPSED=0
 
@@ -106,7 +117,7 @@ jobs:
             echo "  [$ELAPSED/${MAX_WAIT}s] desiredStatus=$DESIRED publicIp=$PUBLIC_IP"
 
             if [ "$DESIRED" = "RUNNING" ] && [ -n "$PUBLIC_IP" ]; then
-              echo "Pod is running with IP: $PUBLIC_IP"
+              echo "Pod is running at $PUBLIC_IP"
               echo "pod_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
               break
             fi
@@ -125,15 +136,13 @@ jobs:
           POD_IP: ${{ steps.wait.outputs.pod_ip }}
         run: |
           set -euo pipefail
-
-          echo "Running health checks against pod at $POD_IP"
+          echo "Waiting 30s for services to initialize..."
           sleep 30
 
           FAIL=0
 
           check_http() {
-            local url="$1"
-            local name="$2"
+            local url="$1" name="$2"
             local code
             code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$url" 2>/dev/null || echo "000")
             if [ "$code" -ge 200 ] && [ "$code" -lt 500 ]; then
@@ -145,9 +154,7 @@ jobs:
           }
 
           check_tcp() {
-            local host="$1"
-            local port="$2"
-            local name="$3"
+            local host="$1" port="$2" name="$3"
             if timeout 5 bash -c "echo > /dev/tcp/$host/$port" 2>/dev/null; then
               echo "  PASS: $name (TCP $host:$port)"
             else
@@ -156,7 +163,6 @@ jobs:
             fi
           }
 
-          echo ""
           echo "=== HTTP endpoints ==="
           check_http "http://$POD_IP:9100/health" "Hivemind API"
           check_http "http://$POD_IP:8080/health" "Vexa Meeting API"
@@ -166,10 +172,10 @@ jobs:
           echo ""
           echo "=== TCP ports ==="
           check_tcp "$POD_IP" 6379 "Redis"
-          check_tcp "$POD_IP" 5432 "PostgreSQL (internal)"
+          check_tcp "$POD_IP" 5432 "PostgreSQL"
 
           echo ""
-          echo "=== Redis AUTH test ==="
+          echo "=== Redis AUTH ==="
           REDIS_RESP=$(redis-cli -h "$POD_IP" -p 6379 -a "ci-test-redis-password" PING 2>/dev/null || echo "FAIL")
           if echo "$REDIS_RESP" | grep -q PONG; then
             echo "  PASS: Redis AUTH (PONG)"
@@ -179,7 +185,7 @@ jobs:
           fi
 
           echo ""
-          echo "=== Hivemind auth test ==="
+          echo "=== Hivemind auth ==="
           REG_RESP=$(curl -s -X POST "http://$POD_IP:9100/auth/register/admin" \
             -H "Content-Type: application/json" \
             -d '{"company_name":"ci-test","email":"ci@test.com","name":"CI","password":"testpassword123"}' \
@@ -187,25 +193,14 @@ jobs:
           TOKEN=$(echo "$REG_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || echo "")
 
           if [ -n "$TOKEN" ]; then
-            echo "  PASS: Hivemind admin registration (got token)"
-
+            echo "  PASS: Hivemind admin registration"
             ME_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://$POD_IP:9100/auth/me" \
               -H "Authorization: Bearer $TOKEN" --max-time 10)
-            if [ "$ME_CODE" = "200" ]; then
-              echo "  PASS: Hivemind /auth/me (HTTP 200)"
-            else
-              echo "  FAIL: Hivemind /auth/me (HTTP $ME_CODE)"
-              FAIL=$((FAIL + 1))
-            fi
+            [ "$ME_CODE" = "200" ] && echo "  PASS: /auth/me (200)" || { echo "  FAIL: /auth/me ($ME_CODE)"; FAIL=$((FAIL + 1)); }
           else
             echo "  FAIL: Hivemind admin registration"
             FAIL=$((FAIL + 1))
           fi
-
-          echo ""
-          echo "=== Runtime API backend check ==="
-          BACKEND=$(curl -s "http://$POD_IP:8090/health" --max-time 10 2>/dev/null || echo '{}')
-          echo "  Runtime API response: $BACKEND"
 
           echo ""
           echo "========================================="
@@ -226,5 +221,5 @@ jobs:
             echo "Deleting pod $POD_ID..."
             curl -s -X DELETE -H "Authorization: Bearer $RUNPOD_API_KEY" \
               "https://rest.runpod.io/v1/pods/$POD_ID" || true
-            echo "Pod deleted."
+            echo "Done."
           fi
