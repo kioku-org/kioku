@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: dev
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'push' }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -162,21 +162,27 @@ jobs:
           RUNTIME_API_URL: ${{ steps.wait.outputs.runtime_api_url }}
         run: |
           set -euo pipefail
-          echo "Waiting 30s for services to initialize..."
-          sleep 30
 
           FAIL=0
 
-          check_http() {
-            local url="$1" name="$2"
-            local code
-            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$url" 2>/dev/null || echo "000")
-            if [ "$code" -ge 200 ] && [ "$code" -lt 500 ]; then
-              echo "  PASS: $name (HTTP $code)"
-            else
-              echo "  FAIL: $name (HTTP $code)"
-              FAIL=$((FAIL + 1))
-            fi
+          check_http_retry() {
+            local url="$1" name="$2" max_tries="${3:-12}"
+            local try=1
+            while [ $try -le $max_tries ]; do
+              local code
+              code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$url" 2>/dev/null || echo "000")
+              if [ "$code" -ge 200 ] && [ "$code" -lt 500 ]; then
+                echo "  PASS: $name (HTTP $code, try $try)"
+                return 0
+              fi
+              echo "  ... $name: HTTP $code (try $try/$max_tries), retrying in 10s..."
+              sleep 10
+              try=$((try + 1))
+            done
+            local final_code
+            final_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$url" 2>/dev/null || echo "000")
+            echo "  FAIL: $name (HTTP $final_code after $max_tries tries)"
+            FAIL=$((FAIL + 1))
           }
 
           check_tcp() {
@@ -189,11 +195,11 @@ jobs:
             fi
           }
 
-          echo "=== HTTP endpoints (via RunPod proxy) ==="
-          check_http "$HIVEMIND_URL/health" "Hivemind API"
-          check_http "$MEETING_API_URL/health" "Vexa Meeting API"
-          check_http "$VEXA_GATEWAY_URL/" "Vexa API Gateway"
-          check_http "$RUNTIME_API_URL/health" "Runtime API"
+          echo "=== HTTP endpoints (via RunPod proxy, with retries) ==="
+          check_http_retry "$HIVEMIND_URL/health" "Hivemind API" 18
+          check_http_retry "$MEETING_API_URL/health" "Vexa Meeting API" 18
+          check_http_retry "$VEXA_GATEWAY_URL/" "Vexa API Gateway" 18
+          check_http_retry "$RUNTIME_API_URL/health" "Runtime API" 6
 
           echo ""
           echo "=== TCP ports (via mapped public ports) ==="
@@ -218,12 +224,20 @@ jobs:
           fi
 
           echo ""
-          echo "=== Hivemind auth ==="
-          REG_RESP=$(curl -s -X POST "$HIVEMIND_URL/auth/register/admin" \
-            -H "Content-Type: application/json" \
-            -d '{"company_name":"ci-test","email":"ci@test.com","name":"CI","password":"testpassword123"}' \
-            --max-time 20 2>/dev/null || echo '{}')
-          TOKEN=$(echo "$REG_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || echo "")
+          echo "=== Hivemind auth (with retries) ==="
+          TOKEN=""
+          for i in $(seq 1 12); do
+            REG_RESP=$(curl -s -X POST "$HIVEMIND_URL/auth/register/admin" \
+              -H "Content-Type: application/json" \
+              -d '{"company_name":"ci-test","email":"ci@test.com","name":"CI","password":"testpassword123"}' \
+              --max-time 20 2>/dev/null || echo '{}')
+            TOKEN=$(echo "$REG_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || echo "")
+            if [ -n "$TOKEN" ]; then
+              break
+            fi
+            echo "  ... registration try $i/12 failed, retrying in 10s..."
+            sleep 10
+          done
 
           if [ -n "$TOKEN" ]; then
             echo "  PASS: Hivemind admin registration"
