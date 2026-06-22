@@ -1,0 +1,230 @@
+name: RunPod Integration Test
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'services/**'
+      - 'deployment/runpod/**'
+      - '.github/workflows/build-images.yml'
+      - '.github/workflows/runpod-test.yml'
+  workflow_run:
+    workflows: ["Build and Push Docker Images"]
+    types: [completed]
+    branches: [master, main]
+
+jobs:
+  runpod-test:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'push' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install runpodctl
+        run: |
+          curl -sSL https://github.com/runpod/runpodctl/releases/latest/download/runpodctl-linux-amd -o /usr/local/bin/runpodctl
+          chmod +x /usr/local/bin/runpodctl
+          runpodctl version
+
+      - name: Deploy stateful pod
+        id: deploy
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          POD_NAME="ci-kioku-stateful-${GITHUB_SHA::7}"
+
+          echo "Creating stateful pod: $POD_NAME"
+
+          runpodctl create pod \
+            --name "$POD_NAME" \
+            --imageName "kyomoto/kioku-stateful:latest" \
+            --containerDiskSize 40 \
+            --volumeSize 20 \
+            --volumePath "/data" \
+            --ports "22/tcp,6379/tcp,8080/http,9100/http,8056/http" \
+            --env "DB_NAME=kioku" \
+            --env "DB_USER=kioku" \
+            --env "DB_PASSWORD=kioku" \
+            --env "REDIS_PASSWORD=ci-test-redis-password" \
+            --env "HIVEMIND_JWT_SECRET=$(openssl rand -hex 32)" \
+            --env "HIVEMIND_ENCRYPTION_SECRET=$(openssl rand -hex 32)" \
+            --env "VEXA_ADMIN_API_TOKEN=ci-test-admin-token" \
+            --env "INTERNAL_API_SECRET=ci-test-internal-secret" \
+            --env "ORCHESTRATOR_BACKEND=runpod" \
+            --env "RUNPOD_API_KEY=${RUNPOD_API_KEY}" \
+            --env "BOT_IMAGE=kyomoto/kioku-stateless:latest" \
+            --env "VEXA_PUBLIC_URL=http://localhost:8056" \
+            --env "CORS_ORIGINS=*" \
+            --env "LOG_LEVEL=INFO" \
+            --env "VEXA_ENV=production" \
+            --env "STORAGE_BACKEND=minio" \
+            --env "MINIO_ACCESS_KEY=kioku" \
+            --env "MINIO_SECRET_KEY=ci-test-minio-password" \
+            --env "MINIO_BUCKET=vexa-recordings" \
+            --env "RECORDING_ENABLED=false" \
+            --env "RUNPOD_GPU_TYPE=NVIDIA GeForce RTX 3090" \
+            --env "RUNPOD_CLOUD_TYPE=COMMUNITY"
+
+          echo "Waiting for pod to be ready..."
+          sleep 30
+
+          POD_INFO=$(runpodctl get pod 2>&1 || true)
+          echo "Pod info: $POD_INFO"
+
+          POD_ID=$(echo "$POD_INFO" | grep "$POD_NAME" | awk '{print $1}' | head -1)
+          echo "Pod ID: $POD_ID"
+          echo "pod_id=$POD_ID" >> $GITHUB_OUTPUT
+          echo "pod_name=$POD_NAME" >> $GITHUB_OUTPUT
+
+          if [ -z "$POD_ID" ]; then
+            echo "ERROR: Could not find pod ID"
+            exit 1
+          fi
+
+      - name: Wait for services to start
+        id: wait
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          set -euo pipefail
+          POD_ID="${{ steps.deploy.outputs.pod_id }}"
+
+          echo "Polling pod status via RunPod API..."
+          MAX_WAIT=300
+          ELAPSED=0
+
+          while [ $ELAPSED -lt $MAX_WAIT ]; do
+            POD_JSON=$(curl -s -H "Authorization: Bearer $RUNPOD_API_KEY" \
+              "https://rest.runpod.io/v1/pods/$POD_ID" 2>/dev/null || echo '{}')
+
+            DESIRED=$(echo "$POD_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('desiredStatus','UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
+            PUBLIC_IP=$(echo "$POD_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('publicIp','') or '')" 2>/dev/null || echo "")
+
+            echo "  [$ELAPSED/${MAX_WAIT}s] desiredStatus=$DESIRED publicIp=$PUBLIC_IP"
+
+            if [ "$DESIRED" = "RUNNING" ] && [ -n "$PUBLIC_IP" ]; then
+              echo "Pod is running with IP: $PUBLIC_IP"
+              echo "pod_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
+              break
+            fi
+
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+          done
+
+          if [ $ELAPSED -ge $MAX_WAIT ]; then
+            echo "ERROR: Pod did not reach RUNNING state in ${MAX_WAIT}s"
+            exit 1
+          fi
+
+      - name: Health checks
+        env:
+          POD_IP: ${{ steps.wait.outputs.pod_ip }}
+        run: |
+          set -euo pipefail
+
+          echo "Running health checks against pod at $POD_IP"
+          sleep 30
+
+          FAIL=0
+
+          check_http() {
+            local url="$1"
+            local name="$2"
+            local code
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$url" 2>/dev/null || echo "000")
+            if [ "$code" -ge 200 ] && [ "$code" -lt 500 ]; then
+              echo "  PASS: $name (HTTP $code)"
+            else
+              echo "  FAIL: $name (HTTP $code)"
+              FAIL=$((FAIL + 1))
+            fi
+          }
+
+          check_tcp() {
+            local host="$1"
+            local port="$2"
+            local name="$3"
+            if timeout 5 bash -c "echo > /dev/tcp/$host/$port" 2>/dev/null; then
+              echo "  PASS: $name (TCP $host:$port)"
+            else
+              echo "  FAIL: $name (TCP $host:$port)"
+              FAIL=$((FAIL + 1))
+            fi
+          }
+
+          echo ""
+          echo "=== HTTP endpoints ==="
+          check_http "http://$POD_IP:9100/health" "Hivemind API"
+          check_http "http://$POD_IP:8080/health" "Vexa Meeting API"
+          check_http "http://$POD_IP:8056/" "Vexa API Gateway"
+          check_http "http://$POD_IP:8090/health" "Runtime API"
+
+          echo ""
+          echo "=== TCP ports ==="
+          check_tcp "$POD_IP" 6379 "Redis"
+          check_tcp "$POD_IP" 5432 "PostgreSQL (internal)"
+
+          echo ""
+          echo "=== Redis AUTH test ==="
+          REDIS_RESP=$(redis-cli -h "$POD_IP" -p 6379 -a "ci-test-redis-password" PING 2>/dev/null || echo "FAIL")
+          if echo "$REDIS_RESP" | grep -q PONG; then
+            echo "  PASS: Redis AUTH (PONG)"
+          else
+            echo "  FAIL: Redis AUTH ($REDIS_RESP)"
+            FAIL=$((FAIL + 1))
+          fi
+
+          echo ""
+          echo "=== Hivemind auth test ==="
+          REG_RESP=$(curl -s -X POST "http://$POD_IP:9100/auth/register/admin" \
+            -H "Content-Type: application/json" \
+            -d '{"company_name":"ci-test","email":"ci@test.com","name":"CI","password":"testpassword123"}' \
+            --max-time 15 2>/dev/null || echo '{}')
+          TOKEN=$(echo "$REG_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || echo "")
+
+          if [ -n "$TOKEN" ]; then
+            echo "  PASS: Hivemind admin registration (got token)"
+
+            ME_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://$POD_IP:9100/auth/me" \
+              -H "Authorization: Bearer $TOKEN" --max-time 10)
+            if [ "$ME_CODE" = "200" ]; then
+              echo "  PASS: Hivemind /auth/me (HTTP 200)"
+            else
+              echo "  FAIL: Hivemind /auth/me (HTTP $ME_CODE)"
+              FAIL=$((FAIL + 1))
+            fi
+          else
+            echo "  FAIL: Hivemind admin registration"
+            FAIL=$((FAIL + 1))
+          fi
+
+          echo ""
+          echo "=== Runtime API backend check ==="
+          BACKEND=$(curl -s "http://$POD_IP:8090/health" --max-time 10 2>/dev/null || echo '{}')
+          echo "  Runtime API response: $BACKEND"
+
+          echo ""
+          echo "========================================="
+          if [ $FAIL -eq 0 ]; then
+            echo "ALL HEALTH CHECKS PASSED"
+          else
+            echo "$FAIL CHECK(S) FAILED"
+            exit 1
+          fi
+
+      - name: Cleanup pod
+        if: always()
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          POD_ID="${{ steps.deploy.outputs.pod_id }}"
+          if [ -n "$POD_ID" ]; then
+            echo "Deleting pod $POD_ID..."
+            curl -s -X DELETE -H "Authorization: Bearer $RUNPOD_API_KEY" \
+              "https://rest.runpod.io/v1/pods/$POD_ID" || true
+            echo "Pod deleted."
+          fi
