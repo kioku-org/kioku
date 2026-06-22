@@ -1,0 +1,103 @@
+# ==============================================================================
+# Kioku Stateless Pod — GPU bot + Whisper transcription (ephemeral, per meeting)
+# Build: docker build -f deployment/runpod/Dockerfile.stateless -t kyomoto/kioku-stateless .
+# ==============================================================================
+
+# ─── Stage 1: Build Zoom SDK native addon ─────────────────────────────────────
+FROM node:20-bullseye AS native-builder
+
+RUN apt-get update && apt-get install -y \
+    build-essential cmake python3 libssl-dev qtbase5-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app/vexa-bot
+
+COPY services/vexa/services/vexa-bot/package*.json ./
+COPY services/vexa/services/vexa-bot/binding.gyp ./
+COPY services/vexa/services/vexa-bot/core/src/platforms/zoom/native/ ./core/src/platforms/zoom/native/
+
+RUN npm install --ignore-scripts
+RUN npm run build:native || echo "[Build] Native addon build skipped (SDK not available)"
+
+# ─── Stage 2: Build TypeScript + Playwright ───────────────────────────────────
+FROM mcr.microsoft.com/playwright:v1.56.0-jammy AS ts-builder
+
+WORKDIR /app/vexa-bot
+
+RUN apt-get update && apt-get install -y \
+    xvfb ffmpeg x11-utils pulseaudio x11-xserver-utils fluxbox \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY services/vexa/services/vexa-bot/core/package*.json ./core/
+COPY services/vexa/services/vexa-bot/core/tsconfig.json ./core/
+COPY services/vexa/services/vexa-bot/core/build-browser-utils.js ./core/
+
+WORKDIR /app/vexa-bot/core
+RUN npm install && npm install -g typescript
+
+COPY services/vexa/services/vexa-bot/core/src/ ./src/
+COPY services/vexa/services/vexa-bot/core/assets/ ./assets/
+
+RUN npm run build
+RUN npx playwright install-deps && npx playwright install --with-deps
+RUN arch=$(uname -m) && if [ "$arch" = "x86_64" ] || [ "$arch" = "amd64" ]; then \
+    npx playwright install msedge; \
+    else echo "Skipping msedge on $arch"; fi
+
+# ─── Stage 3: Runtime (CUDA + Playwright + Whisper) ───────────────────────────
+FROM nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    DISPLAY=:99 \
+    OLLAMA_HOST=0.0.0.0:11434
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl gnupg \
+    python3 python3-pip \
+    ffmpeg libsndfile1 \
+    xvfb pulseaudio xserver-xephyr \
+    libssl3 libxcb-xtest0 \
+    fluxbox x11vnc xdotool xclip \
+    novnc python3-websockify \
+    socat openssh-server \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /run/sshd
+
+RUN npx --yes playwright install-deps \
+    && npx --yes playwright install --with-deps \
+    && arch=$(uname -m) && if [ "$arch" = "x86_64" ] || [ "$arch" = "amd64" ]; then \
+        npx --yes playwright install msedge; \
+    else echo "Skipping msedge on $arch"; fi
+
+RUN mkdir -p /root/ms-playwright && chmod -R 777 /root/ms-playwright
+RUN mkdir -p /app/vexa-bot/storage/screenshots /app/vexa-bot/storage/logs /app/vexa-bot/storage/temp \
+    && chmod -R 777 /app/vexa-bot/storage
+
+# Copy bot artifacts from builders
+COPY --from=native-builder /app/vexa-bot/package*.json /app/vexa-bot/
+COPY --from=native-builder /app/vexa-bot/node_modules /app/vexa-bot/node_modules
+COPY --from=native-builder /app/vexa-bot/build /app/vexa-bot/build
+COPY --from=native-builder /app/vexa-bot/core/src/platforms/zoom/native/zoom_meeting_sdk /app/vexa-bot/core/src/platforms/zoom/native/zoom_meeting_sdk
+
+COPY --from=ts-builder /app/vexa-bot/core/package*.json /app/vexa-bot/core/
+COPY --from=ts-builder /app/vexa-bot/core/node_modules /app/vexa-bot/core/node_modules
+COPY --from=ts-builder /app/vexa-bot/core/dist /app/vexa-bot/core/dist
+COPY --from=ts-builder /app/vexa-bot/core/assets /app/vexa-bot/core/assets
+
+COPY services/vexa/services/vexa-bot/core/entrypoint.sh /app/vexa-bot/entrypoint.sh
+RUN chmod +x /app/vexa-bot/entrypoint.sh
+
+# Install Whisper transcription service (GPU)
+COPY services/vexa/services/transcription-service/requirements.txt /opt/transcription/
+RUN pip3 install --no-cache-dir -r /opt/transcription/requirements.txt
+COPY services/vexa/services/transcription-service/main.py /opt/transcription/
+
+# Copy entrypoint
+COPY deployment/runpod/entrypoint-bot-runtime.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+WORKDIR /app/vexa-bot/core
+
+ENTRYPOINT ["/entrypoint.sh"]
