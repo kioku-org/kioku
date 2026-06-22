@@ -1,21 +1,82 @@
-FROM debian:bookworm-slim
+# ==============================================================================
+# Kioku Stateful Pod — all always-on services (CPU, persistent)
+# Build: docker build -f deployment/runpod/Dockerfile.stateful -t kyomoto/kioku-stateful .
+# ==============================================================================
+
+# ─── Stage 1: Build hivemind (Rust) ───────────────────────────────────────────
+FROM rust:1.88-slim AS hivemind-builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev libfontconfig1-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY services/hivemind/ .
+RUN cargo build --release
+
+# ─── Stage 2: Install vexa Python services into venv ──────────────────────────
+FROM python:3.11-slim AS vexa-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends gcc ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /build
+
+# Install shared libs
+COPY services/vexa/libs/schema-sync/ /build/libs/schema-sync/
+COPY services/vexa/libs/admin-models/ /build/libs/admin-models/
+RUN pip install --no-cache-dir /build/libs/schema-sync /build/libs/admin-models
+
+# Install meeting-api as package (shared by api-gateway + admin-api)
+COPY services/vexa/services/meeting-api/ /build/services/meeting-api/
+RUN pip install --no-cache-dir /build/services/meeting-api
+
+# Install agent-api as package
+COPY services/vexa/services/agent-api/ /build/services/agent-api/
+RUN pip install --no-cache-dir /build/services/agent-api
+
+# Install remaining requirements
+COPY services/vexa/services/api-gateway/requirements.txt /tmp/api-gateway-req.txt
+RUN pip install --no-cache-dir /tmp/api-gateway-req.txt
+
+COPY services/vexa/services/admin-api/requirements.txt /tmp/admin-api-req.txt
+RUN pip install --no-cache-dir /tmp/admin-api-req.txt
+
+COPY services/vexa/services/mcp/requirements.txt /tmp/mcp-req.txt
+RUN pip install --no-cache-dir /tmp/mcp-req.txt
+
+COPY services/vexa/services/tts-service/requirements.txt /tmp/tts-req.txt
+RUN pip install --no-cache-dir /tmp/tts-req.txt
+
+# Install runtime-api
+COPY services/vexa/services/runtime-api/ /build/services/runtime-api/
+RUN pip install --no-cache-dir /build/services/runtime-api
+
+# Copy all service code for running
+RUN mkdir -p /opt/vexa/services
+COPY services/vexa/services/api-gateway/ /opt/vexa/services/api-gateway/
+COPY services/vexa/services/admin-api/ /opt/vexa/services/admin-api/
+COPY services/vexa/services/meeting-api/ /opt/vexa/services/meeting-api/
+COPY services/vexa/services/agent-api/ /opt/vexa/services/agent-api/
+COPY services/vexa/services/mcp/ /opt/vexa/services/mcp/
+COPY services/vexa/services/tts-service/ /opt/vexa/services/tts-service/
+COPY services/vexa/services/runtime-api/ /opt/vexa/services/runtime-api/
+
+# ─── Stage 3: Runtime ─────────────────────────────────────────────────────────
+FROM python:3.11-slim
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PG_MAJOR=16 \
     OLLAMA_HOST=0.0.0.0:11434 \
-    OLLAMA_MODELS=/data/ollama/models
+    OLLAMA_MODELS=/data/ollama/models \
+    PATH="/opt/venv/bin:$PATH"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates \
-        curl \
-        gnupg \
-        openssh-server \
-        redis-server \
-        supervisor \
-        sudo \
-        wget \
-        zstd \
+        ca-certificates curl gnupg wget zstd \
+        openssh-server redis-server supervisor sudo \
+        postgresql-16 postgresql-client-16 \
     && install -d -m 0755 /etc/apt/keyrings \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
         | gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg \
@@ -23,23 +84,40 @@ RUN apt-get update \
         > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-        postgresql-16 \
-        postgresql-16-pgvector \
-        postgresql-client-16 \
-    && curl -fsSL https://github.com/qdrant/qdrant/releases/download/v1.10.1/qdrant-x86_64-unknown-linux-gnu.tar.gz \
+        postgresql-16 postgresql-16-pgvector postgresql-client-16 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Qdrant
+RUN curl -fsSL https://github.com/qdrant/qdrant/releases/download/v1.10.1/qdrant-x86_64-unknown-linux-gnu.tar.gz \
         -o /tmp/qdrant.tar.gz \
     && tar xzf /tmp/qdrant.tar.gz -C /usr/local/bin qdrant \
     && rm -f /tmp/qdrant.tar.gz \
-    && chmod +x /usr/local/bin/qdrant \
-    && curl -fsSL https://ollama.com/install.sh | sh \
-    && curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio \
-        -o /usr/local/bin/minio \
-    && chmod +x /usr/local/bin/minio \
-    && rm -rf /var/lib/apt/lists/*
+    && chmod +x /usr/local/bin/qdrant
 
+# Ollama
+RUN curl -fsSL https://ollama.com/install.sh | sh
+
+# MinIO
+RUN curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio \
+        -o /usr/local/bin/minio \
+    && chmod +x /usr/local/bin/minio
+
+# Cloudflared
+RUN curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+        -o /usr/local/bin/cloudflared \
+    && chmod +x /usr/local/bin/cloudflared
+
+# Copy hivemind binary
+COPY --from=hivemind-builder /app/target/release/kioku-hivemind /usr/local/bin/kioku-hivemind
+
+# Copy venv + vexa service code
+COPY --from=vexa-builder /opt/venv /opt/venv
+COPY --from=vexa-builder /opt/vexa /opt/vexa
+
+# Copy entrypoint
 COPY deployment/runpod/entrypoint-stateful-runtime.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 22 5432 6379 6334 9000 9001 11434
+EXPOSE 22 5432 6379 6334 8000 8001 8080 8090 8100 9000 9001 9100 11434 18888
 
 ENTRYPOINT ["/entrypoint.sh"]
