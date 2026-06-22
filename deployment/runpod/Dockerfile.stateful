@@ -38,16 +38,16 @@ RUN pip install --no-cache-dir /build/services/agent-api
 
 # Install remaining requirements
 COPY services/vexa/services/api-gateway/requirements.txt /tmp/api-gateway-req.txt
-RUN pip install --no-cache-dir /tmp/api-gateway-req.txt
+RUN pip install --no-cache-dir -r /tmp/api-gateway-req.txt
 
 COPY services/vexa/services/admin-api/requirements.txt /tmp/admin-api-req.txt
-RUN pip install --no-cache-dir /tmp/admin-api-req.txt
+RUN pip install --no-cache-dir -r /tmp/admin-api-req.txt
 
 COPY services/vexa/services/mcp/requirements.txt /tmp/mcp-req.txt
-RUN pip install --no-cache-dir /tmp/mcp-req.txt
+RUN pip install --no-cache-dir -r /tmp/mcp-req.txt
 
 COPY services/vexa/services/tts-service/requirements.txt /tmp/tts-req.txt
-RUN pip install --no-cache-dir /tmp/tts-req.txt
+RUN pip install --no-cache-dir -r /tmp/tts-req.txt
 
 # Install runtime-api
 COPY services/vexa/services/runtime-api/ /build/services/runtime-api/
