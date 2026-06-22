@@ -22,12 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install runpodctl
-        run: |
-          curl -sSL https://github.com/runpod/runpodctl/releases/latest/download/runpodctl-linux-amd64 -o /usr/local/bin/runpodctl
-          chmod +x /usr/local/bin/runpodctl
-          runpodctl version
-
       - name: Deploy stateful pod
         id: deploy
         env:
@@ -44,31 +38,66 @@ jobs:
           JWT_SECRET=$(openssl rand -hex 32)
           ENC_SECRET=$(openssl rand -hex 32)
 
-          ENV_JSON=$(cat <<EOF
-          {"DB_NAME":"kioku","DB_USER":"kioku","DB_PASSWORD":"kioku","REDIS_PASSWORD":"ci-test-redis-password","HIVEMIND_JWT_SECRET":"$JWT_SECRET","HIVEMIND_ENCRYPTION_SECRET":"$ENC_SECRET","VEXA_ADMIN_API_TOKEN":"ci-test-admin-token","INTERNAL_API_SECRET":"ci-test-internal-secret","ORCHESTRATOR_BACKEND":"runpod","RUNPOD_API_KEY":"$RUNPOD_API_KEY","BOT_IMAGE":"kyomoto/kioku-stateless:latest","VEXA_PUBLIC_URL":"http://localhost:8056","CORS_ORIGINS":"*","LOG_LEVEL":"INFO","VEXA_ENV":"production","STORAGE_BACKEND":"minio","MINIO_ACCESS_KEY":"kioku","MINIO_SECRET_KEY":"ci-test-minio-password","MINIO_BUCKET":"vexa-recordings","RECORDING_ENABLED":"false","RUNPOD_GPU_TYPE":"NVIDIA GeForce RTX 3090","RUNPOD_CLOUD_TYPE":"COMMUNITY"}
+          echo "Creating CPU pod: $POD_NAME"
+
+          PAYLOAD=$(cat <<EOF
+          {
+            "name": "$POD_NAME",
+            "imageName": "kyomoto/kioku-stateful:latest",
+            "computeType": "CPU",
+            "vcpuCount": 4,
+            "containerDiskInGb": 20,
+            "ports": ["22/tcp", "6379/tcp", "8080/http", "9100/http", "8056/http"],
+            "env": {
+              "DB_NAME": "kioku",
+              "DB_USER": "kioku",
+              "DB_PASSWORD": "kioku",
+              "REDIS_PASSWORD": "ci-test-redis-password",
+              "HIVEMIND_JWT_SECRET": "$JWT_SECRET",
+              "HIVEMIND_ENCRYPTION_SECRET": "$ENC_SECRET",
+              "VEXA_ADMIN_API_TOKEN": "ci-test-admin-token",
+              "INTERNAL_API_SECRET": "ci-test-internal-secret",
+              "ORCHESTRATOR_BACKEND": "runpod",
+              "RUNPOD_API_KEY": "$RUNPOD_API_KEY",
+              "BOT_IMAGE": "kyomoto/kioku-stateless:latest",
+              "VEXA_PUBLIC_URL": "http://localhost:8056",
+              "CORS_ORIGINS": "*",
+              "LOG_LEVEL": "INFO",
+              "VEXA_ENV": "production",
+              "STORAGE_BACKEND": "minio",
+              "MINIO_ACCESS_KEY": "kioku",
+              "MINIO_SECRET_KEY": "ci-test-minio-password",
+              "MINIO_BUCKET": "vexa-recordings",
+              "RECORDING_ENABLED": "false",
+              "RUNPOD_GPU_TYPE": "NVIDIA GeForce RTX 3090",
+              "RUNPOD_CLOUD_TYPE": "COMMUNITY"
+            }
+          }
           EOF
           )
 
-          echo "Creating CPU pod: $POD_NAME"
+          RESP=$(curl -s -w "\n%{http_code}" -X POST "https://rest.runpod.io/v1/pods" \
+            -H "Authorization: Bearer $RUNPOD_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
 
-          runpodctl pod create \
-            --name "$POD_NAME" \
-            --image "kyomoto/kioku-stateful:latest" \
-            --compute-type cpu \
-            --container-disk-in-gb 20 \
-            --ports "22/tcp,6379/tcp,8080/http,9100/http,8056/http" \
-            --env "$ENV_JSON" \
-            --cloud-type SECURE \
-            --terminate-after "$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)"
+          HTTP_CODE=$(echo "$RESP" | tail -1)
+          BODY=$(echo "$RESP" | head -n -1)
+          echo "HTTP $HTTP_CODE"
+          echo "Response: $BODY"
 
-          echo "Waiting 10s for pod to register..."
-          sleep 10
+          POD_ID=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 
-          POD_ID=$(runpodctl pod list --name "$POD_NAME" --all 2>&1 | grep "$POD_NAME" | awk '{print $1}' | head -1)
+          if [ -z "$POD_ID" ]; then
+            echo "Create returned $HTTP_CODE, searching for pod by name..."
+            sleep 10
+            POD_ID=$(curl -s -H "Authorization: Bearer $RUNPOD_API_KEY" \
+              "https://rest.runpod.io/v1/pods?name=$POD_NAME" 2>/dev/null | \
+              python3 -c "import sys,json; pods=json.load(sys.stdin); print(pods[0]['id'] if pods else '')" 2>/dev/null || echo "")
+          fi
 
           if [ -z "$POD_ID" ]; then
             echo "ERROR: Could not find pod ID"
-            runpodctl pod list --all 2>&1
             exit 1
           fi
 
@@ -194,10 +223,13 @@ jobs:
 
       - name: Cleanup pod
         if: always()
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
         run: |
           POD_ID="${{ steps.deploy.outputs.pod_id }}"
           if [ -n "$POD_ID" ]; then
             echo "Deleting pod $POD_ID..."
-            runpodctl pod delete "$POD_ID" || true
+            curl -s -X DELETE -H "Authorization: Bearer $RUNPOD_API_KEY" \
+              "https://rest.runpod.io/v1/pods/$POD_ID" || true
             echo "Done."
           fi
