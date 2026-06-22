@@ -36,7 +36,6 @@ WORKDIR /app/vexa-bot/core
 RUN npm install && npm install -g typescript
 
 COPY services/vexa/services/vexa-bot/core/src/ ./src/
-COPY services/vexa/services/vexa-bot/core/assets/ ./assets/
 
 RUN npm run build
 RUN npx playwright install-deps && npx playwright install --with-deps
@@ -84,7 +83,6 @@ COPY --from=native-builder /app/vexa-bot/core/src/platforms/zoom/native/zoom_mee
 COPY --from=ts-builder /app/vexa-bot/core/package*.json /app/vexa-bot/core/
 COPY --from=ts-builder /app/vexa-bot/core/node_modules /app/vexa-bot/core/node_modules
 COPY --from=ts-builder /app/vexa-bot/core/dist /app/vexa-bot/core/dist
-COPY --from=ts-builder /app/vexa-bot/core/assets /app/vexa-bot/core/assets
 
 COPY services/vexa/services/vexa-bot/core/entrypoint.sh /app/vexa-bot/entrypoint.sh
 RUN chmod +x /app/vexa-bot/entrypoint.sh
