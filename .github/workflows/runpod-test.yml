@@ -58,8 +58,7 @@ jobs:
             --container-disk-in-gb 20 \
             --ports "22/tcp,6379/tcp,8080/http,9100/http,8056/http" \
             --env "$ENV_JSON" \
-            --cloud-type COMMUNITY \
-            --public-ip \
+            --cloud-type SECURE \
             --terminate-after "$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)"
 
           echo "Waiting 10s for pod to register..."
