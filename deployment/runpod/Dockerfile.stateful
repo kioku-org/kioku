@@ -13,7 +13,7 @@ COPY services/hivemind/ .
 RUN cargo build --release
 
 # ─── Stage 2: Install vexa Python services into venv ──────────────────────────
-FROM python:3.11-slim AS vexa-builder
+FROM python:3.11-slim-bookworm AS vexa-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends gcc ffmpeg \
     && rm -rf /var/lib/apt/lists/*
@@ -64,7 +64,7 @@ COPY services/vexa/services/tts-service/ /opt/vexa/services/tts-service/
 COPY services/vexa/services/runtime-api/ /opt/vexa/services/runtime-api/
 
 # ─── Stage 3: Runtime ─────────────────────────────────────────────────────────
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PG_MAJOR=16 \
