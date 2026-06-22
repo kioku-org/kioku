@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="$(dirname "$SCRIPT_DIR")"
 
 STATEFUL_FILE="$DEPLOY_DIR/docker-compose.stateful.yml"
-COMPOSE_FILE="$DEPLOY_DIR/docker-compose.yml"
+COMPOSE_FILE="$DEPLOY_DIR/docker-compose.stateless.yml"
 ENV_FILE="$DEPLOY_DIR/.env"
 
 RED='\033[0;31m'
