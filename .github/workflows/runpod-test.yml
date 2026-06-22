@@ -47,8 +47,6 @@ jobs:
             "computeType": "CPU",
             "vcpuCount": 4,
             "containerDiskInGb": 40,
-            "volumeInGb": 20,
-            "volumeMountPath": "/data",
             "ports": ["22/tcp", "6379/tcp", "8080/http", "9100/http", "8056/http"],
             "env": {
               "DB_NAME": "kioku",
