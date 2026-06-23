@@ -19,4 +19,5 @@ deployment/runpod/.runpod/
 deployment/runpod/model/
 deployment/runpod/PLAN.md
 *:Zone.Identifier
-docs/.vitepress
+docs/.vitepress/dist
+docs/.vitepress/cache
