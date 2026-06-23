@@ -19,7 +19,7 @@
     }
   },
   "navigation": {
-    "pages": [
+    "groups": [
       {
         "group": "Getting Started",
         "pages": ["index", "quickstart", "concepts"]
@@ -30,15 +30,15 @@
       },
       {
         "group": "Architecture",
-        "pages": ["architecture", "architecture/hivemind", "architecture/cli", "architecture/vexa"]
+        "pages": ["architecture-index", "architecture/hivemind", "architecture/cli", "architecture/vexa"]
       },
       {
         "group": "Knowledge",
-        "pages": ["knowledge/overview", "knowledge/search", "knowledge/documents", "knowledge/meetings"]
+        "pages": ["knowledge-index", "knowledge/search", "knowledge/documents", "knowledge/meetings"]
       },
       {
         "group": "MCP",
-        "pages": ["mcp/overview", "mcp/tools"]
+        "pages": ["mcp-index", "mcp/tools"]
       },
       {
         "group": "Contributing",
