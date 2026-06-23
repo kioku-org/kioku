@@ -99,7 +99,10 @@ enum Commands {
     #[command(about = "List long-lived API keys")]
     AuthKeyList,
     #[command(about = "Delete a long-lived API key")]
-    AuthKeyDelete { key_prefix: String },
+    AuthKeyDelete {
+        #[arg(value_name = "KEY_PREFIX_OR_ID")]
+        key_prefix: String,
+    },
     #[command(about = "Print MCP server configuration for AI clients")]
     Mcp,
     #[command(about = "Check for updates")]
@@ -137,6 +140,24 @@ fn prompt_or(value: Option<String>, label: &str) -> Result<String> {
         Some(value) if !value.trim().is_empty() => Ok(value),
         _ => Ok(rprompt::prompt_reply(label)?.trim().to_string()),
     }
+}
+
+fn resolve_auth_key_delete_target(
+    keys: &[cc_kioku::CompanyAuthKeyOut],
+    key_prefix_or_id: &str,
+) -> Result<String> {
+    if let Some(key) = keys.iter().find(|key| key.id == key_prefix_or_id) {
+        return Ok(key.id.clone());
+    }
+
+    if let Some(key) = keys.iter().find(|key| key.key_prefix == key_prefix_or_id) {
+        return Ok(key.id.clone());
+    }
+
+    Err(anyhow::anyhow!(
+        "auth key `{}` not found — run `kioku auth-key-list` to inspect valid ids and prefixes",
+        key_prefix_or_id
+    ))
 }
 
 #[tokio::main]
@@ -402,13 +423,15 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             let client = make_client(&auth);
             let keys = client.list_auth_keys().await?;
             for k in &keys {
-                println!("{}  {}  {:?}", k.key_prefix, k.name, k.created_at);
+                println!("{}  {}  {}  {:?}", k.id, k.key_prefix, k.name, k.created_at);
             }
         }
         Commands::AuthKeyDelete { key_prefix } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
-            client.delete_auth_key(&key_prefix).await?;
+            let keys = client.list_auth_keys().await?;
+            let key_id = resolve_auth_key_delete_target(&keys, &key_prefix)?;
+            client.delete_auth_key(&key_id).await?;
             println!("Deleted key {key_prefix}");
         }
         Commands::Mcp => {
@@ -448,7 +471,10 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_server_url_from, Cli, Commands, DEFAULT_SERVER_URL};
+    use super::{
+        resolve_auth_key_delete_target, resolve_server_url_from, Cli, Commands, DEFAULT_SERVER_URL,
+    };
+    use cc_kioku::CompanyAuthKeyOut;
     use clap::Parser;
     use pretty_assertions::assert_eq;
 
@@ -505,5 +531,60 @@ mod tests {
 
         assert_eq!(actual.command, expected);
         assert_eq!(actual.server, Some("http://localhost:9100".to_string()));
+    }
+
+    #[test]
+    fn resolve_auth_key_delete_target_accepts_prefix() {
+        let fixture = vec![CompanyAuthKeyOut {
+            id: "key-uuid-1".to_string(),
+            user_id: "user-1".to_string(),
+            name: "cli-key".to_string(),
+            key_prefix: "cmp_12345678".to_string(),
+            created_at: 1,
+            last_used_at: None,
+        }];
+
+        let actual = resolve_auth_key_delete_target(&fixture, "cmp_12345678").unwrap();
+        let expected = "key-uuid-1".to_string();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn resolve_auth_key_delete_target_accepts_id() {
+        let fixture = vec![CompanyAuthKeyOut {
+            id: "key-uuid-1".to_string(),
+            user_id: "user-1".to_string(),
+            name: "cli-key".to_string(),
+            key_prefix: "cmp_12345678".to_string(),
+            created_at: 1,
+            last_used_at: None,
+        }];
+
+        let actual = resolve_auth_key_delete_target(&fixture, "key-uuid-1").unwrap();
+        let expected = "key-uuid-1".to_string();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn resolve_auth_key_delete_target_errors_for_unknown_value() {
+        let fixture = vec![CompanyAuthKeyOut {
+            id: "key-uuid-1".to_string(),
+            user_id: "user-1".to_string(),
+            name: "cli-key".to_string(),
+            key_prefix: "cmp_12345678".to_string(),
+            created_at: 1,
+            last_used_at: None,
+        }];
+
+        let actual = resolve_auth_key_delete_target(&fixture, "cmp_missing")
+            .unwrap_err()
+            .to_string();
+        let expected =
+            "auth key `cmp_missing` not found — run `kioku auth-key-list` to inspect valid ids and prefixes"
+                .to_string();
+
+        assert_eq!(actual, expected);
     }
 }
