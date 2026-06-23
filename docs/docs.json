@@ -1,17 +1,13 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "maple",
-  "name": "Kioku",
+  "name": "Kioku Docs",
   "colors": {
     "primary": "#6366f1",
     "light": "#818cf8",
     "dark": "#4f46e5"
   },
   "favicon": "/favicon.svg",
-  "logo": {
-    "light": "/logo/raven.png",
-    "dark": "/logo/raven.png"
-  },
   "fonts": {
     "family": "DM Sans",
     "heading": {
