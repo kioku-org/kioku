@@ -3,7 +3,7 @@
 </p>
 
 <h3 align=center>Kioku</h3>
-<p align=center>AI Meeting Intelligence Platform</p>
+<p align=center>AI Context Manager</p>
 
 <p align=center>
     <a href=https://docs.kioku.chat>Documentation</a> | <a href=https://github.com/kioku-org/kioku>GitHub</a> | <a href=mailto:hello@kioku.chat>Contact</a>
