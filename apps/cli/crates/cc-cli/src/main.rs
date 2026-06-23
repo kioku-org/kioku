@@ -90,7 +90,10 @@ enum Commands {
     #[command(about = "Set an API key for a provider")]
     ApikeysSet { provider: String, key: String },
     #[command(about = "Delete an API key")]
-    ApikeysDelete { provider: String },
+    ApikeysDelete {
+        #[arg(value_name = "KEY_ID_OR_PROVIDER")]
+        provider: String,
+    },
     #[command(about = "Create a long-lived API key for CLI auth")]
     AuthKeyCreate {
         #[arg(long, default_value = "cli-key")]
@@ -158,6 +161,32 @@ fn resolve_auth_key_delete_target(
         "auth key `{}` not found — run `kioku auth-key-list` to inspect valid ids and prefixes",
         key_prefix_or_id
     ))
+}
+
+fn resolve_api_key_delete_target(
+    keys: &[cc_kioku::ApiKeyOut],
+    key_id_or_provider: &str,
+) -> Result<String> {
+    if let Some(key) = keys.iter().find(|key| key.id == key_id_or_provider) {
+        return Ok(key.id.clone());
+    }
+
+    let matches: Vec<&cc_kioku::ApiKeyOut> = keys
+        .iter()
+        .filter(|key| key.provider == key_id_or_provider)
+        .collect();
+
+    match matches.as_slice() {
+        [key] => Ok(key.id.clone()),
+        [] => Err(anyhow::anyhow!(
+            "API key `{}` not found — run `kioku apikeys-list` to inspect valid ids and providers",
+            key_id_or_provider
+        )),
+        _ => Err(anyhow::anyhow!(
+            "multiple API keys matched provider `{}` — rerun with the key id from `kioku apikeys-list`",
+            key_id_or_provider
+        )),
+    }
 }
 
 #[tokio::main]
@@ -409,7 +438,9 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
         Commands::ApikeysDelete { provider } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
-            client.delete_api_key(&provider).await?;
+            let keys = client.list_api_keys(&auth.user_id).await?;
+            let key_id = resolve_api_key_delete_target(&keys, &provider)?;
+            client.delete_api_key(&key_id).await?;
             println!("Deleted API key for {provider}");
         }
         Commands::AuthKeyCreate { name } => {
@@ -472,9 +503,10 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        resolve_auth_key_delete_target, resolve_server_url_from, Cli, Commands, DEFAULT_SERVER_URL,
+        resolve_api_key_delete_target, resolve_auth_key_delete_target, resolve_server_url_from,
+        Cli, Commands, DEFAULT_SERVER_URL,
     };
-    use cc_kioku::CompanyAuthKeyOut;
+    use cc_kioku::{ApiKeyOut, CompanyAuthKeyOut};
     use clap::Parser;
     use pretty_assertions::assert_eq;
 
@@ -583,6 +615,87 @@ mod tests {
             .to_string();
         let expected =
             "auth key `cmp_missing` not found — run `kioku auth-key-list` to inspect valid ids and prefixes"
+                .to_string();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn resolve_api_key_delete_target_accepts_id() {
+        let fixture = vec![ApiKeyOut {
+            id: "api-key-1".to_string(),
+            company_id: "company-1".to_string(),
+            user_id: "user-1".to_string(),
+            provider: "openai".to_string(),
+            created_at: 1,
+        }];
+
+        let actual = resolve_api_key_delete_target(&fixture, "api-key-1").unwrap();
+        let expected = "api-key-1".to_string();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn resolve_api_key_delete_target_accepts_unique_provider() {
+        let fixture = vec![ApiKeyOut {
+            id: "api-key-1".to_string(),
+            company_id: "company-1".to_string(),
+            user_id: "user-1".to_string(),
+            provider: "openai".to_string(),
+            created_at: 1,
+        }];
+
+        let actual = resolve_api_key_delete_target(&fixture, "openai").unwrap();
+        let expected = "api-key-1".to_string();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn resolve_api_key_delete_target_errors_for_unknown_value() {
+        let fixture = vec![ApiKeyOut {
+            id: "api-key-1".to_string(),
+            company_id: "company-1".to_string(),
+            user_id: "user-1".to_string(),
+            provider: "openai".to_string(),
+            created_at: 1,
+        }];
+
+        let actual = resolve_api_key_delete_target(&fixture, "anthropic")
+            .unwrap_err()
+            .to_string();
+        let expected =
+            "API key `anthropic` not found — run `kioku apikeys-list` to inspect valid ids and providers"
+                .to_string();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn resolve_api_key_delete_target_errors_for_ambiguous_provider() {
+        let fixture = vec![
+            ApiKeyOut {
+                id: "api-key-1".to_string(),
+                company_id: "company-1".to_string(),
+                user_id: "user-1".to_string(),
+                provider: "openai".to_string(),
+                created_at: 1,
+            },
+            ApiKeyOut {
+                id: "api-key-2".to_string(),
+                company_id: "company-1".to_string(),
+                user_id: "user-1".to_string(),
+                provider: "openai".to_string(),
+                created_at: 2,
+            },
+        ];
+
+        let actual = resolve_api_key_delete_target(&fixture, "openai")
+            .unwrap_err()
+            .to_string();
+        let expected =
+            "multiple API keys matched provider `openai` — rerun with the key id from `kioku apikeys-list`"
                 .to_string();
 
         assert_eq!(actual, expected);
