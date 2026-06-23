@@ -1,100 +1,65 @@
 {
-    "$schema": "https://mintlify.com/docs.json",
-    "name": "Kioku",
-    "theme": "mint",
-    "colors": {
-        "primary": "#6366f1"
-    },
-    "favicon": "/assets/favicon.ico",
-    "logo": {
-        "dark": "/assets/logo-dark.svg",
-        "light": "/assets/logo-light.svg"
-    },
-    "contextual": {
-        "options": [
-            "copy",
-            "view",
-            "chatgpt",
-            "claude"
-        ]
-    },
-    "seo": {
-        "metatags": {
-            "canonical": "https://docs.kioku.chat"
-        }
-    },
-    "navigation": {
-        "tabs": [
-            {
-                "tab": "Docs",
-                "groups": [
-                    {
-                        "group": "Start Here",
-                        "pages": [
-                            "index",
-                            "quickstart",
-                            "concepts"
-                        ]
-                    },
-                    {
-                        "group": "Deploy",
-                        "pages": [
-                            "deployment/docker",
-                            "deployment/runpod",
-                            "deployment/environment-variables"
-                        ]
-                    },
-                    {
-                        "group": "Architecture",
-                        "pages": [
-                            "architecture",
-                            "architecture/hivemind",
-                            "architecture/cli",
-                            "architecture/vexa"
-                        ]
-                    },
-                    {
-                        "group": "Knowledge",
-                        "pages": [
-                            "knowledge/overview",
-                            "knowledge/search",
-                            "knowledge/documents",
-                            "knowledge/meetings"
-                        ]
-                    },
-                    {
-                        "group": "MCP",
-                        "pages": [
-                            "mcp/overview",
-                            "mcp/tools"
-                        ]
-                    },
-                    {
-                        "group": "Contributing",
-                        "pages": [
-                            "contributing",
-                            "testing"
-                        ]
-                    }
-                ]
-            },
-            {
-                "tab": "API",
-                "groups": [
-                    {
-                        "group": "Reference",
-                        "pages": [
-                            "api/authentication",
-                            "api/sessions",
-                            "api/knowledge",
-                            "api/meetings",
-                            "api/company",
-                            "api/usage",
-                            "api/vexa"
-                        ]
-                    }
-                ]
-            }
-        ]
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "maple",
+  "name": "Kioku",
+  "colors": {
+    "primary": "#6366f1",
+    "light": "#818cf8",
+    "dark": "#4f46e5"
+  },
+  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "fonts": {
+    "family": "DM Sans",
+    "heading": {
+      "family": "Fraunces"
     }
+  },
+  "navigation": {
+    "pages": [
+      {
+        "group": "Getting Started",
+        "pages": ["index", "quickstart", "concepts"]
+      },
+      {
+        "group": "Deploy",
+        "pages": ["deployment/docker", "deployment/runpod", "deployment/environment-variables"]
+      },
+      {
+        "group": "Architecture",
+        "pages": ["architecture", "architecture/hivemind", "architecture/cli", "architecture/vexa"]
+      },
+      {
+        "group": "Knowledge",
+        "pages": ["knowledge/overview", "knowledge/search", "knowledge/documents", "knowledge/meetings"]
+      },
+      {
+        "group": "MCP",
+        "pages": ["mcp/overview", "mcp/tools"]
+      },
+      {
+        "group": "Contributing",
+        "pages": ["contributing", "testing"]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "type": "github",
+        "href": "https://github.com/kioku-org/kioku"
+      }
+    ]
+  },
+  "contextual": {
+    "options": ["copy", "view", "chatgpt", "claude"]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/kioku-org/kioku"
+    }
+  }
 }

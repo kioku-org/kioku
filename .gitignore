@@ -21,3 +21,4 @@ deployment/runpod/PLAN.md
 *:Zone.Identifier
 docs/.vitepress/dist
 docs/.vitepress/cache
+docs/export.zip

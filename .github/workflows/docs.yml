@@ -26,16 +26,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
-          cache-dependency-path: docs/package-lock.json
 
-      - name: Install dependencies
-        working-directory: docs
-        run: npm ci
+      - name: Install Mintlify
+        run: npm install -g mintlify
 
-      - name: Build VitePress site
+      - name: Export Mintlify site
         working-directory: docs
-        run: npm run build
+        run: mintlify export
+
+      - name: Unzip export
+        working-directory: docs
+        run: unzip export.zip -d .mintlify/static
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -43,7 +44,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/.vitepress/dist
+          path: docs/.mintlify/static
 
   deploy:
     environment:
