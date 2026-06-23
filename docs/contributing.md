@@ -1,0 +1,70 @@
+---
+title: "Contributing"
+---
+Development setup, testing, and git workflow.
+
+## Project Structure
+
+```
+kioku/
+├── apps/
+│   └── cli/                    # Kioku CLI (Rust)
+│       ├── crates/
+│       │   ├── cc-cli/         # Binary: kioku
+│       │   ├── cc-kioku/       # HTTP client
+│       │   ├── cc-auth/        # Auth file management
+│       │   └── cc-upgrade/     # Self-update
+│       └── AGENTS.md           # Rust agent guidelines
+├── services/
+│   ├── hivemind/               # Core API server (Rust/axum)
+│   │   ├── src/
+│   │   │   ├── handlers/      # HTTP handlers
+│   │   │   ├── repos/          # Data access layer
+│   │   │   ├── services/       # Business logic
+│   │   │   └── mcp/            # MCP server
+│   │   ├── migrations/         # SQL migrations
+│   │   └── tests/              # Integration tests
+│   └── vexa/                   # Vendored Vexa meeting-bot platform
+├── deployment/
+│   ├── docker/                 # Docker Compose deployment
+│   └── runpod/                 # RunPod pod deployment
+└── docs/                       # This documentation
+```
+
+## Development
+
+### Hivemind (Rust)
+
+```bash
+cd services/hivemind
+cargo check                    # Fast type check
+cargo test                     # Integration tests (needs running server)
+cargo insta test --accept      # Update snapshots
+```
+
+### CLI (Rust)
+
+```bash
+cd apps/cli
+cargo check
+cargo test -p cc-auth -p cc-kioku  # Unit tests
+cargo build                         # Debug build
+./target/debug/kioku --help         # Run locally
+```
+
+See `apps/cli/AGENTS.md` for Rust coding guidelines.
+
+## Git Workflow
+
+1. Create a feature branch: `feat/description` or `fix/description`
+2. Make changes, commit with descriptive messages
+3. Use `Co-Authored-By: Kioku <noreply@kioku.chat>` for AI-assisted commits
+4. Open a PR to `master`
+5. Ensure CI passes (Docker build + RunPod integration test)
+
+## CI/CD
+
+| Workflow | Trigger | Description |
+|---|---|---|
+| `build-images.yml` | Push to master | Build + push Docker images to Docker Hub |
+| `runpod-test.yml` | After build completes | Deploy pod on RunPod, health checks, cleanup |

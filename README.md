@@ -1,18 +1,20 @@
-```⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠀⡀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣰⣜⣽⣦⡄⣎
-⠀⡀⣦⡀⢀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢦⣻⣿⣿⣿⣿⡇
-⡀⠹⡪⣿⣾⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀⠐⢦⣝⣿⣿⣿⣿⠁
-⠘⠷⣾⣿⣿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⢐⣿⣾⣿⣿⣿⠏⠀
-⠠⢥⣴⣾⣿⣿⣿⣿⣿⣿⣷⡄⠀⠀⢀⣲⣿⣿⣿⣿⠟⠀⠀
-⠀⠀⢂⣩⣵⢿⣿⣿⣿⣿⣿⣿⣄⢠⣾⣿⣿⣿⣯⣥⡀⠀⠀
-⠀⠀⠀⠠⠤⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡀⠀
-⠀⠀⠀⠀⠀⠺⢯⣿⣿⢿⣿⣿⣿⣿⣿⣿⣿⣿⠃⠀⠱⠑⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⣾⣿⣿⣿⣿⡿⠛⠁⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⢀⣴⡿⣿⣿⡿⠻⣯⠀⠧⢀⣀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠉⠀⠈⠈⠀⠀⠀⣵⢦⠈⠿⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠀⠀⠀⠀⠀⠀⠀⠀
-```
+![kioku](./assets/kioku-logo.png)
 
+<!-- ```⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠀⡀⠀⠀⠀ -->
+<!-- ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣰⣜⣽⣦⡄⣎ -->
+<!-- ⠀⡀⣦⡀⢀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢦⣻⣿⣿⣿⣿⡇ -->
+<!-- ⡀⠹⡪⣿⣾⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀⠐⢦⣝⣿⣿⣿⣿⠁ -->
+<!-- ⠘⠷⣾⣿⣿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⢐⣿⣾⣿⣿⣿⠏⠀ -->
+<!-- ⠠⢥⣴⣾⣿⣿⣿⣿⣿⣿⣷⡄⠀⠀⢀⣲⣿⣿⣿⣿⠟⠀⠀ -->
+<!-- ⠀⠀⢂⣩⣵⢿⣿⣿⣿⣿⣿⣿⣄⢠⣾⣿⣿⣿⣯⣥⡀⠀⠀ -->
+<!-- ⠀⠀⠀⠠⠤⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡀⠀ -->
+<!-- ⠀⠀⠀⠀⠀⠺⢯⣿⣿⢿⣿⣿⣿⣿⣿⣿⣿⣿⠃⠀⠱⠑⠀ -->
+<!-- ⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⣾⣿⣿⣿⣿⡿⠛⠁⠀⠀⠀⠀⠀ -->
+<!-- ⠀⠀⠀⠀⠀⠀⢀⣴⡿⣿⣿⡿⠻⣯⠀⠧⢀⣀⠀⠀⠀⠀⠀ -->
+<!-- ⠀⠀⠀⠀⠀⠀⠀⠉⠀⠈⠈⠀⠀⠀⣵⢦⠈⠿⠀⠀⠀⠀⠀ -->
+<!-- ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠀⠀⠀⠀⠀⠀⠀⠀ -->
+<!-- ``` -->
+<!---->
 kioku: save your context, wherever and whenever you are.
 
 ## Quick Start
@@ -73,6 +75,25 @@ cp cloudflared.yml.example cloudflared.yml
 ```
 
 Run `./scripts/manage.sh help` for the full command list.
+
+## Documentation
+
+| Doc | Description |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture, components, and data flow |
+| [docs/API.md](docs/API.md) | Hivemind REST API reference |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker Compose and RunPod deployment guides |
+| [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Development setup, testing, and git workflow |
+
+## CLI
+
+```bash
+cargo install --path apps/cli/crates/cc-cli
+kioku signin           # authenticate
+kioku sessions-list    # list sessions
+kioku knowledge-search "what was discussed in the last standup?"
+kioku mcp              # print MCP server config for AI clients
+```
 
 ## License
 
