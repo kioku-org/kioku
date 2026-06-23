@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use cc_auth::AuthFile;
 use cc_kioku::KiokuClient;
 use clap::{Parser, Subcommand};
@@ -7,8 +7,9 @@ use tracing_subscriber::{fmt, EnvFilter};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const REPO: &str = "kioku-org/kioku";
+const DEFAULT_SERVER_URL: &str = "http://localhost:9100";
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[command(
     name = "kioku",
     version,
@@ -21,12 +22,28 @@ struct Cli {
     #[arg(short = 'C', long, global = true)]
     cwd: Option<PathBuf>,
 
+    #[arg(long, global = true)]
+    server: Option<String>,
+
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]
     verbose: u8,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug, PartialEq)]
 enum Commands {
+    #[command(about = "Register the initial admin account for a server")]
+    RegisterAdmin {
+        #[arg(long)]
+        company_name: Option<String>,
+        #[arg(long)]
+        company_slug: Option<String>,
+        #[arg(long)]
+        email: Option<String>,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        password: Option<String>,
+    },
     #[command(about = "Sign in with email/password or API key")]
     Signin {
         #[arg(long)]
@@ -46,36 +63,24 @@ enum Commands {
         title: Option<String>,
     },
     #[command(about = "Get session details")]
-    SessionsGet {
-        session_id: String,
-    },
+    SessionsGet { session_id: String },
     #[command(about = "Delete a session")]
-    SessionsDelete {
-        session_id: String,
-    },
+    SessionsDelete { session_id: String },
     #[command(about = "Send a message to a session")]
     Send {
         session_id: String,
         message: Vec<String>,
     },
     #[command(about = "List messages in a session")]
-    Messages {
-        session_id: String,
-    },
+    Messages { session_id: String },
     #[command(about = "Search knowledge base")]
-    KnowledgeSearch {
-        query: String,
-    },
+    KnowledgeSearch { query: String },
     #[command(about = "Upload a PDF document")]
-    KnowledgeUpload {
-        file: String,
-    },
+    KnowledgeUpload { file: String },
     #[command(about = "List uploaded documents")]
     KnowledgeDocuments,
     #[command(about = "Delete a document")]
-    KnowledgeDelete {
-        document_id: String,
-    },
+    KnowledgeDelete { document_id: String },
     #[command(about = "List meetings")]
     MeetingsList,
     #[command(about = "Show token usage summary")]
@@ -83,14 +88,9 @@ enum Commands {
     #[command(about = "List API keys for current user")]
     ApikeysList,
     #[command(about = "Set an API key for a provider")]
-    ApikeysSet {
-        provider: String,
-        key: String,
-    },
+    ApikeysSet { provider: String, key: String },
     #[command(about = "Delete an API key")]
-    ApikeysDelete {
-        provider: String,
-    },
+    ApikeysDelete { provider: String },
     #[command(about = "Create a long-lived API key for CLI auth")]
     AuthKeyCreate {
         #[arg(long, default_value = "cli-key")]
@@ -99,9 +99,7 @@ enum Commands {
     #[command(about = "List long-lived API keys")]
     AuthKeyList,
     #[command(about = "Delete a long-lived API key")]
-    AuthKeyDelete {
-        key_prefix: String,
-    },
+    AuthKeyDelete { key_prefix: String },
     #[command(about = "Print MCP server configuration for AI clients")]
     Mcp,
     #[command(about = "Check for updates")]
@@ -111,12 +109,34 @@ enum Commands {
 }
 
 fn require_auth() -> Result<AuthFile> {
-    AuthFile::load()?
-        .ok_or_else(|| anyhow::anyhow!("not signed in — run `kioku signin`"))
+    AuthFile::load()?.ok_or_else(|| anyhow::anyhow!("not signed in — run `kioku signin`"))
 }
 
 fn make_client(auth: &AuthFile) -> KiokuClient {
     KiokuClient::with_token(&auth.server_url, &auth.token)
+}
+
+fn resolve_server_url(server_override: Option<&str>) -> String {
+    resolve_server_url_from(
+        server_override,
+        std::env::var("KIOKU_SERVER").ok().as_deref(),
+    )
+}
+
+fn resolve_server_url_from(server_override: Option<&str>, env_server: Option<&str>) -> String {
+    server_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| env_server.map(str::trim).filter(|value| !value.is_empty()))
+        .unwrap_or(DEFAULT_SERVER_URL)
+        .to_string()
+}
+
+fn prompt_or(value: Option<String>, label: &str) -> Result<String> {
+    match value {
+        Some(value) if !value.trim().is_empty() => Ok(value),
+        _ => Ok(rprompt::prompt_reply(label)?.trim().to_string()),
+    }
 }
 
 #[tokio::main]
@@ -142,15 +162,50 @@ async fn main() -> Result<()> {
             writeln!(stdout, "Run `kioku help` for available commands.")?;
             Ok(())
         }
-        Some(cmd) => run(cmd).await,
+        Some(cmd) => run(cmd, cli.server).await,
     }
 }
 
-async fn run(cmd: Commands) -> Result<()> {
+async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
     match cmd {
+        Commands::RegisterAdmin {
+            company_name,
+            company_slug,
+            email,
+            name,
+            password,
+        } => {
+            let base_url = resolve_server_url(server.as_deref());
+            let client = KiokuClient::new(&base_url);
+            let company_name = prompt_or(company_name, "Company name: ")?;
+            let email = prompt_or(email, "Email: ")?;
+            let name = prompt_or(name, "Name: ")?;
+            let password = prompt_or(password, "Password: ")?;
+
+            let session = client
+                .register_admin(
+                    &company_name,
+                    company_slug.as_deref(),
+                    &email,
+                    &name,
+                    &password,
+                )
+                .await?;
+
+            let auth = AuthFile {
+                server_url: base_url,
+                token: session.token,
+                user_id: session.user_id,
+                email: session.email,
+                name: session.name,
+                company_id: session.company_id,
+                role: session.role,
+            };
+            auth.save()?;
+            println!("Registered admin and signed in.");
+        }
         Commands::Signin { api_key } => {
-            let base_url = std::env::var("KIOKU_SERVER")
-                .unwrap_or_else(|_| "https://api.coolcmyk.dev".to_string());
+            let base_url = resolve_server_url(server.as_deref());
             let client = KiokuClient::new(&base_url);
             if let Some(key) = api_key {
                 let session = client.signin_api_key(&key).await?;
@@ -207,14 +262,19 @@ async fn run(cmd: Commands) -> Result<()> {
         Commands::SessionsCreate { title } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
-            let session = client.create_session(title.as_deref().unwrap_or("New session"), "research").await?;
+            let session = client
+                .create_session(title.as_deref().unwrap_or("New session"), "research")
+                .await?;
             println!("Created session: {}", session.id);
         }
         Commands::SessionsGet { session_id } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let session = client.get_session(&session_id).await?;
-            println!("{}  {}  {:?}", session.id, session.title, session.created_at);
+            println!(
+                "{}  {}  {:?}",
+                session.id, session.title, session.created_at
+            );
         }
         Commands::SessionsDelete { session_id } => {
             let auth = require_auth()?;
@@ -222,7 +282,10 @@ async fn run(cmd: Commands) -> Result<()> {
             client.delete_session(&session_id).await?;
             println!("Deleted session {session_id}");
         }
-        Commands::Send { session_id, message } => {
+        Commands::Send {
+            session_id,
+            message,
+        } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let msg = message.join(" ");
@@ -238,11 +301,18 @@ async fn run(cmd: Commands) -> Result<()> {
             let client = make_client(&auth);
             let msgs = client.list_messages(&session_id).await?;
             for m in &msgs {
-                let text: String = m.content.iter()
+                let text: String = m
+                    .content
+                    .iter()
                     .filter_map(|p| p.text.clone())
                     .collect::<Vec<_>>()
                     .join(" ");
-                println!("[{}] {}: {}", m.role, m.id, text.chars().take(200).collect::<String>());
+                println!(
+                    "[{}] {}: {}",
+                    m.role,
+                    m.id,
+                    text.chars().take(200).collect::<String>()
+                );
             }
         }
         Commands::KnowledgeSearch { query } => {
@@ -250,7 +320,12 @@ async fn run(cmd: Commands) -> Result<()> {
             let client = make_client(&auth);
             let results = client.knowledge_search(&query, 5).await?;
             for r in &results {
-                println!("{} [score={:.3}]: {}", r.id, r.score, r.text.chars().take(200).collect::<String>());
+                println!(
+                    "{} [score={:.3}]: {}",
+                    r.id,
+                    r.score,
+                    r.text.chars().take(200).collect::<String>()
+                );
             }
         }
         Commands::KnowledgeUpload { file } => {
@@ -287,7 +362,13 @@ async fn run(cmd: Commands) -> Result<()> {
             let client = make_client(&auth);
             let usage = client.usage_summary().await?;
             for u in &usage {
-                println!("{}: {} in / {} out / ${:.2}", u.email, u.total_input_tokens, u.total_output_tokens, u.total_cost_cents as f64 / 100.0);
+                println!(
+                    "{}: {} in / {} out / ${:.2}",
+                    u.email,
+                    u.total_input_tokens,
+                    u.total_output_tokens,
+                    u.total_cost_cents as f64 / 100.0
+                );
             }
         }
         Commands::ApikeysList => {
@@ -332,23 +413,29 @@ async fn run(cmd: Commands) -> Result<()> {
         }
         Commands::Mcp => {
             let auth = require_auth()?;
-            println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-                "mcpServers": {
-                    "Kioku": {
-                        "url": format!("{}/mcp", auth.server_url.trim_end_matches('/')),
-                        "headers": {
-                            "Authorization": format!("Bearer {}", auth.token)
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "mcpServers": {
+                        "Kioku": {
+                            "url": format!("{}/mcp", auth.server_url.trim_end_matches('/')),
+                            "headers": {
+                                "Authorization": format!("Bearer {}", auth.token)
+                            }
                         }
                     }
-                }
-            }))?);
+                }))?
+            );
         }
         Commands::UpgradeCheck => {
             let info = cc_upgrade::check_for_update(REPO, VERSION).await?;
             if info.latest_version == VERSION {
                 println!("Up to date (v{VERSION}).");
             } else {
-                println!("New version available: v{} (current: v{VERSION})", info.latest_version);
+                println!(
+                    "New version available: v{} (current: v{VERSION})",
+                    info.latest_version
+                );
             }
         }
         Commands::Upgrade => {
@@ -357,4 +444,66 @@ async fn run(cmd: Commands) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{resolve_server_url_from, Cli, Commands, DEFAULT_SERVER_URL};
+    use clap::Parser;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn resolve_server_url_prefers_cli_override() {
+        let actual =
+            resolve_server_url_from(Some("https://cli.example"), Some("https://env.example"));
+        let expected = "https://cli.example".to_string();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn resolve_server_url_uses_env_when_cli_missing() {
+        let actual = resolve_server_url_from(None, Some("https://env.example"));
+        let expected = "https://env.example".to_string();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn resolve_server_url_defaults_to_local_hivemind() {
+        let actual = resolve_server_url_from(None, None);
+        let expected = DEFAULT_SERVER_URL.to_string();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn cli_parses_register_admin_with_server_override() {
+        let fixture = [
+            "kioku",
+            "--server",
+            "http://localhost:9100",
+            "register-admin",
+            "--company-name",
+            "Kioku",
+            "--email",
+            "admin@example.com",
+            "--name",
+            "Admin",
+            "--password",
+            "password123",
+        ];
+
+        let actual = Cli::parse_from(fixture);
+        let expected = Some(Commands::RegisterAdmin {
+            company_name: Some("Kioku".to_string()),
+            company_slug: None,
+            email: Some("admin@example.com".to_string()),
+            name: Some("Admin".to_string()),
+            password: Some("password123".to_string()),
+        });
+
+        assert_eq!(actual.command, expected);
+        assert_eq!(actual.server, Some("http://localhost:9100".to_string()));
+    }
 }

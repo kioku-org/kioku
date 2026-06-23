@@ -55,7 +55,10 @@ Get Kioku running locally in 5 minutes.
     cd ../../apps/cli
     cargo install --path crates/cc-cli
 
-    # Sign in (create an admin account first via API)
+    # Bootstrap the first admin account on the local Hivemind server
+    kioku register-admin
+
+    # Later sign-ins can use the same local server default
     kioku signin
     ```
   </Step>

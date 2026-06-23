@@ -22,3 +22,6 @@ serde_json     = { workspace = true }
 chrono         = { workspace = true }
 uuid           = { workspace = true }
 rprompt       = "2"
+
+[dev-dependencies]
+pretty_assertions = "1"
