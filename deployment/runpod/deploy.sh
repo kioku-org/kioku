@@ -17,9 +17,9 @@ source "$SCRIPT_DIR/.env"
 [[ -n "${RUNPOD_API_KEY:-}" ]] || { echo "Error: RUNPOD_API_KEY not set in .env"; exit 1; }
 
 IMAGE="${IMAGE:-kyomoto/kioku-stateful:latest}"
-POD_NAME="${POD_NAME:-kioku-stateful}"
-CONTAINER_DISK="${CONTAINER_DISK_GB:-40}"
-VOLUME_SIZE="${VOLUME_GB:-50}"
+POD_NAME="${POD_NAME:-${RUNPOD_POD_NAME:-kioku-stateful}}"
+CONTAINER_DISK="${CONTAINER_DISK_GB:-${RUNPOD_DISK_GB:-40}}"
+VOLUME_SIZE="${VOLUME_GB:-${RUNPOD_VOLUME_GB:-50}}"
 
 echo "Deploying $POD_NAME..."
 echo "Image:          $IMAGE"
