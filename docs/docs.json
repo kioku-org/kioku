@@ -7,7 +7,11 @@
     "light": "#818cf8",
     "dark": "#4f46e5"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/logo/web.png",
+  "logo": {
+    "light": "/logo/web.png",
+    "dark": "/logo/web.png"
+  },
   "fonts": {
     "family": "DM Sans",
     "heading": {
