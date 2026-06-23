@@ -28,6 +28,8 @@ pub struct RegisterPersonalRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RegisterAdminRequest {
     pub company_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub company_slug: Option<String>,
     pub email: String,
     pub name: String,
     pub password: String,

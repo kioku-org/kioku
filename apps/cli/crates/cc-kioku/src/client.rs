@@ -84,7 +84,12 @@ impl KiokuClient {
             .context("invalid signin response")
     }
 
-    pub async fn register_personal(&self, email: &str, name: &str, password: &str) -> Result<AuthSession> {
+    pub async fn register_personal(
+        &self,
+        email: &str,
+        name: &str,
+        password: &str,
+    ) -> Result<AuthSession> {
         let resp = self
             .client
             .post(self.url("/auth/register/personal"))
@@ -107,6 +112,52 @@ impl KiokuClient {
         resp.json::<AuthSession>()
             .await
             .context("invalid register personal response")
+    }
+
+    /// Register the initial admin user and company workspace.
+    ///
+    /// # Arguments
+    /// - `company_name`: Display name for the new company workspace.
+    /// - `company_slug`: Optional stable slug override for the company.
+    /// - `email`: Admin email address.
+    /// - `name`: Admin display name.
+    /// - `password`: Admin password.
+    ///
+    /// # Errors
+    /// Returns an error when the request fails, validation is rejected, or the
+    /// response body cannot be decoded as an auth session.
+    pub async fn register_admin(
+        &self,
+        company_name: &str,
+        company_slug: Option<&str>,
+        email: &str,
+        name: &str,
+        password: &str,
+    ) -> Result<AuthSession> {
+        let resp = self
+            .client
+            .post(self.url("/auth/register/admin"))
+            .json(&RegisterAdminRequest {
+                company_name: company_name.to_string(),
+                company_slug: company_slug.map(|slug| slug.to_string()),
+                email: email.to_string(),
+                name: name.to_string(),
+                password: password.to_string(),
+            })
+            .send()
+            .await
+            .context("register admin request failed")?;
+
+        if resp.status() == StatusCode::UNAUTHORIZED {
+            return Err(anyhow::anyhow!("admin registration failed"));
+        }
+        if !resp.status().is_success() {
+            return Err(Self::handle_error(resp).await);
+        }
+
+        resp.json::<AuthSession>()
+            .await
+            .context("invalid register admin response")
     }
 
     pub async fn signin_api_key(&self, api_key: &str) -> Result<AuthSession> {
@@ -154,7 +205,9 @@ impl KiokuClient {
         if !resp.status().is_success() {
             return Err(Self::handle_error(resp).await);
         }
-        resp.json::<AuthSession>().await.context("invalid whoami response")
+        resp.json::<AuthSession>()
+            .await
+            .context("invalid whoami response")
     }
 
     pub async fn list_sessions(&self) -> Result<Vec<Session>> {
@@ -168,7 +221,9 @@ impl KiokuClient {
         if !resp.status().is_success() {
             return Err(Self::handle_error(resp).await);
         }
-        resp.json::<Vec<Session>>().await.context("invalid sessions response")
+        resp.json::<Vec<Session>>()
+            .await
+            .context("invalid sessions response")
     }
 
     pub async fn create_session(&self, title: &str, mode: &str) -> Result<Session> {
@@ -186,7 +241,9 @@ impl KiokuClient {
         if !resp.status().is_success() {
             return Err(Self::handle_error(resp).await);
         }
-        resp.json::<Session>().await.context("invalid session response")
+        resp.json::<Session>()
+            .await
+            .context("invalid session response")
     }
 
     pub async fn get_session(&self, id: &str) -> Result<Session> {
@@ -200,7 +257,9 @@ impl KiokuClient {
         if !resp.status().is_success() {
             return Err(Self::handle_error(resp).await);
         }
-        resp.json::<Session>().await.context("invalid session response")
+        resp.json::<Session>()
+            .await
+            .context("invalid session response")
     }
 
     pub async fn delete_session(&self, id: &str) -> Result<()> {
@@ -228,7 +287,9 @@ impl KiokuClient {
         if !resp.status().is_success() {
             return Err(Self::handle_error(resp).await);
         }
-        resp.json::<Vec<Message>>().await.context("invalid messages response")
+        resp.json::<Vec<Message>>()
+            .await
+            .context("invalid messages response")
     }
 
     pub async fn send_message(&self, session_id: &str, text: &str) -> Result<Message> {
@@ -252,10 +313,16 @@ impl KiokuClient {
         if !resp.status().is_success() {
             return Err(Self::handle_error(resp).await);
         }
-        resp.json::<Message>().await.context("invalid message response")
+        resp.json::<Message>()
+            .await
+            .context("invalid message response")
     }
 
-    pub async fn knowledge_search(&self, query: &str, limit: u32) -> Result<Vec<KnowledgeSearchResult>> {
+    pub async fn knowledge_search(
+        &self,
+        query: &str,
+        limit: u32,
+    ) -> Result<Vec<KnowledgeSearchResult>> {
         let resp = self
             .client
             .post(self.url("/knowledge/search"))
@@ -299,7 +366,9 @@ impl KiokuClient {
         if !resp.status().is_success() {
             return Err(Self::handle_error(resp).await);
         }
-        resp.json::<UploadResponse>().await.context("invalid upload response")
+        resp.json::<UploadResponse>()
+            .await
+            .context("invalid upload response")
     }
 
     pub async fn list_documents(&self) -> Result<Vec<serde_json::Value>> {
@@ -343,7 +412,9 @@ impl KiokuClient {
         if !resp.status().is_success() {
             return Err(Self::handle_error(resp).await);
         }
-        resp.json::<Vec<Meeting>>().await.context("invalid meetings response")
+        resp.json::<Vec<Meeting>>()
+            .await
+            .context("invalid meetings response")
     }
 
     pub async fn ingest_meeting(&self, req: &MeetingIngestRequest) -> Result<Meeting> {
@@ -358,7 +429,9 @@ impl KiokuClient {
         if !resp.status().is_success() {
             return Err(Self::handle_error(resp).await);
         }
-        resp.json::<Meeting>().await.context("invalid meeting response")
+        resp.json::<Meeting>()
+            .await
+            .context("invalid meeting response")
     }
 
     pub async fn usage_summary(&self) -> Result<Vec<UsageSummary>> {
@@ -408,7 +481,9 @@ impl KiokuClient {
         if !resp.status().is_success() {
             return Err(Self::handle_error(resp).await);
         }
-        resp.json::<ApiKeyOut>().await.context("invalid api key response")
+        resp.json::<ApiKeyOut>()
+            .await
+            .context("invalid api key response")
     }
 
     pub async fn delete_api_key(&self, key_id: &str) -> Result<()> {
@@ -439,7 +514,9 @@ impl KiokuClient {
         if !resp.status().is_success() {
             return Err(Self::handle_error(resp).await);
         }
-        resp.json::<serde_json::Value>().await.context("invalid auth key response")
+        resp.json::<serde_json::Value>()
+            .await
+            .context("invalid auth key response")
     }
 
     pub async fn list_auth_keys(&self) -> Result<Vec<CompanyAuthKeyOut>> {
