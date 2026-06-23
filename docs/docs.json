@@ -7,10 +7,10 @@
     "light": "#818cf8",
     "dark": "#4f46e5"
   },
-  "favicon": "/logo/web.png",
+  "favicon": "/logo/raven.png",
   "logo": {
-    "light": "/logo/web.png",
-    "dark": "/logo/web.png"
+    "light": "/logo/raven.png",
+    "dark": "/logo/raven.png"
   },
   "fonts": {
     "family": "DM Sans",
