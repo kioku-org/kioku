@@ -1,100 +1,34 @@
-![kioku](./assets/kioku-logo.png)
+<p align=center>
+ <img src=./assets/kioku-logo.png alt="Kioku" width=400 />
+</p>
 
-<!-- ```⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠀⡀⠀⠀⠀ -->
-<!-- ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣰⣜⣽⣦⡄⣎ -->
-<!-- ⠀⡀⣦⡀⢀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢦⣻⣿⣿⣿⣿⡇ -->
-<!-- ⡀⠹⡪⣿⣾⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀⠐⢦⣝⣿⣿⣿⣿⠁ -->
-<!-- ⠘⠷⣾⣿⣿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⢐⣿⣾⣿⣿⣿⠏⠀ -->
-<!-- ⠠⢥⣴⣾⣿⣿⣿⣿⣿⣿⣷⡄⠀⠀⢀⣲⣿⣿⣿⣿⠟⠀⠀ -->
-<!-- ⠀⠀⢂⣩⣵⢿⣿⣿⣿⣿⣿⣿⣄⢠⣾⣿⣿⣿⣯⣥⡀⠀⠀ -->
-<!-- ⠀⠀⠀⠠⠤⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡀⠀ -->
-<!-- ⠀⠀⠀⠀⠀⠺⢯⣿⣿⢿⣿⣿⣿⣿⣿⣿⣿⣿⠃⠀⠱⠑⠀ -->
-<!-- ⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⣾⣿⣿⣿⣿⡿⠛⠁⠀⠀⠀⠀⠀ -->
-<!-- ⠀⠀⠀⠀⠀⠀⢀⣴⡿⣿⣿⡿⠻⣯⠀⠧⢀⣀⠀⠀⠀⠀⠀ -->
-<!-- ⠀⠀⠀⠀⠀⠀⠀⠉⠀⠈⠈⠀⠀⠀⣵⢦⠈⠿⠀⠀⠀⠀⠀ -->
-<!-- ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠀⠀⠀⠀⠀⠀⠀⠀ -->
-<!-- ``` -->
-<!---->
-kioku: save your context, wherever and whenever you are.
+<h3 align=center>Kioku</h3>
+<p align=center>AI Meeting Intelligence Platform</p>
 
-## Quick Start
+<p align=center>
+    <a href=https://docs.kioku.chat>Documentation</a> | <a href=https://github.com/kioku-org/kioku>GitHub</a> | <a href=mailto:hello@kioku.chat>Contact</a>
+</p>
 
-### Prerequisites
+<br>
 
-- [Docker](https://docs.docker.com/get-docker/) with Compose v2
-- NVIDIA GPU + [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/) (for Ollama embeddings)
-- (Optional) A Cloudflare Tunnel for public access
+<p align=center>Capture, store, and retrieve knowledge from meetings, documents, and conversations. Open source, self-hostable, REST + MCP.</p>
 
-### Run it
-
-```bash
-cd deployment/docker
-
-# 1. Bootstrap .env (copies template, generates secure secrets, pulls images)
-./scripts/setup.sh
-
-# 2. Fill in your API keys and domain
-#    Required: VEXA_ADMIN_API_TOKEN
-#    Optional: OPENAI_API_KEY, ANTHROPIC_API_KEY, ZOOM_CLIENT_ID/SECRET, ...
-$EDITOR .env
-
-# 3. (Optional) Configure Cloudflare Tunnel
-cp cloudflared.yml.example cloudflared.yml
-# Edit cloudflared.yml with your tunnel ID + domains
-# Set CLOUDFLARED_CREDENTIALS_DIR in .env to your credentials folder
-
-# 4. Start everything (stateful first, then stateless)
-./scripts/manage.sh start
-
-# 5. Verify all services are healthy
-./scripts/healthcheck.sh
-```
-
-### Services
-
-| Service | Port | Description |
-|---|---|---|
-| Hivemind API | `9100` | Core API (auth, sessions, knowledge search) |
-| Vexa API Gateway | `8056` | Meeting bot API |
-| Vexa Admin API | `8057` | Admin operations |
-| Vexa MCP | `18888` | Model Context Protocol server |
-| MinIO Console | `9001` | Object storage UI |
-| Ollama | `11434` | Local embedding model server |
-| Qdrant | `6333` | Vector DB REST API |
-
-### Manage
-
-```bash
-./scripts/manage.sh status          # show running containers + resource usage
-./scripts/manage.sh logs <service>  # tail logs (e.g. logs kioku-hivemind)
-./scripts/manage.sh stop            # stop all services (data preserved)
-./scripts/manage.sh down            # stop and remove containers
-./scripts/manage.sh down-volumes    # ⚠ destroy ALL data
-./scripts/manage.sh backup          # dump databases to backups/
-./scripts/manage.sh restore <file>  # restore from a backup file
-```
-
-Run `./scripts/manage.sh help` for the full command list.
+<br>
 
 ## Documentation
 
-| Doc | Description |
-|---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture, components, and data flow |
-| [docs/API.md](docs/API.md) | Hivemind REST API reference |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker Compose and RunPod deployment guides |
-| [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) | Development setup, testing, and git workflow |
+The documentation is available on [docs.kioku.chat](https://docs.kioku.chat).
 
-## CLI
+- **[Quick Start](https://docs.kioku.chat/quickstart)** — Get running locally in 5 minutes
+- **[Architecture](https://docs.kioku.chat/architecture)** — How Hivemind, Vexa, and the CLI fit together
+- **[API Reference](https://docs.kioku.chat/api/authentication)** — Full REST API docs
+- **[MCP Integration](https://docs.kioku.chat/mcp/overview)** — Connect Claude, Cursor, and other AI clients
+- **[Deployment](https://docs.kioku.chat/deployment/docker)** — Docker Compose and RunPod guides
 
-```bash
-cargo install --path apps/cli/crates/cc-cli
-kioku signin           # authenticate
-kioku sessions-list    # list sessions
-kioku knowledge-search "what was discussed in the last standup?"
-kioku mcp              # print MCP server config for AI clients
-```
+## Contributing
+
+See [Contributing Guide](https://docs.kioku.chat/contributing) for development setup, testing, and git workflow.
 
 ## License
 
-MIT License
+MIT
