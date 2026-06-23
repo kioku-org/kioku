@@ -9,8 +9,8 @@
   },
   "favicon": "/favicon.svg",
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "/logo/raven.png",
+    "dark": "/logo/raven.png"
   },
   "fonts": {
     "family": "DM Sans",
