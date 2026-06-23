@@ -1,10 +1,7 @@
-# Kioku Architecture
-
-> **kioku** — save your context, wherever and whenever you are.
-
-## Overview
-
-Kioku is a context infrastructure platform that captures, stores, and retrieves knowledge from meetings, documents, and conversations. It combines a Rust API server (Hivemind) with a meeting-bot platform (Vexa) to provide real-time meeting transcription, knowledge search, and MCP integration.
+---
+title: "Architecture"
+---
+How Kioku's components fit together.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -45,66 +42,6 @@ Kioku is a context infrastructure platform that captures, stores, and retrieves 
 └──────────────────┘
 ```
 
-## Components
-
-### Hivemind (`services/hivemind/`)
-
-The core API server. Built in Rust with axum. Responsibilities:
-
-- **Authentication** — admin/personal/member registration, JWT-based sessions, API key exchange
-- **Company management** — members, invites, provider API keys, CLI auth keys
-- **Knowledge** — PDF upload, text extraction, embedding via Ollama, vector search via Qdrant
-- **Sessions** — conversation sessions with messages and traces
-- **Meetings** — meeting ingest (transcript → embeddings → searchable knowledge)
-- **Usage tracking** — token usage per user
-- **Vexa proxy** — bot spawn requests, meeting listing
-- **MCP server** — Model Context Protocol tools for AI clients (`kioku_search`, `kioku_list_meetings`, etc.)
-
-**Stack:** Rust + axum + sqlx (Postgres) + Qdrant + Ollama (nomic-embed-text-v2-moe)
-
-### Kioku CLI (`apps/cli/`)
-
-Rust CLI client. 4 crates:
-
-| Crate | Purpose |
-|---|---|
-| `cc-cli` | Clap command dispatcher (binary: `kioku`) |
-| `cc-kioku` | HTTP client over reqwest |
-| `cc-auth` | Auth file management (`~/.config/kioku/auth.json`) |
-| `cc-upgrade` | Self-update via GitHub releases |
-
-Commands: `signin`, `whoami`, `sessions-*`, `send`, `knowledge-*`, `meetings-list`, `mcp`, `upgrade`, and more.
-
-### Vexa (`services/vexa/`)
-
-Vendored [Vexa](https://github.com/Vexa-ai/vexa) meeting-bot platform. 13 services:
-
-| Service | Port | Purpose |
-|---|---|---|
-| api-gateway | 8000 | Public API entry point |
-| admin-api | 8001 | Admin operations |
-| meeting-api | 8080 | Bot lifecycle, meeting records |
-| agent-api | 8100 | AI agent integration |
-| runtime-api | 8090 | Container orchestration (Docker/K8s/Process/RunPod) |
-| transcription-service | 80 | Whisper speech-to-text |
-| tts-service | 8002 | Text-to-speech |
-| mcp | 18888 | Vexa MCP server |
-| redis | 6379 | Transcription streams, scheduling |
-| minio | 9000 | Recording storage |
-| vexa-bot | — | Playwright browser bot (joins meetings) |
-
-### Deployment (`deployment/`)
-
-**Docker Compose** (`deployment/docker/`):
-- `docker-compose.stateful.yml` — Postgres (pgvector) + Qdrant
-- `docker-compose.stateless.yml` — All app services + Ollama + Cloudflared
-- Scripts: `setup.sh`, `manage.sh`, `healthcheck.sh`, `smoke-test.sh`
-
-**RunPod** (`deployment/runpod/`):
-- `Dockerfile.stateful` — single CPU pod with all always-on services (supervisord)
-- `Dockerfile.stateless` — GPU pod with bot + Whisper (ephemeral, per meeting)
-- Runtime-api spawns/kills bot pods via RunPod REST API
-
 ## Data Flow
 
 ### Meeting → Knowledge
@@ -127,6 +64,6 @@ Vendored [Vexa](https://github.com/Vexa-ai/vexa) meeting-bot platform. 13 servic
 
 ### MCP Integration
 
-1. AI client (Claude, Cursor, etc.) connects to Hivemind MCP endpoint
-2. MCP tools available: `kioku_search`, `kioku_list_meetings`, `kioku_get_transcript`, etc.
-3. AI client can search knowledge, list meetings, get transcripts — all through the authenticated MCP session
+1. AI client (Claude, Cursor) connects to Hivemind MCP endpoint
+2. MCP tools available: `kioku_search`, `kioku_list_meetings`, etc.
+3. AI client can search knowledge, list meetings, get transcripts — all through authenticated MCP session

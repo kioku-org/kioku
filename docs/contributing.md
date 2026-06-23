@@ -1,4 +1,7 @@
-# Contributing to Kioku
+---
+title: "Contributing"
+---
+Development setup, testing, and git workflow.
 
 ## Project Structure
 
@@ -35,62 +38,21 @@ kioku/
 ```bash
 cd services/hivemind
 cargo check                    # Fast type check
-cargo test                     # Run integration tests (needs running server)
+cargo test                     # Integration tests (needs running server)
 cargo insta test --accept      # Update snapshots
 ```
-
-Integration tests require a running Hivemind server. Start the Docker stack first:
-
-```bash
-cd deployment/docker
-./scripts/manage.sh start
-cd ../../services/hivemind
-HIVEMIND_URL=http://localhost:9100 cargo test
-```
-
-See `apps/cli/AGENTS.md` for Rust coding guidelines (error handling, test style, domain types).
 
 ### CLI (Rust)
 
 ```bash
 cd apps/cli
 cargo check
-cargo build                    # Debug build
-./target/debug/kioku --help    # Run locally
+cargo test -p cc-auth -p cc-kioku  # Unit tests
+cargo build                         # Debug build
+./target/debug/kioku --help         # Run locally
 ```
 
-### Vexa (Python)
-
-Vexa services are vendored from [Vexa-ai/vexa](https://github.com/Vexa-ai/vexa). Changes should be made upstream unless kioku-specific.
-
----
-
-## Testing
-
-| Component | Test Type | Command |
-|---|---|---|
-| Hivemind | Integration (HTTP) | `cargo test` in `services/hivemind/` |
-| CLI | Unit | `cargo test` in `apps/cli/` |
-| Docker stack | Smoke test | `./deployment/docker/scripts/smoke-test.sh` |
-| RunPod | Integration | GitHub Actions `runpod-test.yml` |
-
-### Running Tests
-
-```bash
-# Start the stack
-cd deployment/docker && ./scripts/manage.sh start
-
-# Run hivemind integration tests
-cd ../../services/hivemind && cargo test
-
-# Run Docker smoke test
-cd ../../deployment/docker && ./scripts/smoke-test.sh
-
-# Health check
-./scripts/healthcheck.sh
-```
-
----
+See `apps/cli/AGENTS.md` for Rust coding guidelines.
 
 ## Git Workflow
 
@@ -100,13 +62,9 @@ cd ../../deployment/docker && ./scripts/smoke-test.sh
 4. Open a PR to `master`
 5. Ensure CI passes (Docker build + RunPod integration test)
 
----
+## CI/CD
 
-## Deployment
-
-Images are built and pushed to Docker Hub automatically on merge to master:
-
-- `kyomoto/kioku-stateful:latest` — stateful pod (CPU, always-on)
-- `kyomoto/kioku-stateless:latest` — stateless pod (GPU, ephemeral bot)
-
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for details.
+| Workflow | Trigger | Description |
+|---|---|---|
+| `build-images.yml` | Push to master | Build + push Docker images to Docker Hub |
+| `runpod-test.yml` | After build completes | Deploy pod on RunPod, health checks, cleanup |
