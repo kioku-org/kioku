@@ -86,7 +86,7 @@ export default defineConfig({
       ]
     },
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/kioku/kioku' }
+      { icon: 'github', link: 'https://github.com/kioku-org/kioku' }
     ],
     search: {
       provider: 'local'
