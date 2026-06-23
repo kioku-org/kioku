@@ -3,10 +3,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-  --vp-c-brand: #991b1b;
-  --vp-c-brand-light: #b91c1c;
-  --vp-c-brand-dark: #7f1d1d;
-  --vp-c-brand-dimm: rgba(153, 27, 27, 0.08);
+  --vp-c-brand: #6366f1;
+  --vp-c-brand-light: #818cf8;
+  --vp-c-brand-dark: #4f46e5;
+  --vp-c-brand-dimm: rgba(99, 102, 241, 0.08);
   --vp-c-bg: #fafaf9;
   --vp-c-bg-alt: #f5f5f4;
   --vp-c-bg-elv: #ffffff;
@@ -21,10 +21,10 @@
 }
 
 .dark {
-  --vp-c-brand: #dc2626;
-  --vp-c-brand-light: #ef4444;
-  --vp-c-brand-dark: #b91c1c;
-  --vp-c-brand-dimm: rgba(220, 38, 38, 0.1);
+  --vp-c-brand: #818cf8;
+  --vp-c-brand-light: #a5b4fc;
+  --vp-c-brand-dark: #6366f1;
+  --vp-c-brand-dimm: rgba(129, 140, 248, 0.1);
   --vp-c-bg: #0a0a0a;
   --vp-c-bg-alt: #141414;
   --vp-c-bg-elv: #171717;
