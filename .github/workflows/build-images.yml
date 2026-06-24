@@ -8,6 +8,7 @@ on:
       - 'deployment/runpod/Dockerfile.*'
       - 'deployment/runpod/entrypoint-*.sh'
       - '.github/workflows/build-images.yml'
+      - '.github/workflows/runpod-test.yml'
   release:
     types: [published]
 
