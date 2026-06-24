@@ -47,7 +47,7 @@ jobs:
             "computeType": "CPU",
             "vcpuCount": 4,
             "containerDiskInGb": 20,
-            "ports": ["22/tcp", "6379/tcp", "8080/http", "9100/http", "8056/http"],
+            "ports": ["22/tcp", "6379/tcp", "8080/http", "8090/http", "9100/http", "8056/http"],
             "env": {
               "DB_NAME": "kioku",
               "DB_USER": "kioku",
@@ -58,8 +58,9 @@ jobs:
               "VEXA_ADMIN_API_TOKEN": "ci-test-admin-token",
               "INTERNAL_API_SECRET": "ci-test-internal-secret",
               "ORCHESTRATOR_BACKEND": "runpod",
-              "RUNPOD_API_KEY": "$RUNPOD_API_KEY",
+              "RUNPOD_ACCOUNT_API_KEY": "$RUNPOD_API_KEY",
               "BOT_IMAGE": "kyomoto/kioku-stateless:latest",
+              "BROWSER_IMAGE": "kyomoto/kioku-stateless:latest",
               "VEXA_PUBLIC_URL": "http://localhost:8056",
               "CORS_ORIGINS": "*",
               "LOG_LEVEL": "INFO",
@@ -70,6 +71,7 @@ jobs:
               "MINIO_BUCKET": "vexa-recordings",
               "RECORDING_ENABLED": "false",
               "RUNPOD_GPU_TYPE": "NVIDIA GeForce RTX 3090",
+              "RUNPOD_GPU_TYPES": "NVIDIA GeForce RTX 3090,NVIDIA GeForce RTX 5090,NVIDIA RTX A5000,NVIDIA RTX A4000",
               "RUNPOD_CLOUD_TYPE": "COMMUNITY"
             }
           }
@@ -258,11 +260,102 @@ jobs:
             exit 1
           fi
 
+      - name: Spawn stateless bot pod via runtime-api
+        id: stateless
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+          POD_IP: ${{ steps.wait.outputs.pod_ip }}
+          REDIS_PUBLIC_PORT: ${{ steps.wait.outputs.redis_public_port }}
+          RUNTIME_API_URL: ${{ steps.wait.outputs.runtime_api_url }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$REDIS_PUBLIC_PORT" ]; then
+            echo "ERROR: Redis public port is required for stateless pod validation"
+            exit 1
+          fi
+
+          CREATE_RESP=$(curl -s -X POST "$RUNTIME_API_URL/containers" \
+            -H "Content-Type: application/json" \
+            -d @- <<EOF
+          {
+            "profile": "meeting",
+            "user_id": "ci-runpod",
+            "config": {
+              "meeting_id": "999001",
+              "env": {
+                "REDIS_URL": "redis://:ci-test-redis-password@${POD_IP}:${REDIS_PUBLIC_PORT}/0",
+                "TRANSCRIPTION_SERVICE_URL": "http://localhost",
+                "TRANSCRIPTION_SERVICE_TOKEN": "",
+                "TTS_SERVICE_URL": "http://localhost",
+                "INTERNAL_API_SECRET": "ci-test-internal-secret"
+              }
+            },
+            "metadata": {
+              "meeting_id": 999001,
+              "test_run": true
+            }
+          }
+          EOF
+          )
+
+          CONTAINER_NAME=$(echo "$CREATE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('name',''))" 2>/dev/null || echo "")
+          CONTAINER_ID=$(echo "$CREATE_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('container_id',''))" 2>/dev/null || echo "")
+
+          if [ -z "$CONTAINER_NAME" ] || [ -z "$CONTAINER_ID" ]; then
+            echo "ERROR: Failed to spawn stateless pod"
+            echo "$CREATE_RESP"
+            exit 1
+          fi
+
+          echo "container_name=$CONTAINER_NAME" >> $GITHUB_OUTPUT
+          echo "container_id=$CONTAINER_ID" >> $GITHUB_OUTPUT
+
+          MAX_WAIT=180
+          ELAPSED=0
+
+          while [ $ELAPSED -lt $MAX_WAIT ]; do
+            POD_JSON=$(curl -s -H "Authorization: Bearer $RUNPOD_API_KEY" \
+              "https://rest.runpod.io/v1/pods/$CONTAINER_ID" 2>/dev/null || echo '{}')
+
+            GPU_COUNT=$(echo "$POD_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('gpuCount',''))" 2>/dev/null || echo "")
+            IMAGE_NAME=$(echo "$POD_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('imageName',''))" 2>/dev/null || echo "")
+            STATUS=$(echo "$POD_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('desiredStatus',''))" 2>/dev/null || echo "")
+
+            echo "  [$ELAPSED/${MAX_WAIT}s] desiredStatus=$STATUS gpuCount=$GPU_COUNT imageName=$IMAGE_NAME"
+
+            if [ "$GPU_COUNT" = "1" ] && [ "$IMAGE_NAME" = "kyomoto/kioku-stateless:latest" ]; then
+              echo "Stateless pod allocation looks correct"
+              break
+            fi
+
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+          done
+
+          if [ $ELAPSED -ge $MAX_WAIT ]; then
+            echo "ERROR: Stateless pod did not materialize as a GPU pod in time"
+            exit 1
+          fi
+
       - name: Cleanup pod
         if: always()
         env:
           RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
         run: |
+          STATELESS_NAME="${{ steps.stateless.outputs.container_name }}"
+          STATELESS_ID="${{ steps.stateless.outputs.container_id }}"
+          RUNTIME_API_URL="${{ steps.wait.outputs.runtime_api_url }}"
+
+          if [ -n "$STATELESS_NAME" ] && [ -n "$RUNTIME_API_URL" ]; then
+            echo "Deleting stateless container $STATELESS_NAME via runtime-api..."
+            curl -s -X DELETE "$RUNTIME_API_URL/containers/$STATELESS_NAME" || true
+          elif [ -n "$STATELESS_ID" ]; then
+            echo "Deleting stateless pod $STATELESS_ID directly..."
+            curl -s -X DELETE -H "Authorization: Bearer $RUNPOD_API_KEY" \
+              "https://rest.runpod.io/v1/pods/$STATELESS_ID" || true
+          fi
+
           POD_ID="${{ steps.deploy.outputs.pod_id }}"
           if [ -n "$POD_ID" ]; then
             echo "Deleting pod $POD_ID..."

@@ -49,6 +49,13 @@ $EDITOR .env
 
 The script creates a CPU pod with all stateful services via `runpodctl pod create --compute-type cpu`.
 
+The deployed stateful pod should receive:
+
+- `STATEFUL_RUNPOD_CLOUD_TYPE=COMMUNITY` so the CPU pod gets a public IP when using `runpodctl pod create`
+- `RUNPOD_ACCOUNT_API_KEY` for runtime-api orchestration
+- `BROWSER_IMAGE` / `BOT_IMAGE` pointing at `kyomoto/kioku-stateless:latest`
+- `RUNPOD_GPU_TYPES` as an ordered fallback list for stateless GPU allocation
+
 ## Security
 
 - **Redis** — AUTH password required (`REDIS_PASSWORD`), port 6379 exposed publicly

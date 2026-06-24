@@ -118,6 +118,6 @@ COPY --from=vexa-builder /opt/vexa /opt/vexa
 COPY deployment/runpod/entrypoint-stateful-runtime.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 22 5432 6379 6334 8000 8001 8080 8090 8100 9000 9001 9100 11434 18888
+EXPOSE 22 5432 6379 6334 8001 8056 8080 8090 8100 9000 9001 9100 11434 18888
 
 ENTRYPOINT ["/entrypoint.sh"]

@@ -11,66 +11,136 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     exit 1
 }
 
+set -a
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/.env"
+set +a
 
-[[ -n "${RUNPOD_API_KEY:-}" ]] || { echo "Error: RUNPOD_API_KEY not set in .env"; exit 1; }
+require_env() {
+    local name="$1"
+    [[ -n "${!name:-}" ]] || {
+        echo "Error: $name not set"
+        exit 1
+    }
+}
+
+require_env RUNPOD_API_KEY
+require_env HIVEMIND_JWT_SECRET
+require_env HIVEMIND_ENCRYPTION_SECRET
+require_env VEXA_ADMIN_API_TOKEN
 
 IMAGE="${IMAGE:-kyomoto/kioku-stateful:latest}"
 POD_NAME="${POD_NAME:-${RUNPOD_POD_NAME:-kioku-stateful}}"
-CONTAINER_DISK="${CONTAINER_DISK_GB:-${RUNPOD_DISK_GB:-40}}"
+CONTAINER_DISK="${CONTAINER_DISK_GB:-${RUNPOD_DISK_GB:-20}}"
 VOLUME_SIZE="${VOLUME_GB:-${RUNPOD_VOLUME_GB:-50}}"
+STATEFUL_RUNPOD_CLOUD_TYPE="${STATEFUL_RUNPOD_CLOUD_TYPE:-COMMUNITY}"
+BOT_IMAGE="${BOT_IMAGE:-kyomoto/kioku-stateless:latest}"
+BROWSER_IMAGE="${BROWSER_IMAGE:-$BOT_IMAGE}"
+RUNPOD_ACCOUNT_API_KEY="${RUNPOD_ACCOUNT_API_KEY:-$RUNPOD_API_KEY}"
+RUNPOD_GPU_TYPES="${RUNPOD_GPU_TYPES:-NVIDIA GeForce RTX 3090,NVIDIA GeForce RTX 5090,NVIDIA RTX A5000,NVIDIA RTX A4000}"
+
+export BOT_IMAGE
+export BROWSER_IMAGE
+export RUNPOD_ACCOUNT_API_KEY
+export RUNPOD_GPU_TYPES
+export STATEFUL_RUNPOD_CLOUD_TYPE
 
 echo "Deploying $POD_NAME..."
 echo "Image:          $IMAGE"
+echo "Cloud:          $STATEFUL_RUNPOD_CLOUD_TYPE"
+echo "Compute:        CPU"
 echo "Container disk: ${CONTAINER_DISK}GB"
 echo "Volume:         ${VOLUME_SIZE}GB → /data"
 echo ""
 
-ENV_FLAGS=(
-    --env "DB_NAME=${DB_NAME:-kioku}"
-    --env "DB_USER=${DB_USER:-kioku}"
-    --env "DB_PASSWORD=${DB_PASSWORD:-kioku}"
-    --env "REDIS_PASSWORD=${REDIS_PASSWORD:-kioku-redis}"
-    --env "HIVEMIND_JWT_SECRET=${HIVEMIND_JWT_SECRET}"
-    --env "HIVEMIND_ENCRYPTION_SECRET=${HIVEMIND_ENCRYPTION_SECRET}"
-    --env "VEXA_ADMIN_API_TOKEN=${VEXA_ADMIN_API_TOKEN}"
-    --env "INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}"
-    --env "ORCHESTRATOR_BACKEND=runpod"
-    --env "RUNPOD_API_KEY=${RUNPOD_API_KEY}"
-    --env "BOT_IMAGE=${BOT_IMAGE:-kyomoto/kioku-stateless:latest}"
-    --env "VEXA_PUBLIC_URL=${VEXA_PUBLIC_URL:-}"
-    --env "CORS_ORIGINS=${CORS_ORIGINS:-*}"
-    --env "LOG_LEVEL=${LOG_LEVEL:-INFO}"
-    --env "VEXA_ENV=${VEXA_ENV:-production}"
-    --env "STORAGE_BACKEND=${STORAGE_BACKEND:-minio}"
-    --env "MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-kioku}"
-    --env "MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-kioku-minio-password}"
-    --env "MINIO_BUCKET=${MINIO_BUCKET:-vexa-recordings}"
-    --env "RECORDING_ENABLED=${RECORDING_ENABLED:-false}"
-    --env "QDRANT_API_KEY=${QDRANT_API_KEY:-}"
-    --env "RUNPOD_GPU_TYPE=${RUNPOD_GPU_TYPE:-NVIDIA GeForce RTX 3090}"
-    --env "RUNPOD_CLOUD_TYPE=${RUNPOD_CLOUD_TYPE:-COMMUNITY}"
+ENV_JSON="$(python3 <<'PY'
+import json
+import os
+
+keys = [
+    "DB_NAME",
+    "DB_USER",
+    "DB_PASSWORD",
+    "REDIS_PASSWORD",
+    "HIVEMIND_JWT_SECRET",
+    "HIVEMIND_ENCRYPTION_SECRET",
+    "VEXA_ADMIN_API_TOKEN",
+    "INTERNAL_API_SECRET",
+    "ORCHESTRATOR_BACKEND",
+    "RUNPOD_ACCOUNT_API_KEY",
+    "BOT_IMAGE",
+    "BROWSER_IMAGE",
+    "VEXA_PUBLIC_URL",
+    "CORS_ORIGINS",
+    "LOG_LEVEL",
+    "VEXA_ENV",
+    "STORAGE_BACKEND",
+    "MINIO_ACCESS_KEY",
+    "MINIO_SECRET_KEY",
+    "MINIO_BUCKET",
+    "RECORDING_ENABLED",
+    "QDRANT_API_KEY",
+    "RUNPOD_GPU_TYPE",
+    "RUNPOD_GPU_TYPES",
+    "RUNPOD_CLOUD_TYPE",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "ANTHROPIC_API_KEY",
+    "VEXA_TRANSCRIBER_API_KEY",
+    "ZOOM_CLIENT_ID",
+    "ZOOM_CLIENT_SECRET",
+    "TTS_API_TOKEN",
+    "PUBLIC_KEY",
+]
+
+data = {}
+for key in keys:
+    value = os.environ.get(key)
+    if value:
+        data[key] = value
+
+data.setdefault("DB_NAME", "kioku")
+data.setdefault("DB_USER", "kioku")
+data.setdefault("DB_PASSWORD", "kioku")
+data.setdefault("REDIS_PASSWORD", "kioku-redis")
+data.setdefault("ORCHESTRATOR_BACKEND", "runpod")
+data.setdefault("CORS_ORIGINS", "*")
+data.setdefault("LOG_LEVEL", "INFO")
+data.setdefault("VEXA_ENV", "production")
+data.setdefault("STORAGE_BACKEND", "minio")
+data.setdefault("MINIO_ACCESS_KEY", "kioku")
+data.setdefault("MINIO_SECRET_KEY", "kioku-minio-password")
+data.setdefault("MINIO_BUCKET", "vexa-recordings")
+data.setdefault("RECORDING_ENABLED", "false")
+data.setdefault("RUNPOD_GPU_TYPE", "NVIDIA GeForce RTX 3090")
+data.setdefault(
+    "RUNPOD_GPU_TYPES",
+    "NVIDIA GeForce RTX 3090,NVIDIA GeForce RTX 5090,NVIDIA RTX A5000,NVIDIA RTX A4000",
+)
+data.setdefault("RUNPOD_CLOUD_TYPE", "COMMUNITY")
+
+print(json.dumps(data, separators=(",", ":")))
+PY
+)"
+
+CMD=(
+    runpodctl pod create
+    --name "$POD_NAME"
+    --image "$IMAGE"
+    --compute-type CPU
+    --cloud-type "$STATEFUL_RUNPOD_CLOUD_TYPE"
+    --container-disk-in-gb "$CONTAINER_DISK"
+    --volume-in-gb "$VOLUME_SIZE"
+    --volume-mount-path "/data"
+    --ports "22/tcp,6379/tcp,8080/http,8090/http,9100/http,8056/http"
+    --env "$ENV_JSON"
 )
 
-# Optional API keys
-[[ -n "${OPENAI_API_KEY:-}" ]] && ENV_FLAGS+=(--env "OPENAI_API_KEY=${OPENAI_API_KEY}")
-[[ -n "${OPENAI_BASE_URL:-}" ]] && ENV_FLAGS+=(--env "OPENAI_BASE_URL=${OPENAI_BASE_URL}")
-[[ -n "${ANTHROPIC_API_KEY:-}" ]] && ENV_FLAGS+=(--env "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}")
-[[ -n "${VEXA_TRANSCRIBER_API_KEY:-}" ]] && ENV_FLAGS+=(--env "VEXA_TRANSCRIBER_API_KEY=${VEXA_TRANSCRIBER_API_KEY}")
-[[ -n "${ZOOM_CLIENT_ID:-}" ]] && ENV_FLAGS+=(--env "ZOOM_CLIENT_ID=${ZOOM_CLIENT_ID}")
-[[ -n "${ZOOM_CLIENT_SECRET:-}" ]] && ENV_FLAGS+=(--env "ZOOM_CLIENT_SECRET=${ZOOM_CLIENT_SECRET}")
-[[ -n "${TTS_API_TOKEN:-}" ]] && ENV_FLAGS+=(--env "TTS_API_TOKEN=${TTS_API_TOKEN}")
-[[ -n "${PUBLIC_KEY:-}" ]] && ENV_FLAGS+=(--env "PUBLIC_KEY=${PUBLIC_KEY}")
+if [[ "$STATEFUL_RUNPOD_CLOUD_TYPE" == "COMMUNITY" ]]; then
+    CMD+=(--public-ip)
+fi
 
-runpodctl create pod \
-    --name "$POD_NAME" \
-    --imageName "$IMAGE" \
-    --containerDiskSize "$CONTAINER_DISK" \
-    --volumeSize "$VOLUME_SIZE" \
-    --volumePath "/data" \
-    --ports "22/tcp,6379/tcp,8080/http,9100/http,8056/http" \
-    "${ENV_FLAGS[@]}"
+"${CMD[@]}"
 
 echo ""
 echo "Pod created."

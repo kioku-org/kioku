@@ -45,19 +45,18 @@ sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/ssh
 if [[ ! -f "$PGDATA/PG_VERSION" ]]; then
     echo "[KIOKU] Initializing PostgreSQL ${PG_MAJOR}..."
     sudo -u postgres "$PG_BIN/initdb" -D "$PGDATA"
-    {
-        echo "listen_addresses='*'"
-        echo "host all all 0.0.0.0/0 trust"
-    } >> "$PGDATA/postgresql.conf"
+    echo "listen_addresses='*'" >> "$PGDATA/postgresql.conf"
     echo "host all all 0.0.0.0/0 trust" >> "$PGDATA/pg_hba.conf"
 
     sudo -u postgres "$PG_BIN/pg_ctl" -D "$PGDATA" -w start
     sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" 2>/dev/null || true
     sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};"
     sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS vector;"
+    sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
     sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
     sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$DB_NAME" -c "CREATE SCHEMA IF NOT EXISTS hivemind;"
     sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$DB_NAME" -c "CREATE SCHEMA IF NOT EXISTS vexa;"
+    sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$DB_NAME" -c "ALTER ROLE ${DB_USER} IN DATABASE ${DB_NAME} SET search_path TO hivemind,public;"
     sudo -u postgres "$PG_BIN/pg_ctl" -D "$PGDATA" -m fast -w stop
 fi
 
@@ -161,14 +160,14 @@ stderr_logfile=/var/log/ollama_pull.err
 
 [program:hivemind]
 command=/usr/local/bin/kioku-hivemind
-environment=DB_HOST="localhost",DB_PORT="5432",DB_NAME="${DB_NAME}",DB_USER="${DB_USER}",DB_PASSWORD="${DB_PASSWORD}",DB_MAX_CONNECTIONS="10",DB_SCHEMA="hivemind",JWT_SECRET="${HIVEMIND_JWT_SECRET}",JWT_TTL_SECONDS="2592000",ENCRYPTION_SECRET="${HIVEMIND_ENCRYPTION_SECRET}",VEXA_API_URL="http://localhost:8000",VEXA_ADMIN_API_URL="http://localhost:8001",VEXA_ADMIN_TOKEN="${VEXA_ADMIN_API_TOKEN}",HOST="0.0.0.0",PORT="9100",EMBEDDING_API_URL="http://localhost:11434",EMBEDDING_MODEL="nomic-embed-text-v2-moe",QDRANT_URL="http://localhost:6334",QDRANT_API_KEY="${QDRANT_API_KEY:-}"
+environment=DB_HOST="localhost",DB_PORT="5432",DB_NAME="${DB_NAME}",DB_USER="${DB_USER}",DB_PASSWORD="${DB_PASSWORD}",DB_MAX_CONNECTIONS="10",DB_SCHEMA="hivemind",JWT_SECRET="${HIVEMIND_JWT_SECRET}",JWT_TTL_SECONDS="2592000",ENCRYPTION_SECRET="${HIVEMIND_ENCRYPTION_SECRET}",VEXA_API_URL="http://localhost:8056",VEXA_ADMIN_API_URL="http://localhost:8001",VEXA_ADMIN_TOKEN="${VEXA_ADMIN_API_TOKEN}",HOST="0.0.0.0",PORT="9100",EMBEDDING_API_URL="http://localhost:11434",EMBEDDING_MODEL="nomic-embed-text-v2-moe",QDRANT_URL="http://localhost:6334",QDRANT_API_KEY="${QDRANT_API_KEY:-}"
 autostart=true
 autorestart=true
 stdout_logfile=/var/log/hivemind.log
 stderr_logfile=/var/log/hivemind.err
 
 [program:vexa-api-gateway]
-command=/opt/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+command=/opt/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8056
 directory=/opt/vexa/services/api-gateway
 environment=ADMIN_API_URL="http://localhost:8001",MEETING_API_URL="http://localhost:8080",TRANSCRIPTION_COLLECTOR_URL="http://localhost:8080",MCP_URL="http://localhost:18888",AGENT_API_URL="http://localhost:8100",REDIS_URL="${REDIS_LOCAL_URL}",PUBLIC_BASE_URL="${VEXA_PUBLIC_URL:-http://localhost:8056}",TRANSCRIPT_SHARE_TTL_SECONDS="900",INTERNAL_API_SECRET="${INTERNAL_API_SECRET:-}",VEXA_ENV="${VEXA_ENV:-production}",CORS_ORIGINS="${CORS_ORIGINS:-*}",LOG_LEVEL="${LOG_LEVEL:-INFO}",DB_HOST="localhost",DB_PORT="5432",DB_NAME="${DB_NAME}",DB_USER="${DB_USER}",DB_PASSWORD="${DB_PASSWORD}",DB_SCHEMA="vexa",DB_SSL_MODE="disable"
 autostart=true
@@ -206,7 +205,7 @@ stderr_logfile=/var/log/vexa-agent-api.err
 [program:vexa-mcp]
 command=/opt/venv/bin/python main.py
 directory=/opt/vexa/services/mcp
-environment=API_GATEWAY_URL="http://localhost:8000",VEXA_ENV="${VEXA_ENV:-production}",LOG_LEVEL="${LOG_LEVEL:-INFO}"
+environment=API_GATEWAY_URL="http://localhost:8056",VEXA_ENV="${VEXA_ENV:-production}",LOG_LEVEL="${LOG_LEVEL:-INFO}"
 autostart=true
 autorestart=true
 stdout_logfile=/var/log/vexa-mcp.log
@@ -224,7 +223,7 @@ stderr_logfile=/var/log/vexa-tts.err
 [program:runtime-api]
 command=/opt/venv/bin/uvicorn runtime_api.main:app --host 0.0.0.0 --port 8090
 directory=/opt/vexa/services/runtime-api
-environment=ORCHESTRATOR_BACKEND="${ORCHESTRATOR_BACKEND:-runpod}",REDIS_URL="${REDIS_LOCAL_URL}",RUNPOD_API_KEY="${RUNPOD_API_KEY}",RUNPOD_GPU_TYPE="${RUNPOD_GPU_TYPE:-NVIDIA GeForce RTX 3090}",RUNPOD_CLOUD_TYPE="${RUNPOD_CLOUD_TYPE:-COMMUNITY}",RUNPOD_CONTAINER_DISK_GB="${RUNPOD_CONTAINER_DISK_GB:-40}",RUNPOD_POLL_INTERVAL="${RUNPOD_POLL_INTERVAL:-15}",HOST="0.0.0.0",PORT="8090",LOG_LEVEL="${LOG_LEVEL:-INFO}",VEXA_ENV="${VEXA_ENV:-production}"
+environment=ORCHESTRATOR_BACKEND="${ORCHESTRATOR_BACKEND:-runpod}",REDIS_URL="${REDIS_LOCAL_URL}",RUNPOD_ACCOUNT_API_KEY="${RUNPOD_ACCOUNT_API_KEY:-${RUNPOD_API_KEY:-}}",RUNPOD_GPU_TYPE="${RUNPOD_GPU_TYPE:-NVIDIA GeForce RTX 3090}",RUNPOD_GPU_TYPES="${RUNPOD_GPU_TYPES:-NVIDIA GeForce RTX 3090,NVIDIA GeForce RTX 5090,NVIDIA RTX A5000,NVIDIA RTX A4000}",RUNPOD_CLOUD_TYPE="${RUNPOD_CLOUD_TYPE:-COMMUNITY}",RUNPOD_CONTAINER_DISK_GB="${RUNPOD_CONTAINER_DISK_GB:-40}",RUNPOD_POLL_INTERVAL="${RUNPOD_POLL_INTERVAL:-15}",BROWSER_IMAGE="${BROWSER_IMAGE:-${BOT_IMAGE}}",HOST="0.0.0.0",PORT="8090",LOG_LEVEL="${LOG_LEVEL:-INFO}",VEXA_ENV="${VEXA_ENV:-production}"
 autostart=true
 autorestart=true
 stdout_logfile=/var/log/runtime-api.log

@@ -79,12 +79,15 @@ Full reference for all configuration options.
 
 | Variable | Default | Description |
 |---|---|---|
-| `RUNPOD_API_KEY` | — | RunPod API key (required for bot spawning) |
+| `RUNPOD_API_KEY` | — | Local/dev fallback for the RunPod account API key |
+| `RUNPOD_ACCOUNT_API_KEY` | — | Preferred RunPod account API key inside deployed stateful pods |
 | `RUNPOD_GPU_TYPE` | `NVIDIA GeForce RTX 3090` | GPU type for bot pods |
+| `RUNPOD_GPU_TYPES` | `NVIDIA GeForce RTX 3090,NVIDIA GeForce RTX 5090,NVIDIA RTX A5000,NVIDIA RTX A4000` | Ordered GPU fallback list for bot pods |
 | `RUNPOD_CLOUD_TYPE` | `COMMUNITY` | Cloud tier (`SECURE` or `COMMUNITY`) |
 | `RUNPOD_CONTAINER_DISK_GB` | `40` | Container disk size for bot pods |
 | `RUNPOD_POLL_INTERVAL` | `15` | Pod status poll interval (seconds) |
 | `BOT_IMAGE` | `kyomoto/kioku-stateless:latest` | Image for bot pods |
+| `BROWSER_IMAGE` | defaults to `BOT_IMAGE` | Browser/runtime image passed into the meeting profile |
 | `BOT_REDIS_URL` | defaults to `REDIS_URL` | Redis URL passed to bot pods |
 | `BOT_MEETING_API_URL` | defaults to `MEETING_API_URL` | Meeting API URL passed to bot pods |
 
@@ -94,3 +97,5 @@ Full reference for all configuration options.
 |---|---|---|
 | `KIOKU_VEXA_PATH` | `../../services/vexa` | Path to vexa source (for Docker builds) |
 | `HIVEMIND_PATH` | `../../services/hivemind` | Path to hivemind source (for Docker builds) |
+| `CONTAINER_DISK_GB` | `20` | Default container disk used by `deployment/runpod/deploy.sh` for the stateful CPU pod |
+| `STATEFUL_RUNPOD_CLOUD_TYPE` | `COMMUNITY` | Cloud tier used by `deployment/runpod/deploy.sh` for the long-lived stateful pod |
