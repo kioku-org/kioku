@@ -266,9 +266,18 @@ jobs:
           echo ""
           echo "=== Redis AUTH ==="
           if [ -n "$REDIS_PUBLIC_PORT" ]; then
-            REDIS_RESP=$(redis-cli -h "$POD_IP" -p "$REDIS_PUBLIC_PORT" -a "ci-test-redis-password" PING 2>/dev/null || echo "FAIL")
-            if echo "$REDIS_RESP" | grep -q PONG; then
-              echo "  PASS: Redis AUTH (PONG)"
+            REDIS_RESP=$(timeout 10 bash -c '
+              exec 3<>"/dev/tcp/$POD_IP/$REDIS_PUBLIC_PORT"
+              printf "*2\r\n$4\r\nAUTH\r\n$22\r\nci-test-redis-password\r\n" >&3
+              IFS= read -r AUTH_REPLY <&3 || true
+              printf "*1\r\n$4\r\nPING\r\n" >&3
+              IFS= read -r PING_REPLY <&3 || true
+              exec 3<&-
+              exec 3>&-
+              printf "AUTH=%s PING=%s\n" "${AUTH_REPLY%$'\''\r'\''}" "${PING_REPLY%$'\''\r'\''}"
+            ' 2>&1 || true)
+            if echo "$REDIS_RESP" | grep -q "AUTH=+OK PING=+PONG"; then
+              echo "  PASS: Redis AUTH ($REDIS_RESP)"
             else
               echo "  FAIL: Redis AUTH ($REDIS_RESP)"
               FAIL=$((FAIL + 1))
