@@ -1,13 +1,12 @@
 name: RunPod Integration Test
 
 on:
-  push:
-    branches: [master, main]
-    paths:
-      - 'services/**'
-      - 'deployment/runpod/**'
-      - '.github/workflows/build-images.yml'
-      - '.github/workflows/runpod-test.yml'
+  workflow_dispatch:
+    inputs:
+      image_sha:
+        description: 'Short or full Git SHA whose published images should be tested'
+        required: true
+        type: string
   workflow_run:
     workflows: ["Build and Push Docker Images"]
     types: [completed]
@@ -17,15 +16,68 @@ jobs:
   runpod-test:
     runs-on: ubuntu-latest
     environment: dev
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'push' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve image tags
+        id: images
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            RAW_SHA="${{ github.event.workflow_run.head_sha }}"
+          else
+            RAW_SHA="${{ inputs.image_sha }}"
+          fi
+
+          SHORT_SHA="${RAW_SHA:0:7}"
+          if [ -z "$SHORT_SHA" ]; then
+            echo "ERROR: could not resolve image SHA"
+            exit 1
+          fi
+
+          echo "Testing published images for SHA: $SHORT_SHA"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "stateful_image=kyomoto/kioku-stateful:$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "stateless_image=kyomoto/kioku-stateless:$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for published images
+        env:
+          STATEFUL_IMAGE: ${{ steps.images.outputs.stateful_image }}
+          STATELESS_IMAGE: ${{ steps.images.outputs.stateless_image }}
+        run: |
+          set -euo pipefail
+
+          wait_for_image() {
+            local image="$1"
+            local name="$2"
+            local max_tries="${3:-30}"
+
+            for try in $(seq 1 "$max_tries"); do
+              if docker manifest inspect "$image" >/dev/null 2>&1; then
+                echo "  PASS: $name is published as $image"
+                return 0
+              fi
+              echo "  ... $name not visible yet as $image (try $try/$max_tries), retrying in 10s..."
+              sleep 10
+            done
+
+            echo "ERROR: $name image not published in time: $image"
+            exit 1
+          }
+
+          echo "=== Waiting for published Docker images ==="
+          wait_for_image "$STATEFUL_IMAGE" "Stateful image"
+          wait_for_image "$STATELESS_IMAGE" "Stateless image"
 
       - name: Deploy stateful pod
         id: deploy
         env:
           RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+          STATEFUL_IMAGE: ${{ steps.images.outputs.stateful_image }}
+          STATELESS_IMAGE: ${{ steps.images.outputs.stateless_image }}
         run: |
           set -euo pipefail
 
@@ -43,7 +95,7 @@ jobs:
           PAYLOAD=$(cat <<EOF
           {
             "name": "$POD_NAME",
-            "imageName": "kyomoto/kioku-stateful:latest",
+            "imageName": "$STATEFUL_IMAGE",
             "computeType": "CPU",
             "vcpuCount": 4,
             "containerDiskInGb": 20,
@@ -59,8 +111,8 @@ jobs:
               "INTERNAL_API_SECRET": "ci-test-internal-secret",
               "ORCHESTRATOR_BACKEND": "runpod",
               "RUNPOD_ACCOUNT_API_KEY": "$RUNPOD_API_KEY",
-              "BOT_IMAGE": "kyomoto/kioku-stateless:latest",
-              "BROWSER_IMAGE": "kyomoto/kioku-stateless:latest",
+              "BOT_IMAGE": "$STATELESS_IMAGE",
+              "BROWSER_IMAGE": "$STATELESS_IMAGE",
               "VEXA_PUBLIC_URL": "http://localhost:8056",
               "CORS_ORIGINS": "*",
               "LOG_LEVEL": "INFO",
@@ -267,6 +319,7 @@ jobs:
           POD_IP: ${{ steps.wait.outputs.pod_ip }}
           REDIS_PUBLIC_PORT: ${{ steps.wait.outputs.redis_public_port }}
           RUNTIME_API_URL: ${{ steps.wait.outputs.runtime_api_url }}
+          STATELESS_IMAGE: ${{ steps.images.outputs.stateless_image }}
         run: |
           set -euo pipefail
 
@@ -324,7 +377,7 @@ jobs:
 
             echo "  [$ELAPSED/${MAX_WAIT}s] desiredStatus=$STATUS gpuCount=$GPU_COUNT imageName=$IMAGE_NAME"
 
-            if [ "$GPU_COUNT" = "1" ] && [ "$IMAGE_NAME" = "kyomoto/kioku-stateless:latest" ]; then
+            if [ "$GPU_COUNT" = "1" ] && [ "$IMAGE_NAME" = "$STATELESS_IMAGE" ]; then
               echo "Stateless pod allocation looks correct"
               break
             fi
