@@ -86,6 +86,34 @@ impl axum::extract::FromRequestParts<AppState> for AuthContext {
             ));
         }
 
+        // Validate that the token has not been revoked (e.g. via signout).
+        let token_exists = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM auth_tokens WHERE token = $1)",
+        )
+        .bind(token)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to validate token: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiError {
+                    ok: false,
+                    error: "Internal server error".into(),
+                }),
+            )
+        })?;
+
+        if !token_exists {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(ApiError {
+                    ok: false,
+                    error: "Token has been revoked. Please re-authenticate.".into(),
+                }),
+            ));
+        }
+
         Ok(AuthContext {
             user_id: claims.user_id,
             company_id: claims.company_id,
