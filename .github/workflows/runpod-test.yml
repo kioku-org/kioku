@@ -270,9 +270,9 @@ jobs:
           if [ -n "$REDIS_PUBLIC_PORT" ]; then
             REDIS_RESP=$(timeout 10 bash -c '
               exec 3<>"/dev/tcp/$POD_IP/$REDIS_PUBLIC_PORT"
-              printf "*2\r\n$4\r\nAUTH\r\n$22\r\nci-test-redis-password\r\n" >&3
+              printf "*2\r\n\$4\r\nAUTH\r\n\$22\r\nci-test-redis-password\r\n" >&3
               IFS= read -r AUTH_REPLY <&3 || true
-              printf "*1\r\n$4\r\nPING\r\n" >&3
+              printf "*1\r\n\$4\r\nPING\r\n" >&3
               IFS= read -r PING_REPLY <&3 || true
               exec 3<&-
               exec 3>&-
