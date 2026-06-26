@@ -1,10 +1,9 @@
 #![cfg(feature = "integration")]
 
 use cc_kioku::KiokuClient;
-use serde_json::json;
-use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::sync::OnceCell;
 
-static SETUP_DONE: AtomicBool = AtomicBool::new(false);
+static SETUP: OnceCell<()> = OnceCell::const_new();
 
 fn base_url() -> String {
     std::env::var("HIVEMIND_URL").unwrap_or_else(|_| "http://localhost:9100".into())
@@ -14,18 +13,19 @@ async fn setup() -> (KiokuClient, String) {
     let base = base_url();
     let client = KiokuClient::new(&base);
 
-    if !SETUP_DONE.swap(true, Ordering::SeqCst) {
-        // Register admin (ignore if already registered)
-        let _ = client
-            .register_admin(
-                "cli-test-company",
-                Some("cli-test"),
-                "cli_test@example.com",
-                "CLI Test User",
-                "testpassword123",
-            )
-            .await;
-    }
+    SETUP
+        .get_or_init(|| async {
+            let _ = client
+                .register_admin(
+                    "cli-test-company",
+                    Some("cli-test"),
+                    "cli_test@example.com",
+                    "CLI Test User",
+                    "testpassword123",
+                )
+                .await;
+        })
+        .await;
 
     let session = client
         .signin("cli_test@example.com", "testpassword123")

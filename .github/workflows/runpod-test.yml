@@ -101,7 +101,7 @@ jobs:
             "computeType": "CPU",
             "vcpuCount": 4,
             "containerDiskInGb": 20,
-            "ports": ["22/tcp", "6379/tcp", "8080/http", "8090/http", "9100/http", "8056/http"],
+            "ports": ["22/tcp", "6379/tcp", "8080/http", "8090/http", "9100/http", "8056/http", "11434/http"],
             "env": {
               "DB_NAME": "kioku",
               "DB_USER": "kioku",
@@ -189,7 +189,9 @@ jobs:
 
               # Extract mapped public ports for TCP connections
               REDIS_PUBLIC_PORT=$(echo "$POD_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('portMappings',{}).get('6379',''))" 2>/dev/null || echo "")
+              EMBEDDING_PUBLIC_PORT=$(echo "$POD_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('portMappings',{}).get('11434',''))" 2>/dev/null || echo "")
               echo "redis_public_port=$REDIS_PUBLIC_PORT" >> $GITHUB_OUTPUT
+              echo "embedding_public_port=$EMBEDDING_PUBLIC_PORT" >> $GITHUB_OUTPUT
 
               # HTTP ports use RunPod proxy URLs: https://<pod-id>-<port>.proxy.runpod.net
               echo "hivemind_url=https://${POD_ID}-9100.proxy.runpod.net" >> $GITHUB_OUTPUT
@@ -212,6 +214,7 @@ jobs:
         env:
           POD_IP: ${{ steps.wait.outputs.pod_ip }}
           REDIS_PUBLIC_PORT: ${{ steps.wait.outputs.redis_public_port }}
+          EMBEDDING_PUBLIC_PORT: ${{ steps.wait.outputs.embedding_public_port }}
           HIVEMIND_URL: ${{ steps.wait.outputs.hivemind_url }}
           MEETING_API_URL: ${{ steps.wait.outputs.meeting_api_url }}
           VEXA_GATEWAY_URL: ${{ steps.wait.outputs.vexa_gateway_url }}
@@ -256,6 +259,11 @@ jobs:
           check_http_retry "$MEETING_API_URL/health" "Vexa Meeting API" 18
           check_http_retry "$VEXA_GATEWAY_URL/" "Vexa API Gateway" 18
           check_http_retry "$RUNTIME_API_URL/health" "Runtime API" 6
+          if [ -n "$EMBEDDING_PUBLIC_PORT" ]; then
+            check_http_retry "http://$POD_IP:$EMBEDDING_PUBLIC_PORT/api/tags" "Ollama embedding API" 18
+          else
+            echo "  SKIP: Ollama embedding API (no port mapping)"
+          fi
 
           echo ""
           echo "=== TCP ports (via mapped public ports) ==="
@@ -328,11 +336,11 @@ jobs:
       - name: Run hivemind integration tests
         env:
           HIVEMIND_URL: ${{ steps.wait.outputs.hivemind_url }}
-          EMBEDDING_API_URL: ${{ steps.wait.outputs.hivemind_url }}/../11434
+          EMBEDDING_API_URL: http://${{ steps.wait.outputs.pod_ip }}:${{ steps.wait.outputs.embedding_public_port }}
           DATABASE_URL: postgres://kioku:kioku@${{ steps.wait.outputs.pod_ip }}:5432/kioku
         run: |
           set -euo pipefail
-          cargo test --manifest-path services/hivemind/Cargo.toml -p kioku-hivemind-integration-tests 2>&1
+          cargo test --manifest-path services/hivemind/tests/Cargo.toml -p kioku-hivemind-integration-tests 2>&1
         working-directory: .
 
       - name: Run CLI integration tests
