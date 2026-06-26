@@ -225,12 +225,12 @@ jobs:
           FAIL=0
 
           check_http_retry() {
-            local url="$1" name="$2" max_tries="${3:-12}"
+            local url="$1" name="$2" max_tries="${3:-12}" expected_code="${4:-200}"
             local try=1
             while [ $try -le $max_tries ]; do
               local code
               code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$url" 2>/dev/null || echo "000")
-              if [ "$code" -ge 200 ] && [ "$code" -lt 500 ]; then
+              if [ "$code" = "$expected_code" ]; then
                 echo "  PASS: $name (HTTP $code, try $try)"
                 return 0
               fi
@@ -244,23 +244,56 @@ jobs:
             FAIL=$((FAIL + 1))
           }
 
-          check_tcp() {
-            local host="$1" port="$2" name="$3"
-            if timeout 10 bash -c "echo > /dev/tcp/$host/$port" 2>/dev/null; then
-              echo "  PASS: $name (TCP $host:$port)"
-            else
-              echo "  FAIL: $name (TCP $host:$port)"
-              FAIL=$((FAIL + 1))
-            fi
+          check_tcp_retry() {
+            local host="$1" port="$2" name="$3" max_tries="${4:-12}"
+            local try=1
+            while [ $try -le $max_tries ]; do
+              if timeout 10 bash -c "echo > /dev/tcp/$host/$port" 2>/dev/null; then
+                echo "  PASS: $name (TCP $host:$port, try $try)"
+                return 0
+              fi
+              echo "  ... $name: TCP $host:$port not ready (try $try/$max_tries), retrying in 10s..."
+              sleep 10
+              try=$((try + 1))
+            done
+            echo "  FAIL: $name (TCP $host:$port after $max_tries tries)"
+            FAIL=$((FAIL + 1))
+          }
+
+          check_redis_auth_retry() {
+            local host="$1" port="$2" password="$3" max_tries="${4:-12}"
+            local try=1
+            while [ $try -le $max_tries ]; do
+              local redis_resp
+              redis_resp=$(timeout 10 bash -c '
+                exec 3<>"/dev/tcp/'"$host"'/'"$port"'"
+                printf "*2\r\n\$4\r\nAUTH\r\n\$'"${#password}"'\r\n'"$password"'\r\n" >&3
+                IFS= read -r AUTH_REPLY <&3 || true
+                printf "*1\r\n\$4\r\nPING\r\n" >&3
+                IFS= read -r PING_REPLY <&3 || true
+                exec 3<&-
+                exec 3>&-
+                printf "AUTH=%s PING=%s\n" "${AUTH_REPLY%$'\''\r'\''}" "${PING_REPLY%$'\''\r'\''}"
+              ' 2>&1 || true)
+              if echo "$redis_resp" | grep -q "AUTH=+OK PING=+PONG"; then
+                echo "  PASS: Redis AUTH ($redis_resp, try $try)"
+                return 0
+              fi
+              echo "  ... Redis AUTH: $redis_resp (try $try/$max_tries), retrying in 10s..."
+              sleep 10
+              try=$((try + 1))
+            done
+            echo "  FAIL: Redis AUTH (host=$host port=$port after $max_tries tries)"
+            FAIL=$((FAIL + 1))
           }
 
           echo "=== HTTP endpoints (via RunPod proxy, with retries) ==="
-          check_http_retry "$HIVEMIND_URL/health" "Hivemind API" 18
-          check_http_retry "$MEETING_API_URL/health" "Vexa Meeting API" 18
-          check_http_retry "$VEXA_GATEWAY_URL/" "Vexa API Gateway" 18
-          check_http_retry "$RUNTIME_API_URL/health" "Runtime API" 6
+          check_http_retry "$HIVEMIND_URL/health" "Hivemind API" 18 200
+          check_http_retry "$MEETING_API_URL/health" "Vexa Meeting API" 18 200
+          check_http_retry "$VEXA_GATEWAY_URL/" "Vexa API Gateway" 18 200
+          check_http_retry "$RUNTIME_API_URL/health" "Runtime API" 18 200
           if [ -n "$EMBEDDING_PUBLIC_PORT" ]; then
-            check_http_retry "http://$POD_IP:$EMBEDDING_PUBLIC_PORT/api/tags" "Ollama embedding API" 18
+            check_http_retry "http://$POD_IP:$EMBEDDING_PUBLIC_PORT/api/tags" "Ollama embedding API" 18 200
           else
             echo "  SKIP: Ollama embedding API (no port mapping)"
           fi
@@ -268,7 +301,7 @@ jobs:
           echo ""
           echo "=== TCP ports (via mapped public ports) ==="
           if [ -n "$REDIS_PUBLIC_PORT" ]; then
-            check_tcp "$POD_IP" "$REDIS_PUBLIC_PORT" "Redis"
+            check_tcp_retry "$POD_IP" "$REDIS_PUBLIC_PORT" "Redis" 18
           else
             echo "  SKIP: Redis (no port mapping)"
           fi
@@ -276,22 +309,7 @@ jobs:
           echo ""
           echo "=== Redis AUTH ==="
           if [ -n "$REDIS_PUBLIC_PORT" ]; then
-            REDIS_RESP=$(timeout 10 bash -c '
-              exec 3<>"/dev/tcp/$POD_IP/$REDIS_PUBLIC_PORT"
-              printf "*2\r\n\$4\r\nAUTH\r\n\$22\r\nci-test-redis-password\r\n" >&3
-              IFS= read -r AUTH_REPLY <&3 || true
-              printf "*1\r\n\$4\r\nPING\r\n" >&3
-              IFS= read -r PING_REPLY <&3 || true
-              exec 3<&-
-              exec 3>&-
-              printf "AUTH=%s PING=%s\n" "${AUTH_REPLY%$'\''\r'\''}" "${PING_REPLY%$'\''\r'\''}"
-            ' 2>&1 || true)
-            if echo "$REDIS_RESP" | grep -q "AUTH=+OK PING=+PONG"; then
-              echo "  PASS: Redis AUTH ($REDIS_RESP)"
-            else
-              echo "  FAIL: Redis AUTH ($REDIS_RESP)"
-              FAIL=$((FAIL + 1))
-            fi
+            check_redis_auth_retry "$POD_IP" "$REDIS_PUBLIC_PORT" "ci-test-redis-password" 18
           else
             echo "  SKIP: Redis AUTH (no port mapping)"
           fi
