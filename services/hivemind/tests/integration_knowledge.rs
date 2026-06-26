@@ -13,7 +13,8 @@ fn client() -> Client {
 }
 
 async fn embedding_available() -> bool {
-    let url = std::env::var("EMBEDDING_API_URL").unwrap_or_else(|_| "http://localhost:11434".into());
+    let url =
+        std::env::var("EMBEDDING_API_URL").unwrap_or_else(|_| "http://localhost:11434".into());
     Client::new()
         .get(format!("{}/api/tags", url))
         .send()
@@ -214,7 +215,11 @@ async fn meeting_ingest_then_search() {
         .send()
         .await
         .unwrap();
-    assert!(resp.status().is_success(), "Ingest failed: {}", resp.status());
+    assert!(
+        resp.status().is_success(),
+        "Ingest failed: {}",
+        resp.status()
+    );
     let meeting: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(meeting["title"], "Q4 Product Roadmap Review");
 
@@ -227,19 +232,31 @@ async fn meeting_ingest_then_search() {
         .send()
         .await
         .unwrap();
-    assert!(search_resp.status().is_success(), "Search failed: {}", search_resp.status());
+    assert!(
+        search_resp.status().is_success(),
+        "Search failed: {}",
+        search_resp.status()
+    );
     let results: serde_json::Value = search_resp.json().await.unwrap();
     let arr = results.as_array().unwrap();
-    assert!(!arr.is_empty(), "Should find results for mobile redesign query");
+    assert!(
+        !arr.is_empty(),
+        "Should find results for mobile redesign query"
+    );
 
     let first = &arr[0];
     let chunk_text = first["chunk"]["text"].as_str().unwrap_or("").to_lowercase();
     assert!(
-        chunk_text.contains("mobile") || chunk_text.contains("redesign") || chunk_text.contains("react"),
+        chunk_text.contains("mobile")
+            || chunk_text.contains("redesign")
+            || chunk_text.contains("react"),
         "Top result should contain mobile/redesign/React, got: {}",
         chunk_text
     );
-    assert!(first["meeting"]["id"].is_string(), "Meeting ID should be present");
+    assert!(
+        first["meeting"]["id"].is_string(),
+        "Meeting ID should be present"
+    );
 }
 
 #[tokio::test]
@@ -279,8 +296,14 @@ async fn meeting_ingest_search_scoped_to_company() {
     assert!(resp.status().is_success());
     let results: serde_json::Value = resp.json().await.unwrap();
     for result in results.as_array().unwrap() {
-        let text = result["chunk"]["text"].as_str().unwrap_or("").to_lowercase();
-        assert!(!text.contains("phoenix"), "Company B should not see Company A's data");
+        let text = result["chunk"]["text"]
+            .as_str()
+            .unwrap_or("")
+            .to_lowercase();
+        assert!(
+            !text.contains("phoenix"),
+            "Company B should not see Company A's data"
+        );
     }
 }
 
@@ -322,11 +345,21 @@ async fn knowledge_search_result_format() {
     let results: serde_json::Value = resp.json().await.unwrap();
     for result in results.as_array().unwrap() {
         assert!(result["chunk"].is_object(), "Result must have chunk object");
-        assert!(result["meeting"].is_object(), "Result must have meeting object");
-        assert!(result["score"].is_number(), "Result must have numeric score");
+        assert!(
+            result["meeting"].is_object(),
+            "Result must have meeting object"
+        );
+        assert!(
+            result["score"].is_number(),
+            "Result must have numeric score"
+        );
         assert!(result["chunk"]["text"].is_string(), "Chunk must have text");
         let score = result["score"].as_f64().unwrap();
-        assert!((0.0..=1.0).contains(&score), "Score should be 0-1, got {}", score);
+        assert!(
+            (0.0..=1.0).contains(&score),
+            "Score should be 0-1, got {}",
+            score
+        );
         assert!(result["meeting"]["id"].is_string(), "Meeting must have id");
     }
 }
@@ -425,7 +458,11 @@ async fn knowledge_search_limit_respected() {
     assert!(resp.status().is_success());
     let results: serde_json::Value = resp.json().await.unwrap();
     let arr = results.as_array().unwrap();
-    assert!(arr.len() <= 2, "Should respect limit of 2, got {}", arr.len());
+    assert!(
+        arr.len() <= 2,
+        "Should respect limit of 2, got {}",
+        arr.len()
+    );
 }
 
 #[tokio::test]
@@ -479,8 +516,14 @@ async fn meeting_search_after_delete() {
     assert!(post_del_search.status().is_success());
     let post_results: serde_json::Value = post_del_search.json().await.unwrap();
     for result in post_results.as_array().unwrap() {
-        let text = result["chunk"]["text"].as_str().unwrap_or("").to_lowercase();
-        assert!(!text.contains("serengeti"), "Deleted meeting content should not appear");
+        let text = result["chunk"]["text"]
+            .as_str()
+            .unwrap_or("")
+            .to_lowercase();
+        assert!(
+            !text.contains("serengeti"),
+            "Deleted meeting content should not appear"
+        );
     }
 }
 
@@ -521,7 +564,10 @@ async fn meeting_search_finds_content_across_chunks() {
         .unwrap();
     assert!(resp.status().is_success());
     let results: serde_json::Value = resp.json().await.unwrap();
-    assert!(!results.as_array().unwrap().is_empty(), "Should find results across chunks");
+    assert!(
+        !results.as_array().unwrap().is_empty(),
+        "Should find results across chunks"
+    );
 }
 
 #[tokio::test]
