@@ -46,7 +46,7 @@ jobs:
             kyomoto/kioku-stateful:${{ steps.meta.outputs.tag }}
             kyomoto/kioku-stateful:${{ steps.meta.outputs.sha }}
           cache-from: type=gha,scope=stateful
-          cache-to: type=gha,scope=stateful,mode=max
+          cache-to: type=gha,scope=stateful,mode=max,ignore-error=true
 
   build-stateless:
     runs-on: ubuntu-latest
@@ -81,4 +81,4 @@ jobs:
             kyomoto/kioku-stateless:${{ steps.meta.outputs.tag }}
             kyomoto/kioku-stateless:${{ steps.meta.outputs.sha }}
           cache-from: type=gha,scope=stateless
-          cache-to: type=gha,scope=stateless,mode=max
+          cache-to: type=gha,scope=stateless,mode=max,ignore-error=true
