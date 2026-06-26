@@ -73,4 +73,10 @@ See `apps/cli/AGENTS.md` for Rust coding guidelines.
 | Workflow | Trigger | Description |
 |---|---|---|
 | `build-images.yml` | Push to master | Build + push Docker images to Docker Hub |
-| `runpod-test.yml` | After build completes | Deploy pod on RunPod, health checks, cleanup |
+| `runpod-test.yml` | After build completes or manual `workflow_dispatch` | Deploy pod on RunPod, run live API + CLI integration tests, validate stateless pod spawn, cleanup |
+
+To manually validate a published RunPod image SHA:
+
+```bash
+gh workflow run "RunPod Integration Test" -f image_sha=<short-or-full-git-sha>
+```

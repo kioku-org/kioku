@@ -15,7 +15,7 @@ Deploy Kioku on RunPod with a two-pod architecture: always-on CPU stateful pod +
 │  ├── vexa-admin-api   ├── vexa-agent-api              │
 │  ├── vexa-mcp          ├── vexa-tts-service            │
 │  └── runtime-api (ORCHESTRATOR_BACKEND=runpod)        │
-│  Exposed: 22, 6379, 8080, 9100, 8056                  │
+│  Exposed: 22, 6379, 8080, 8090, 9100, 8056, 11434     │
 └────────────┬──────────────────────────────────────────┘
              │ RunPod REST API (create/stop pod)
              ▼
@@ -35,6 +35,9 @@ Deploy Kioku on RunPod with a two-pod architecture: always-on CPU stateful pod +
 | `kyomoto/kioku-stateless:latest` | Docker Hub | GPU, ephemeral |
 
 Images are built automatically by GitHub Actions on push to master.
+The RunPod validation workflow can also be dispatched manually for a specific
+published image SHA when you want to re-run the end-to-end pod test without
+waiting on a new push.
 
 ## Deploy
 
@@ -89,3 +92,20 @@ Bot pods only cost money while a meeting is in progress. A 1-hour meeting costs 
 <Note>
   Bot pod startup latency is ~30-60s vs ~2s for Docker Compose. Plan accordingly for time-sensitive meetings.
 </Note>
+
+## CI Validation
+
+The GitHub Actions `RunPod Integration Test` workflow validates the published
+RunPod images by:
+
+1. Waiting for the stateful and stateless Docker Hub images for a target SHA
+2. Starting a stateful CPU pod on RunPod
+3. Verifying service health, including the Ollama embedding endpoint on `11434`
+4. Running the Hivemind and CLI integration suites against the live pod
+5. Spawning and deleting a stateless bot pod via `runtime-api`
+
+To run that workflow manually for a specific published SHA:
+
+```bash
+gh workflow run "RunPod Integration Test" -f image_sha=<short-or-full-git-sha>
+```
