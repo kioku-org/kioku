@@ -2,7 +2,6 @@ use axum::{
     body::Body,
     extract::State,
     http::{Request, Response, StatusCode},
-    response::IntoResponse,
     routing::{get, post},
     Router,
 };

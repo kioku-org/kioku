@@ -37,7 +37,7 @@ jobs:
         env:
           SQLX_OFFLINE: "true"
 
-  hivemind-unit:
+  hivemind-build:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -48,10 +48,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: services/hivemind
+      - name: Build release binary
+        run: cargo build --release
+        env:
+          SQLX_OFFLINE: "true"
       - name: Unit tests
         run: cargo test --bin kioku-hivemind
         env:
           SQLX_OFFLINE: "true"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hivemind-binary
+          path: services/hivemind/target/release/kioku-hivemind
+          retention-days: 1
 
   # ── Dashboard ─────────────────────────────────────────────────────────────
   dashboard-unit:
@@ -138,7 +147,7 @@ jobs:
   # ── Integration: hivemind + dashboard + mcp ───────────────────────────────
   integration:
     runs-on: ubuntu-latest
-    needs: [hivemind-unit, dashboard-unit, mcp-unit]
+    needs: [hivemind-build, dashboard-unit, mcp-unit]
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -166,10 +175,13 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v4
         with:
-          workspaces: services/hivemind
+          name: hivemind-binary
+          path: hivemind-bin
+
+      - name: Make binary executable
+        run: chmod +x hivemind-bin/kioku-hivemind
 
       - name: Init database schema
         run: |
@@ -196,15 +208,9 @@ jobs:
           echo "Qdrant failed to become ready"
           exit 1
 
-      - name: Build hivemind
-        run: cargo build --release
-        working-directory: services/hivemind
-        env:
-          SQLX_OFFLINE: "true"
-
       - name: Start hivemind
         run: |
-          ./target/release/kioku-hivemind &
+          ./hivemind-bin/kioku-hivemind &
           for i in $(seq 1 30); do
             if curl -sf http://localhost:9100/health >/dev/null 2>&1; then
               echo "Hivemind is healthy"
@@ -214,7 +220,6 @@ jobs:
           done
           echo "Hivemind failed to start within 60s"
           exit 1
-        working-directory: services/hivemind
         env:
           DB_HOST: localhost
           DB_PORT: "5432"
