@@ -158,12 +158,6 @@ jobs:
         image: qdrant/qdrant:v1.10.1
         ports:
           - 6334:6333
-        options: >-
-          --health-cmd "curl -sf http://localhost:6333/healthz || exit 1"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-          --health-start-period 10s
     env:
       DATABASE_URL: postgres://kioku:kioku@localhost:5432/kioku
       HIVEMIND_URL: http://localhost:9100
@@ -178,7 +172,29 @@ jobs:
           workspaces: services/hivemind
 
       - name: Init database schema
-        run: psql "$DATABASE_URL" -f services/hivemind/migrations/001_init.sql
+        run: |
+          for i in $(seq 1 20); do
+            if psql "$DATABASE_URL" -c "SELECT 1" >/dev/null 2>&1; then
+              echo "Postgres is ready"
+              break
+            fi
+            echo "Waiting for Postgres... ($i/20)"
+            sleep 3
+          done
+          psql "$DATABASE_URL" -f services/hivemind/migrations/001_init.sql
+
+      - name: Wait for Qdrant
+        run: |
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:6334/healthz >/dev/null 2>&1; then
+              echo "Qdrant is ready"
+              exit 0
+            fi
+            echo "Waiting for Qdrant... ($i/20)"
+            sleep 3
+          done
+          echo "Qdrant failed to become ready"
+          exit 1
 
       - name: Build hivemind
         run: cargo build --release
