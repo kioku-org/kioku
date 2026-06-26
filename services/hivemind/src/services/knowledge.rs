@@ -159,6 +159,32 @@ impl KnowledgeService {
         query: &str,
         limit: usize,
     ) -> Result<Vec<KnowledgeSearchResult>, AppError> {
+        let has_knowledge = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM knowledge_chunks kc
+                JOIN meetings m ON kc.meeting_id = m.id
+                WHERE m.company_id = $1
+
+                UNION ALL
+
+                SELECT 1
+                FROM knowledge_chunks kc
+                JOIN knowledge_documents kd ON kc.document_id = kd.id
+                WHERE kd.company_id = $1
+            )
+            "#,
+        )
+        .bind(company_id)
+        .fetch_one(db)
+        .await
+        .map_err(AppError::from)?;
+
+        if !has_knowledge {
+            return Ok(vec![]);
+        }
+
         let docs = vector_store
             .search_for_company(company_id, query, limit)
             .await
