@@ -166,6 +166,10 @@ async fn knowledge_documents_list_empty() {
 
 #[tokio::test]
 async fn knowledge_search_no_results_for_new_company() {
+    if !embedding_available().await {
+        eprintln!("SKIP: embedding service not available");
+        return;
+    }
     let c = client();
     let (token, _) = register_and_get_token("knn_empty_co").await;
 
