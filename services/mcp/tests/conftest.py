@@ -1,4 +1,5 @@
 """conftest.py -- pytest path setup for mcp unit tests."""
+
 import sys
 import os
 import types
@@ -7,31 +8,39 @@ SERVICE_ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, SERVICE_ROOT)
 
 # Add vexa meeting-api to path for schemas
-MEETING_API = os.path.join(os.path.dirname(__file__), "..", "..", "vexa", "services", "meeting-api")
+MEETING_API = os.path.join(
+    os.path.dirname(__file__), "..", "..", "vexa", "services", "meeting-api"
+)
 sys.path.insert(0, MEETING_API)
+
 
 # Stub out fastapi_mcp before importing main
 class _FakeServer:
     def __init__(self):
         self._prompts = {}
-    
+
     def list_prompts(self):
         def decorator(f):
-            self._prompts['list'] = f
+            self._prompts["list"] = f
             return f
+
         return decorator
-    
+
     def get_prompt(self):
         def decorator(f):
-            self._prompts['get'] = f
+            self._prompts["get"] = f
             return f
+
         return decorator
+
 
 class _FakeMCP:
     def __init__(self, *a, **kw):
         self.server = _FakeServer()
+
     def mount_http(self, *a, **kw):
         pass
+
 
 if "fastapi_mcp" not in sys.modules:
     stub = types.ModuleType("fastapi_mcp")
@@ -44,17 +53,28 @@ if "mcp" not in sys.modules:
     mcp_types = types.ModuleType("mcp.types")
 
     class _FakePromptArg:
-        def __init__(self, **kw): pass
+        def __init__(self, **kw):
+            pass
+
     class _FakePrompt:
-        def __init__(self, **kw): pass
+        def __init__(self, **kw):
+            pass
+
     class _FakeTextContent:
-        def __init__(self, **kw): pass
+        def __init__(self, **kw):
+            pass
+
     class _FakePromptMessage:
-        def __init__(self, **kw): pass
+        def __init__(self, **kw):
+            pass
+
     class _FakeListPromptsResult:
-        def __init__(self, **kw): pass
+        def __init__(self, **kw):
+            pass
+
     class _FakeGetPromptResult:
-        def __init__(self, **kw): pass
+        def __init__(self, **kw):
+            pass
 
     mcp_types.Prompt = _FakePrompt
     mcp_types.PromptArgument = _FakePromptArg

@@ -29,7 +29,7 @@ jobs:
           cache-dependency-path: services/dashboard/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --legacy-peer-deps
 
       - name: Run unit tests
         run: npx vitest run
@@ -41,6 +41,8 @@ jobs:
         working-directory: services/mcp
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: actions/setup-python@v5
         with:
@@ -70,7 +72,10 @@ jobs:
           cache-dependency-path: services/dashboard/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --legacy-peer-deps
+
+      - name: Generate release version
+        run: NEXT_PUBLIC_VEXA_OSS_VERSION="0.1.0" node scripts/generate-release-version.js
 
       - name: Build
         run: npm run build
@@ -85,6 +90,8 @@ jobs:
         working-directory: services/mcp
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: actions/setup-python@v5
         with:

@@ -12,6 +12,7 @@ CHECKPOINT.md
 LEFTOVER.md
 backups/
 ollama-data/
+output/
 
 # RunPod deployment (contains secrets)
 deployment/runpod/.env
@@ -23,3 +24,8 @@ deployment/runpod/PLAN.md
 docs/.vitepress/dist
 docs/.vitepress/cache
 docs/export.zip
+
+# Dashboard build artifacts
+services/dashboard/.next/
+services/dashboard/next-env.d.ts
+services/dashboard/src/lib/release-version.generated.json

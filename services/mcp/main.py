@@ -1,8 +1,7 @@
-import json
 import os
 import re
 from urllib.parse import urlparse, parse_qs
-from fastapi import FastAPI, Header, HTTPException, Depends, Response, Query
+from fastapi import FastAPI, Header, HTTPException, Depends, Query
 from fastapi_mcp import FastApiMCP
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field, model_validator
@@ -22,6 +21,7 @@ BASE_URL = os.getenv("KIOKU_API_URL", "http://api-gateway:8000")
 
 # Standard bearer-token auth parsing. We treat the token value as the Kioku API key.
 bearer_scheme = HTTPBearer(auto_error=False)
+
 
 # ---------------------------
 # Dependencies & Utilities
@@ -70,10 +70,7 @@ async def get_api_key(
 
 def get_headers(api_key: str) -> Dict[str, str]:
     """Create headers with the provided API key"""
-    return {
-        "X-API-Key": api_key,
-        "Content-Type": "application/json"
-    }
+    return {"X-API-Key": api_key, "Content-Type": "application/json"}
 
 
 # ---------------------------
@@ -96,9 +93,17 @@ class RequestMeetingBot(BaseModel):
             "- Zoom: numeric meeting ID only (10-11 digits)"
         ),
     )
-    language: Optional[str] = Field(None, description="Optional language code for transcription (e.g., 'en', 'es'). If not specified, auto-detected")
-    bot_name: Optional[str] = Field(None, description="Optional custom name for the bot in the meeting")
-    platform: str = Field("google_meet", description="The meeting platform (e.g., 'google_meet', 'teams', 'zoom'). Default is 'google_meet'.")
+    language: Optional[str] = Field(
+        None,
+        description="Optional language code for transcription (e.g., 'en', 'es'). If not specified, auto-detected",
+    )
+    bot_name: Optional[str] = Field(
+        None, description="Optional custom name for the bot in the meeting"
+    )
+    platform: str = Field(
+        "google_meet",
+        description="The meeting platform (e.g., 'google_meet', 'teams', 'zoom'). Default is 'google_meet'.",
+    )
     passcode: Optional[str] = Field(
         None,
         description=(
@@ -110,34 +115,55 @@ class RequestMeetingBot(BaseModel):
 
     @model_validator(mode="after")
     def validate_meeting_identity(self):
-        if (self.meeting_url and self.meeting_url.strip()) and (self.native_meeting_id and self.native_meeting_id.strip()):
+        if (self.meeting_url and self.meeting_url.strip()) and (
+            self.native_meeting_id and self.native_meeting_id.strip()
+        ):
             # Avoid ambiguous precedence.
-            raise ValueError("Provide either meeting_url OR native_meeting_id, not both.")
-        if not (self.meeting_url and self.meeting_url.strip()) and not (self.native_meeting_id and self.native_meeting_id.strip()):
-            raise ValueError("Missing meeting identifier: provide meeting_url or native_meeting_id.")
+            raise ValueError(
+                "Provide either meeting_url OR native_meeting_id, not both."
+            )
+        if not (self.meeting_url and self.meeting_url.strip()) and not (
+            self.native_meeting_id and self.native_meeting_id.strip()
+        ):
+            raise ValueError(
+                "Missing meeting identifier: provide meeting_url or native_meeting_id."
+            )
         return self
 
 
 class UpdateBotConfig(BaseModel):
-    language: str = Field(..., description="New language code for transcription (e.g., 'en', 'es')")
+    language: str = Field(
+        ..., description="New language code for transcription (e.g., 'en', 'es')"
+    )
 
 
 class UpdateMeetingData(BaseModel):
     name: Optional[str] = Field(None, description="Optional meeting name/title")
-    participants: Optional[List[str]] = Field(None, description="Optional list of participant names")
-    languages: Optional[List[str]] = Field(None, description="Optional list of language codes detected/used in the meeting")
-    notes: Optional[str] = Field(None, description="Optional meeting notes or description")
+    participants: Optional[List[str]] = Field(
+        None, description="Optional list of participant names"
+    )
+    languages: Optional[List[str]] = Field(
+        None, description="Optional list of language codes detected/used in the meeting"
+    )
+    notes: Optional[str] = Field(
+        None, description="Optional meeting notes or description"
+    )
+
 
 class ParseMeetingLinkRequest(BaseModel):
     meeting_url: str = Field(..., description="Full meeting URL to parse.")
+
 
 class ParseMeetingLinkResponse(BaseModel):
     platform: str
     native_meeting_id: str
     passcode: Optional[str] = None
-    meeting_url: Optional[str] = None       # raw URL for long Teams /l/meetup-join/ links
-    teams_base_host: Optional[str] = None   # non-default Teams host (e.g. teams.microsoft.com)
+    meeting_url: Optional[str] = None  # raw URL for long Teams /l/meetup-join/ links
+    teams_base_host: Optional[str] = (
+        None  # non-default Teams host (e.g. teams.microsoft.com)
+    )
     warnings: List[str] = Field(default_factory=list)
+
 
 class TranscriptShareLinkResponse(BaseModel):
     share_id: str
@@ -145,16 +171,24 @@ class TranscriptShareLinkResponse(BaseModel):
     expires_at: str
     expires_in_seconds: int
 
+
 class RecordingConfigUpdate(BaseModel):
-    enabled: Optional[bool] = Field(None, description="Enable or disable recording for this user's bots.")
+    enabled: Optional[bool] = Field(
+        None, description="Enable or disable recording for this user's bots."
+    )
     capture_modes: Optional[List[str]] = Field(
         None,
         description="Capture modes: ['audio'], ['audio','video'], ['screenshot'], etc.",
     )
 
+
 class MeetingBundleRequest(BaseModel):
-    meeting_platform: str = Field(..., description="Meeting platform: google_meet, teams, zoom.")
-    meeting_id: str = Field(..., description="Native meeting ID (same value used when requesting the bot).")
+    meeting_platform: str = Field(
+        ..., description="Meeting platform: google_meet, teams, zoom."
+    )
+    meeting_id: str = Field(
+        ..., description="Native meeting ID (same value used when requesting the bot)."
+    )
     include_segments: bool = Field(
         False,
         description="If true, include transcript segments inline. If false, segments are omitted to keep output small.",
@@ -218,18 +252,25 @@ async def make_request(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
 
+
 _TEAMS_ENTERPRISE_HOSTS = {
     "teams.microsoft.com",
     "gov.teams.microsoft.us",
     "dod.teams.microsoft.us",
 }
 
+
 def _is_teams_enterprise_host(host: str) -> bool:
-    return host in _TEAMS_ENTERPRISE_HOSTS or host.endswith(".teams.microsoft.us") or host.endswith(".teams.microsoft.com")
+    return (
+        host in _TEAMS_ENTERPRISE_HOSTS
+        or host.endswith(".teams.microsoft.us")
+        or host.endswith(".teams.microsoft.com")
+    )
 
 
 def _parse_meeting_url(meeting_url: str) -> ParseMeetingLinkResponse:
     import hashlib
+
     url = (meeting_url or "").strip()
     if not url:
         raise HTTPException(status_code=422, detail="meeting_url cannot be empty")
@@ -252,11 +293,23 @@ def _parse_meeting_url(meeting_url: str) -> ParseMeetingLinkResponse:
         code = path.strip("/").split("/")[0] if path else ""
         # Standard abc-defg-hij format
         if re.fullmatch(r"^[a-z]{3}-[a-z]{4}-[a-z]{3}$", code):
-            return ParseMeetingLinkResponse(platform="google_meet", native_meeting_id=code, passcode=None, warnings=warnings)
+            return ParseMeetingLinkResponse(
+                platform="google_meet",
+                native_meeting_id=code,
+                passcode=None,
+                warnings=warnings,
+            )
         # Custom Workspace nickname: 5-40 lowercase alphanumeric + hyphens
         if re.fullmatch(r"^[a-z0-9][a-z0-9-]{3,38}[a-z0-9]$", code):
-            warnings.append("Custom Google Meet nickname URL detected. This works for Google Workspace accounts only.")
-            return ParseMeetingLinkResponse(platform="google_meet", native_meeting_id=code, passcode=None, warnings=warnings)
+            warnings.append(
+                "Custom Google Meet nickname URL detected. This works for Google Workspace accounts only."
+            )
+            return ParseMeetingLinkResponse(
+                platform="google_meet",
+                native_meeting_id=code,
+                passcode=None,
+                warnings=warnings,
+            )
         raise HTTPException(
             status_code=422,
             detail="Invalid Google Meet URL: expected https://meet.google.com/abc-defg-hij or a custom Workspace nickname.",
@@ -266,12 +319,22 @@ def _parse_meeting_url(meeting_url: str) -> ParseMeetingLinkResponse:
     if host.endswith("teams.live.com"):
         m = re.match(r"^/meet/(\d{10,15})/?$", path)
         if not m:
-            raise HTTPException(status_code=422, detail="Unsupported teams.live.com URL format. Expected /meet/<10-15 digit id>.")
+            raise HTTPException(
+                status_code=422,
+                detail="Unsupported teams.live.com URL format. Expected /meet/<10-15 digit id>.",
+            )
         native_id = m.group(1)
         passcode = (query.get("p") or [None])[0]
         if not passcode:
-            warnings.append("Teams meeting link has no ?p= passcode. Many Teams meetings require it.")
-        return ParseMeetingLinkResponse(platform="teams", native_meeting_id=native_id, passcode=passcode, warnings=warnings)
+            warnings.append(
+                "Teams meeting link has no ?p= passcode. Many Teams meetings require it."
+            )
+        return ParseMeetingLinkResponse(
+            platform="teams",
+            native_meeting_id=native_id,
+            passcode=passcode,
+            warnings=warnings,
+        )
 
     # Teams enterprise: teams.microsoft.com, gov.teams.microsoft.us, dod.teams.microsoft.us, etc.
     if _is_teams_enterprise_host(host):
@@ -286,7 +349,9 @@ def _parse_meeting_url(meeting_url: str) -> ParseMeetingLinkResponse:
                 frag_query = parse_qs(frag_parsed.query or "")
                 passcode = (frag_query.get("p") or [None])[0]
                 if not passcode:
-                    warnings.append("Teams meeting link has no ?p= passcode. Many Teams meetings require it.")
+                    warnings.append(
+                        "Teams meeting link has no ?p= passcode. Many Teams meetings require it."
+                    )
                 return ParseMeetingLinkResponse(
                     platform="teams",
                     native_meeting_id=native_id,
@@ -301,7 +366,9 @@ def _parse_meeting_url(meeting_url: str) -> ParseMeetingLinkResponse:
             native_id = m.group(1)
             passcode = (query.get("p") or [None])[0]
             if not passcode:
-                warnings.append("Teams meeting link has no ?p= passcode. Many Teams meetings require it.")
+                warnings.append(
+                    "Teams meeting link has no ?p= passcode. Many Teams meetings require it."
+                )
             return ParseMeetingLinkResponse(
                 platform="teams",
                 native_meeting_id=native_id,
@@ -355,15 +422,26 @@ def _parse_meeting_url(meeting_url: str) -> ParseMeetingLinkResponse:
                 detail="Unsupported Zoom URL format. Expected https://zoom.us/j/<9-11 digit id>.",
             )
         passcode = (query.get("pwd") or [None])[0]
-        return ParseMeetingLinkResponse(platform="zoom", native_meeting_id=native_id, passcode=passcode, warnings=warnings)
+        return ParseMeetingLinkResponse(
+            platform="zoom",
+            native_meeting_id=native_id,
+            passcode=passcode,
+            warnings=warnings,
+        )
 
-    raise HTTPException(status_code=422, detail="Unsupported meeting URL (unknown provider).")
+    raise HTTPException(
+        status_code=422, detail="Unsupported meeting URL (unknown provider)."
+    )
 
 
 # ---------------------------
 # Endpoints (docstrings preserved)
 # ---------------------------
-@app.post("/parse-meeting-link", operation_id="parse_meeting_link", response_model=ParseMeetingLinkResponse)
+@app.post(
+    "/parse-meeting-link",
+    operation_id="parse_meeting_link",
+    response_model=ParseMeetingLinkResponse,
+)
 async def parse_meeting_link(
     data: ParseMeetingLinkRequest,
     api_key: str = Depends(get_api_key),
@@ -381,22 +459,21 @@ async def parse_meeting_link(
 
 @app.post("/request-meeting-bot", operation_id="request_meeting_bot")
 async def request_meeting_bot(
-    data: RequestMeetingBot,
-    api_key: str = Depends(get_api_key)
+    data: RequestMeetingBot, api_key: str = Depends(get_api_key)
 ) -> Dict[str, Any]:
     """
     Request a Kioku bot to join a meeting for transcription.
-    
+
     Args:
         native_meeting_id: The meeting identifier (see field description for platform-specific formats)
         language: Optional language code for transcription (e.g., 'en', 'es'). If not specified, auto-detected
         bot_name: Optional custom name for the bot in the meeting
         meeting_platform: The meeting platform (e.g., 'google_meet', 'teams', 'zoom'). Default is 'google_meet'.
         passcode: Passcode for Teams (and optionally Zoom). For Teams, extracted from `?p=...` in the meeting URL.
-    
+
     Returns:
         JSON string with bot request details and status
-    
+
     Note: After a successful request, it typically takes about 10 seconds for the bot to join the meeting.
     """
     url = f"{BASE_URL}/bots"
@@ -424,32 +501,40 @@ async def request_meeting_bot(
             native = payload.get("native_meeting_id")
             if isinstance(meetings, list):
                 for m in meetings:
-                    if isinstance(m, dict) and m.get("platform") == platform and m.get("native_meeting_id") == native:
+                    if (
+                        isinstance(m, dict)
+                        and m.get("platform") == platform
+                        and m.get("native_meeting_id") == native
+                    ):
                         return {"status": "already_exists", "meeting": m}
             return {"status": "already_exists", "detail": getattr(e, "detail", None)}
         raise
 
 
-@app.get("/meeting-transcript/{meeting_platform}/{meeting_id}", operation_id="get_meeting_transcript")
+@app.get(
+    "/meeting-transcript/{meeting_platform}/{meeting_id}",
+    operation_id="get_meeting_transcript",
+)
 async def get_meeting_transcript(
     meeting_id: str,
     meeting_platform: str = "google_meet",
-    api_key: str = Depends(get_api_key)
+    api_key: str = Depends(get_api_key),
 ) -> Dict[str, Any]:
     """
     Get the real-time transcript for a meeting.
-    
+
     Args:
         meeting_id: The unique identifier for the meeting
         meeting_platform: The meeting platform (e.g., 'google_meet', 'zoom'). Default is 'google_meet'.
-    
+
     Returns:
         JSON with the meeting transcript data including segments with speaker, timestamp, and text
-    
+
     Note: This provides real-time transcription data and can be called during or after the meeting.
     """
     url = f"{BASE_URL}/transcripts/{meeting_platform}/{meeting_id}"
     return await make_request("GET", url, api_key)
+
 
 @app.get("/recordings", operation_id="list_recordings")
 async def list_recordings(
@@ -498,7 +583,10 @@ async def delete_recording(
     return await make_request("DELETE", url, api_key)
 
 
-@app.get("/recordings/{recording_id}/media/{media_file_id}/download", operation_id="get_recording_media_download")
+@app.get(
+    "/recordings/{recording_id}/media/{media_file_id}/download",
+    operation_id="get_recording_media_download",
+)
 async def get_recording_media_download(
     recording_id: int,
     media_file_id: int,
@@ -522,9 +610,12 @@ async def get_recording_media_download(
                 data["download_url"] = f"{BASE_URL}{dl}"
             elif "minio:" in dl or "minio/" in dl:
                 from urllib.parse import urlparse, urlunparse
+
                 parsed_base = urlparse(BASE_URL)
                 parsed_dl = urlparse(dl)
-                data["download_url"] = urlunparse(parsed_base._replace(path=parsed_dl.path))
+                data["download_url"] = urlunparse(
+                    parsed_base._replace(path=parsed_dl.path)
+                )
     except Exception:
         pass
     return data
@@ -574,7 +665,9 @@ async def get_meeting_bundle(
         api_key,
     )
 
-    result: Dict[str, Any] = dict(transcript) if isinstance(transcript, dict) else {"transcript": transcript}
+    result: Dict[str, Any] = (
+        dict(transcript) if isinstance(transcript, dict) else {"transcript": transcript}
+    )
 
     if not data.include_segments and isinstance(result, dict):
         result.pop("segments", None)
@@ -598,7 +691,9 @@ async def get_meeting_bundle(
                     mf_id = mf.get("id")
                     if not mf_id:
                         continue
-                    mf["download"] = await get_recording_media_download(int(rid), int(mf_id), api_key)
+                    mf["download"] = await get_recording_media_download(
+                        int(rid), int(mf_id), api_key
+                    )
 
     if data.include_share_link:
         share_args: Dict[str, Any] = {}
@@ -618,7 +713,11 @@ async def get_meeting_bundle(
 
     return result
 
-@app.post("/transcript-share-link/{meeting_platform}/{meeting_id}", operation_id="create_transcript_share_link")
+
+@app.post(
+    "/transcript-share-link/{meeting_platform}/{meeting_id}",
+    operation_id="create_transcript_share_link",
+)
 async def create_transcript_share_link(
     meeting_id: str,
     meeting_platform: str,
@@ -638,14 +737,16 @@ async def create_transcript_share_link(
         params["ttl_seconds"] = ttl_seconds
 
     share_url = f"{BASE_URL}/transcripts/{meeting_platform}/{meeting_id}/share"
-    return await make_request("POST", share_url, api_key, payload=None, params=params or None)
+    return await make_request(
+        "POST", share_url, api_key, payload=None, params=params or None
+    )
 
 
 @app.get("/bot-status", operation_id="get_bot_status")
 async def get_bot_status(api_key: str = Depends(get_api_key)) -> Dict[str, Any]:
     """
     Get the status of currently running bots.
-    
+
     Returns:
         JSON with details about active bots under your API key
     """
@@ -653,21 +754,23 @@ async def get_bot_status(api_key: str = Depends(get_api_key)) -> Dict[str, Any]:
     return await make_request("GET", url, api_key)
 
 
-@app.put("/bot-config/{meeting_platform}/{meeting_id}", operation_id="update_bot_config")
+@app.put(
+    "/bot-config/{meeting_platform}/{meeting_id}", operation_id="update_bot_config"
+)
 async def update_bot_config(
     meeting_id: str,
     data: UpdateBotConfig,
     meeting_platform: str = "google_meet",
-    api_key: str = Depends(get_api_key)
+    api_key: str = Depends(get_api_key),
 ) -> Dict[str, Any]:
     """
     Update the configuration of an active bot (e.g., changing the language).
-    
+
     Args:
         meeting_id: The identifier of the meeting with the active bot
         language: New language code for transcription (e.g., 'en', 'es')
         meeting_platform: The meeting platform (e.g., 'google_meet', 'zoom'). Default is 'google_meet'.
-    
+
     Returns:
         JSON indicating whether the update request was accepted
     """
@@ -679,15 +782,15 @@ async def update_bot_config(
 async def stop_bot(
     meeting_id: str,
     meeting_platform: str = "google_meet",
-    api_key: str = Depends(get_api_key)
+    api_key: str = Depends(get_api_key),
 ) -> Dict[str, Any]:
     """
     Remove an active bot from a meeting.
-    
+
     Args:
         meeting_id: The identifier of the meeting
         meeting_platform: The meeting platform (e.g., 'google_meet', 'zoom'). Default is 'google_meet'.
-    
+
     Returns:
         JSON confirming the bot removal
     """
@@ -697,10 +800,16 @@ async def stop_bot(
 
 @app.get("/meetings", operation_id="list_meetings")
 async def list_meetings(
-    limit: Optional[int] = Query(20, ge=1, le=100, description="Max meetings to return (default 20)"),
+    limit: Optional[int] = Query(
+        20, ge=1, le=100, description="Max meetings to return (default 20)"
+    ),
     offset: Optional[int] = Query(0, ge=0, description="Number of meetings to skip"),
-    status: Optional[str] = Query(None, description="Filter by status: active, completed, failed"),
-    platform: Optional[str] = Query(None, description="Filter by platform: google_meet, teams, zoom"),
+    status: Optional[str] = Query(
+        None, description="Filter by status: active, completed, failed"
+    ),
+    platform: Optional[str] = Query(
+        None, description="Filter by platform: google_meet, teams, zoom"
+    ),
     api_key: str = Depends(get_api_key),
 ) -> Dict[str, Any]:
     """
@@ -728,16 +837,18 @@ async def list_meetings(
     return await make_request("GET", url, api_key)
 
 
-@app.patch("/meeting/{meeting_platform}/{meeting_id}", operation_id="update_meeting_data")
+@app.patch(
+    "/meeting/{meeting_platform}/{meeting_id}", operation_id="update_meeting_data"
+)
 async def update_meeting_data(
     meeting_id: str,
     data: UpdateMeetingData,
     meeting_platform: str = "google_meet",
-    api_key: str = Depends(get_api_key)
+    api_key: str = Depends(get_api_key),
 ) -> Dict[str, Any]:
     """
     Update meeting metadata such as name, participants, languages, and notes.
-    
+
     Args:
         meeting_id: The unique identifier of the meeting
         name: Optional meeting name/title
@@ -745,7 +856,7 @@ async def update_meeting_data(
         languages: Optional list of language codes detected/used in the meeting
         notes: Optional meeting notes or description
         meeting_platform: The meeting platform (e.g., 'google_meet', 'zoom'). Default is 'google_meet'.
-    
+
     Returns:
         JSON with the updated meeting record
     """
@@ -758,21 +869,21 @@ async def update_meeting_data(
 async def delete_meeting(
     meeting_id: str,
     meeting_platform: str = "google_meet",
-    api_key: str = Depends(get_api_key)
+    api_key: str = Depends(get_api_key),
 ) -> Dict[str, Any]:
     """
     Purge transcripts and anonymize meeting data for finalized meetings.
-    
+
     Only works for meetings in completed or failed states. Deletes all transcripts
     but preserves meeting and session records for telemetry.
-    
+
     Args:
         meeting_id: The unique identifier of the meeting
         meeting_platform: The meeting platform (e.g., 'google_meet', 'zoom'). Default is 'google_meet'.
-    
+
     Returns:
         JSON with confirmation message
-    
+
     Raises:
         409 Conflict: If meeting is not in a finalized state.
     """
@@ -821,8 +932,14 @@ _PROMPTS: Dict[str, mcp_types.Prompt] = {
         title="Kioku: During Meeting",
         description="Check bot status and retrieve current transcript snapshot.",
         arguments=[
-            mcp_types.PromptArgument(name="meeting_platform", description="google_meet | teams | zoom", required=True),
-            mcp_types.PromptArgument(name="meeting_id", description="Native meeting ID", required=True),
+            mcp_types.PromptArgument(
+                name="meeting_platform",
+                description="google_meet | teams | zoom",
+                required=True,
+            ),
+            mcp_types.PromptArgument(
+                name="meeting_id", description="Native meeting ID", required=True
+            ),
         ],
     ),
     "vexa.post_meeting": mcp_types.Prompt(
@@ -830,8 +947,14 @@ _PROMPTS: Dict[str, mcp_types.Prompt] = {
         title="Kioku: Post Meeting",
         description="Fetch bundle (notes, recordings, share link) and produce follow-ups.",
         arguments=[
-            mcp_types.PromptArgument(name="meeting_platform", description="google_meet | teams | zoom", required=True),
-            mcp_types.PromptArgument(name="meeting_id", description="Native meeting ID", required=True),
+            mcp_types.PromptArgument(
+                name="meeting_platform",
+                description="google_meet | teams | zoom",
+                required=True,
+            ),
+            mcp_types.PromptArgument(
+                name="meeting_id", description="Native meeting ID", required=True
+            ),
         ],
     ),
     "vexa.teams_link_help": mcp_types.Prompt(
@@ -839,7 +962,11 @@ _PROMPTS: Dict[str, mcp_types.Prompt] = {
         title="Kioku: Teams Link Help",
         description="Supported Teams links and passcode requirements (issues #105/#110).",
         arguments=[
-            mcp_types.PromptArgument(name="meeting_url", description="Teams meeting URL from the user", required=False),
+            mcp_types.PromptArgument(
+                name="meeting_url",
+                description="Teams meeting URL from the user",
+                required=False,
+            ),
         ],
     ),
 }
@@ -851,7 +978,9 @@ async def _list_prompts() -> mcp_types.ListPromptsResult:
 
 
 @mcp.server.get_prompt()
-async def _get_prompt(name: str, arguments: Optional[Dict[str, str]] = None) -> mcp_types.GetPromptResult:
+async def _get_prompt(
+    name: str, arguments: Optional[Dict[str, str]] = None
+) -> mcp_types.GetPromptResult:
     args = arguments or {}
 
     def t(text: str) -> mcp_types.TextContent:
@@ -962,8 +1091,10 @@ async def _get_prompt(name: str, arguments: Optional[Dict[str, str]] = None) -> 
 
     raise ValueError(f"Unknown prompt: {name}")
 
+
 mcp.mount_http()
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=18888)
