@@ -19,7 +19,6 @@ MEETING_API_URL = os.environ.get("MEETING_API_URL", "http://meeting-api:8080")
 # use localhost. Defaults to the internal URLs for Docker Compose compatibility.
 BOT_REDIS_URL = os.environ.get("BOT_REDIS_URL", REDIS_URL)
 BOT_MEETING_API_URL = os.environ.get("BOT_MEETING_API_URL", MEETING_API_URL)
-
 # Bot image / profile
 BOT_IMAGE_NAME = os.environ.get("BOT_IMAGE_NAME", "vexaai/vexa-bot:latest")
 
