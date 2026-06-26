@@ -161,14 +161,11 @@ impl AuthRepo {
     pub async fn create_default_config(&self, company_id: Uuid, now: i64) -> Result<(), AppError> {
         sqlx::query(
             r#"
-            INSERT INTO company_config (company_id, allowed_models, default_provider, default_model, hivemind_enabled, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO company_config (company_id, hivemind_enabled, updated_at)
+            VALUES ($1, $2, $3)
             "#,
         )
         .bind(company_id)
-        .bind(serde_json::json!(["claude-sonnet-4-5", "gpt-4o", "gpt-4o-mini"]))
-        .bind("anthropic")
-        .bind("claude-sonnet-4-5")
         .bind(true)
         .bind(now)
         .execute(&self.db)
