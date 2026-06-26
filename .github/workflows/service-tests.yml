@@ -1,0 +1,238 @@
+name: Service Tests
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'services/dashboard/**'
+      - 'services/mcp/**'
+      - 'services/hivemind/**'
+      - '.github/workflows/service-tests.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'services/dashboard/**'
+      - 'services/mcp/**'
+      - 'services/hivemind/**'
+
+jobs:
+  # ── Hivemind ──────────────────────────────────────────────────────────────
+  hivemind-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/hivemind
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: services/hivemind
+      - name: Format check
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy -- -W clippy::all
+        env:
+          SQLX_OFFLINE: "true"
+
+  hivemind-unit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/hivemind
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: services/hivemind
+      - name: Unit tests
+        run: cargo test --bin kioku-hivemind
+        env:
+          SQLX_OFFLINE: "true"
+
+  # ── Dashboard ─────────────────────────────────────────────────────────────
+  dashboard-unit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: services/dashboard/package-lock.json
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+      - name: Run unit tests
+        run: npx vitest run
+
+  dashboard-build:
+    runs-on: ubuntu-latest
+    needs: [dashboard-unit]
+    defaults:
+      run:
+        working-directory: services/dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: services/dashboard/package-lock.json
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+      - name: Generate release version
+        run: NEXT_PUBLIC_VEXA_OSS_VERSION="0.1.0" node scripts/generate-release-version.js
+      - name: Build
+        run: npm run build
+        env:
+          KIOKU_API_URL: http://localhost:8056
+
+  # ── MCP ───────────────────────────────────────────────────────────────────
+  mcp-unit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/mcp
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: services/mcp/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Run unit tests
+        run: pytest tests/ -v
+
+  mcp-lint:
+    runs-on: ubuntu-latest
+    needs: [mcp-unit]
+    defaults:
+      run:
+        working-directory: services/mcp
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: services/mcp/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt ruff
+      - name: Lint
+        run: ruff check .
+      - name: Format check
+        run: ruff format --check .
+
+  # ── Integration: hivemind + dashboard + mcp ───────────────────────────────
+  integration:
+    runs-on: ubuntu-latest
+    needs: [hivemind-unit, dashboard-unit, mcp-unit]
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: kioku
+          POSTGRES_PASSWORD: kioku
+          POSTGRES_DB: kioku
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kioku -d kioku"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+          --health-start-period 15s
+      qdrant:
+        image: qdrant/qdrant:v1.10.1
+        ports:
+          - 6334:6333
+        options: >-
+          --health-cmd "curl -sf http://localhost:6333/healthz || exit 1"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 10s
+    env:
+      DATABASE_URL: postgres://kioku:kioku@localhost:5432/kioku
+      HIVEMIND_URL: http://localhost:9100
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: services/hivemind
+
+      - name: Init database schema
+        run: psql "$DATABASE_URL" -f services/hivemind/migrations/001_init.sql
+
+      - name: Build hivemind
+        run: cargo build --release
+        working-directory: services/hivemind
+        env:
+          SQLX_OFFLINE: "true"
+
+      - name: Start hivemind
+        run: |
+          ./target/release/kioku-hivemind &
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9100/health >/dev/null 2>&1; then
+              echo "Hivemind is healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Hivemind failed to start within 60s"
+          exit 1
+        working-directory: services/hivemind
+        env:
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_NAME: kioku
+          DB_USER: kioku
+          DB_PASSWORD: kioku
+          QDRANT_URL: http://localhost:6334
+          EMBEDDING_API_URL: http://localhost:11434
+
+      - name: Hivemind integration tests
+        run: cargo test
+        working-directory: services/hivemind/tests
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: MCP tests
+        run: |
+          pip install -r requirements.txt pytest
+          pytest tests/ -v
+        working-directory: services/mcp
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: services/dashboard/package-lock.json
+
+      - name: Dashboard build
+        run: |
+          npm install --legacy-peer-deps
+          NEXT_PUBLIC_VEXA_OSS_VERSION="0.1.0" node scripts/generate-release-version.js
+          npm run build
+        working-directory: services/dashboard
+        env:
+          KIOKU_API_URL: http://localhost:8056
