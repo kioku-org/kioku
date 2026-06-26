@@ -23,8 +23,8 @@ fn auth_file_roundtrip() {
     let json = serde_json::to_string_pretty(&auth).expect("serialize");
     fs::write(&path, &json).expect("write file");
 
-    let loaded: AuthFile = serde_json::from_str(&fs::read_to_string(&path).expect("read file"))
-        .expect("deserialize");
+    let loaded: AuthFile =
+        serde_json::from_str(&fs::read_to_string(&path).expect("read file")).expect("deserialize");
 
     assert_eq!(loaded.server_url, auth.server_url);
     assert_eq!(loaded.token, auth.token);

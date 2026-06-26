@@ -7,6 +7,7 @@ on:
       - 'services/dashboard/**'
       - 'services/mcp/**'
       - 'services/hivemind/**'
+      - 'services/cli/**'
       - '.github/workflows/service-tests.yml'
   pull_request:
     branches: [main, master]
@@ -14,6 +15,7 @@ on:
       - 'services/dashboard/**'
       - 'services/mcp/**'
       - 'services/hivemind/**'
+      - 'services/cli/**'
 
 jobs:
   # ── Hivemind ──────────────────────────────────────────────────────────────
@@ -61,6 +63,39 @@ jobs:
           name: hivemind-binary
           path: services/hivemind/target/release/kioku-hivemind
           retention-days: 1
+
+  # ── CLI ───────────────────────────────────────────────────────────────────
+  cli-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/cli
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: services/cli
+      - name: Format check
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy -- -W clippy::all
+
+  cli-unit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/cli
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: services/cli
+      - name: Unit tests
+        run: cargo test --lib --bins --tests -- --skip integration
 
   # ── Dashboard ─────────────────────────────────────────────────────────────
   dashboard-unit:
@@ -144,10 +179,10 @@ jobs:
       - name: Format check
         run: ruff format --check .
 
-  # ── Integration: hivemind + dashboard + mcp ───────────────────────────────
+  # ── Integration: hivemind + dashboard + mcp + cli ─────────────────────────
   integration:
     runs-on: ubuntu-latest
-    needs: [hivemind-build, dashboard-unit, mcp-unit]
+    needs: [hivemind-build, dashboard-unit, mcp-unit, cli-unit]
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -232,6 +267,10 @@ jobs:
       - name: Hivemind integration tests
         run: cargo test
         working-directory: services/hivemind/tests
+
+      - name: CLI integration tests
+        run: cargo test --test integration_test --features integration
+        working-directory: services/cli
 
       - uses: actions/setup-python@v5
         with:

@@ -56,8 +56,6 @@ pub struct Session {
     pub mode: String,
     #[serde(default)]
     pub cwd: Option<String>,
-    #[serde(default)]
-    pub model: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -85,8 +83,6 @@ pub struct Message {
     pub role: String,
     pub content: Vec<ContentPart>,
     pub timestamp: i64,
-    #[serde(default)]
-    pub token_usage: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -102,13 +98,9 @@ fn default_limit() -> u32 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KnowledgeSearchResult {
-    pub id: String,
-    pub meeting_id: Option<String>,
-    pub text: String,
-    pub speaker: Option<String>,
+    pub chunk: serde_json::Value,
+    pub meeting: serde_json::Value,
     pub score: f64,
-    #[serde(default)]
-    pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -151,49 +143,9 @@ pub struct Meeting {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct UsageRecord {
-    pub session_id: String,
-    pub model: String,
-    pub provider: String,
-    pub input_tokens: i64,
-    pub output_tokens: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UsageSummary {
-    pub user_id: String,
-    pub email: String,
-    pub name: String,
-    pub total_input_tokens: i64,
-    pub total_output_tokens: i64,
-    pub total_cost_cents: i64,
-    pub session_count: i64,
-    pub last_active_at: Option<i64>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub struct CompanyConfig {
-    #[serde(default)]
-    pub allowed_models: Vec<String>,
-    pub default_provider: String,
-    pub default_model: String,
     pub hivemind_enabled: bool,
     pub updated_at: i64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ApiKeySet {
-    pub provider: String,
-    pub plain_key: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ApiKeyOut {
-    pub id: String,
-    pub company_id: String,
-    pub user_id: String,
-    pub provider: String,
-    pub created_at: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

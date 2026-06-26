@@ -56,10 +56,7 @@ pub async fn check_for_update(repo: &str, current_version: &str) -> Result<Upgra
         anyhow::bail!("failed to check for updates: HTTP {}", resp.status());
     }
 
-    let release: GithubRelease = resp
-        .json()
-        .await
-        .context("parsing release info")?;
+    let release: GithubRelease = resp.json().await.context("parsing release info")?;
 
     let latest_version = release.tag_name.trim_start_matches('v').to_string();
     let target = target_triple();
@@ -112,10 +109,8 @@ pub async fn perform_upgrade(repo: &str, current_version: &str) -> Result<String
     let current_exe = std::env::current_exe().context("finding current executable")?;
     let backup_path = current_exe.with_extension("old");
 
-    std::fs::rename(&current_exe, &backup_path)
-        .with_context(|| "renaming current binary")?;
-    std::fs::write(&current_exe, &bytes)
-        .with_context(|| "writing new binary")?;
+    std::fs::rename(&current_exe, &backup_path).with_context(|| "renaming current binary")?;
+    std::fs::write(&current_exe, &bytes).with_context(|| "writing new binary")?;
 
     #[cfg(unix)]
     {
@@ -128,8 +123,6 @@ pub async fn perform_upgrade(repo: &str, current_version: &str) -> Result<String
 
     Ok(format!(
         "Upgraded to v{} ({} → {})",
-        info.latest_version,
-        current_version,
-        info.latest_version
+        info.latest_version, current_version, info.latest_version
     ))
 }

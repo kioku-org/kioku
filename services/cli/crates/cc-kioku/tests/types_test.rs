@@ -36,25 +36,21 @@ fn session_defaults() {
     let session: Session = serde_json::from_value(json).expect("deserialize");
 
     assert_eq!(session.cwd, None);
-    assert_eq!(session.model, None);
 }
 
 #[test]
-fn knowledge_search_result_optional_fields() {
+fn knowledge_search_result_nested() {
     let json = json!({
-        "id": "r-1",
-        "text": "This is relevant context",
+        "chunk": {"text": "This is relevant context", "meeting_id": "m-1"},
+        "meeting": {"title": "Standup", "date": 1700000000},
         "score": 0.95
     });
 
     let result: KnowledgeSearchResult = serde_json::from_value(json).expect("deserialize");
 
-    assert_eq!(result.id, "r-1");
-    assert_eq!(result.text, "This is relevant context");
     assert!((result.score - 0.95).abs() < f64::EPSILON);
-    assert_eq!(result.meeting_id, None);
-    assert_eq!(result.speaker, None);
-    assert_eq!(result.metadata, None);
+    assert_eq!(result.chunk["text"], "This is relevant context");
+    assert_eq!(result.meeting["title"], "Standup");
 }
 
 #[test]
@@ -70,26 +66,6 @@ fn meeting_ingest_defaults() {
     assert_eq!(req.duration_seconds, 0);
     assert!(req.participants.is_empty());
     assert!(req.transcript.is_empty());
-}
-
-#[test]
-fn usage_summary_fields() {
-    let json = json!({
-        "user_id": "u-1",
-        "email": "user@kioku.chat",
-        "name": "User",
-        "total_input_tokens": 50000,
-        "total_output_tokens": 12000,
-        "total_cost_cents": 42,
-        "session_count": 15
-    });
-
-    let usage: UsageSummary = serde_json::from_value(json).expect("deserialize");
-
-    assert_eq!(usage.total_input_tokens, 50000);
-    assert_eq!(usage.total_cost_cents, 42);
-    assert_eq!(usage.session_count, 15);
-    assert_eq!(usage.last_active_at, None);
 }
 
 #[test]
@@ -145,20 +121,18 @@ fn content_part_text() {
 }
 
 #[test]
-fn message_with_token_usage() {
+fn message_roundtrip() {
     let json = json!({
         "id": "m-1",
         "session_id": "s-1",
         "role": "assistant",
         "content": [{"type":"text","text":"response"}],
-        "timestamp": 1700000000,
-        "token_usage": {"input": 100, "output": 50}
+        "timestamp": 1700000000
     });
 
     let msg: Message = serde_json::from_value(json).expect("deserialize");
 
     assert_eq!(msg.role, "assistant");
-    assert!(msg.token_usage.is_some());
 }
 
 #[test]
@@ -174,4 +148,17 @@ fn upload_response_fields() {
     assert_eq!(resp.id, "doc-1");
     assert_eq!(resp.filename, "report.pdf");
     assert_eq!(resp.status, "processing");
+}
+
+#[test]
+fn company_config_minimal() {
+    let json = json!({
+        "hivemind_enabled": true,
+        "updated_at": 1700000000
+    });
+
+    let config: CompanyConfig = serde_json::from_value(json).expect("deserialize");
+
+    assert!(config.hivemind_enabled);
+    assert_eq!(config.updated_at, 1700000000);
 }

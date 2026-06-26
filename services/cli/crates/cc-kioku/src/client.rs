@@ -114,18 +114,6 @@ impl KiokuClient {
             .context("invalid register personal response")
     }
 
-    /// Register the initial admin user and company workspace.
-    ///
-    /// # Arguments
-    /// - `company_name`: Display name for the new company workspace.
-    /// - `company_slug`: Optional stable slug override for the company.
-    /// - `email`: Admin email address.
-    /// - `name`: Admin display name.
-    /// - `password`: Admin password.
-    ///
-    /// # Errors
-    /// Returns an error when the request fails, validation is rejected, or the
-    /// response body cannot be decoded as an auth session.
     pub async fn register_admin(
         &self,
         company_name: &str,
@@ -432,72 +420,6 @@ impl KiokuClient {
         resp.json::<Meeting>()
             .await
             .context("invalid meeting response")
-    }
-
-    pub async fn usage_summary(&self) -> Result<Vec<UsageSummary>> {
-        let resp = self
-            .client
-            .get(self.url("/usage/summary"))
-            .header("Authorization", self.auth_header().unwrap_or_default())
-            .send()
-            .await
-            .context("usage summary failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<Vec<UsageSummary>>()
-            .await
-            .context("invalid usage response")
-    }
-
-    pub async fn list_api_keys(&self, user_id: &str) -> Result<Vec<ApiKeyOut>> {
-        let resp = self
-            .client
-            .get(self.url(&format!("/company/apikeys/{}", user_id)))
-            .header("Authorization", self.auth_header().unwrap_or_default())
-            .send()
-            .await
-            .context("list api keys failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<Vec<ApiKeyOut>>()
-            .await
-            .context("invalid api keys response")
-    }
-
-    pub async fn set_api_key(&self, provider: &str, key: &str) -> Result<ApiKeyOut> {
-        let resp = self
-            .client
-            .post(self.url("/company/apikeys"))
-            .header("Authorization", self.auth_header().unwrap_or_default())
-            .json(&ApiKeySet {
-                provider: provider.to_string(),
-                plain_key: key.to_string(),
-            })
-            .send()
-            .await
-            .context("set api key failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<ApiKeyOut>()
-            .await
-            .context("invalid api key response")
-    }
-
-    pub async fn delete_api_key(&self, key_id: &str) -> Result<()> {
-        let resp = self
-            .client
-            .delete(self.url(&format!("/company/apikeys/key/{}", key_id)))
-            .header("Authorization", self.auth_header().unwrap_or_default())
-            .send()
-            .await
-            .context("delete api key failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        Ok(())
     }
 
     // ─── Company Auth Keys (CLI API keys) ──────────────────────────────────

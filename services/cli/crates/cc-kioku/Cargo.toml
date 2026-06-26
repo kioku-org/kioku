@@ -15,5 +15,11 @@ thiserror      = { workspace = true }
 chrono         = { workspace = true }
 uuid           = { workspace = true, features = ["v4"] }
 
+[features]
+default = []
+integration = []
+
 [dev-dependencies]
 serde_json     = { workspace = true }
+tokio          = { workspace = true }
+chrono         = { workspace = true }

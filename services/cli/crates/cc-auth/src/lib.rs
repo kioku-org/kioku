@@ -40,16 +40,14 @@ impl AuthFile {
                 .with_context(|| format!("creating directory {}", parent.display()))?;
         }
         let content = serde_json::to_string_pretty(self)?;
-        std::fs::write(&path, content)
-            .with_context(|| format!("writing {}", path.display()))?;
+        std::fs::write(&path, content).with_context(|| format!("writing {}", path.display()))?;
         Ok(())
     }
 
     pub fn delete() -> Result<()> {
         let path = Self::path();
         if path.exists() {
-            std::fs::remove_file(&path)
-                .with_context(|| format!("removing {}", path.display()))?;
+            std::fs::remove_file(&path).with_context(|| format!("removing {}", path.display()))?;
         }
         Ok(())
     }
