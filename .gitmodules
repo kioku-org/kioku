@@ -1,0 +1,4 @@
+[submodule "services/vexa"]
+	path = services/vexa
+	url = https://github.com/kioku-org/vexa.git
+	branch = main

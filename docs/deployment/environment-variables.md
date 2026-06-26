@@ -95,7 +95,7 @@ Full reference for all configuration options.
 
 | Variable | Default | Description |
 |---|---|---|
-| `KIOKU_VEXA_PATH` | `../../services/vexa` | Path to vexa source (for Docker builds) |
+| `KIOKU_VEXA_PATH` | `../../services/vexa` | Path to the checked-out Vexa submodule (for Docker builds) |
 | `HIVEMIND_PATH` | `../../services/hivemind` | Path to hivemind source (for Docker builds) |
 | `CONTAINER_DISK_GB` | `20` | Default container disk used by `deployment/runpod/deploy.sh` for the stateful CPU pod |
 | `STATEFUL_RUNPOD_CLOUD_TYPE` | `COMMUNITY` | Cloud tier used by `deployment/runpod/deploy.sh` for the long-lived stateful pod |

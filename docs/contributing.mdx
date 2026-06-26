@@ -24,7 +24,7 @@ kioku/
 │   │   │   └── mcp/            # MCP server
 │   │   ├── migrations/         # SQL migrations
 │   │   └── tests/              # Integration tests
-│   └── vexa/                   # Vendored Vexa meeting-bot platform
+│   └── vexa/                   # Vexa meeting-bot platform (Git submodule)
 ├── deployment/
 │   ├── docker/                 # Docker Compose deployment
 │   └── runpod/                 # RunPod pod deployment
@@ -32,6 +32,12 @@ kioku/
 ```
 
 ## Development
+
+Initialize the Vexa submodule before working on the stack:
+
+```bash
+git submodule update --init --recursive
+```
 
 ### Hivemind (Rust)
 

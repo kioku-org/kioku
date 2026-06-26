@@ -13,8 +13,10 @@ Get Kioku running locally in 5 minutes.
 
   <Step title="Clone and setup">
     ```bash
-    git clone https://github.com/kioku-org/kioku.git
-    cd kioku/deployment/docker
+    git clone --recurse-submodules https://github.com/kioku-org/kioku.git
+    cd kioku
+    git submodule update --init --recursive
+    cd deployment/docker
 
     # Copies .env.example, generates secure secrets, pulls images
     ./scripts/setup.sh
