@@ -38,6 +38,27 @@ async fn setup() -> (KiokuClient, String) {
     )
 }
 
+async fn fresh_client(prefix: &str) -> KiokuClient {
+    let base = base_url();
+    let client = KiokuClient::new(&base);
+    let unique = uuid::Uuid::new_v4().to_string();
+    let email = format!("{prefix}_{unique}@example.com");
+    let company = format!("{prefix}-{unique}");
+
+    let session = client
+        .register_admin(
+            &company,
+            None,
+            &email,
+            "CLI Test User",
+            "testpassword123",
+        )
+        .await
+        .expect("fresh admin registration failed");
+
+    KiokuClient::with_token(&base, &session.token)
+}
+
 #[tokio::test]
 async fn auth_lifecycle() {
     let (client, _) = setup().await;
@@ -155,7 +176,7 @@ async fn auth_keys_crud() {
 
 #[tokio::test]
 async fn knowledge_search_empty() {
-    let (client, _) = setup().await;
+    let client = fresh_client("knowledge-empty").await;
 
     let results = client
         .knowledge_search("nonexistent query xyz", 5)
