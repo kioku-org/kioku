@@ -1,4 +1,3 @@
-pub mod api_key;
 pub mod auth;
 pub mod company;
 pub mod company_api_key;
@@ -9,5 +8,4 @@ pub mod member;
 pub mod message;
 pub mod session;
 pub mod trace;
-pub mod usage;
 pub mod vexa;

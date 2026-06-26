@@ -22,9 +22,6 @@ pub struct Settings {
     #[serde(default = "default_jwt_ttl_seconds")]
     pub jwt_ttl_seconds: i64,
 
-    #[serde(default = "default_encryption_secret")]
-    pub encryption_secret: String,
-
     #[serde(default = "default_vexa_api_url")]
     pub vexa_api_url: String,
     #[serde(default = "default_vexa_admin_api_url")]
@@ -80,9 +77,6 @@ fn default_jwt_secret() -> String {
 fn default_jwt_ttl_seconds() -> i64 {
     30 * 24 * 60 * 60
 }
-fn default_encryption_secret() -> String {
-    "hivemind-encryption-secret-change-me".into()
-}
 fn default_vexa_api_url() -> String {
     "http://vexa-api-gateway:8000".into()
 }
@@ -129,8 +123,6 @@ impl Default for Settings {
 
             jwt_secret: default_jwt_secret(),
             jwt_ttl_seconds: default_jwt_ttl_seconds(),
-
-            encryption_secret: default_encryption_secret(),
 
             vexa_api_url: default_vexa_api_url(),
             vexa_admin_api_url: default_vexa_admin_api_url(),

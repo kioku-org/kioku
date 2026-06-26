@@ -58,18 +58,12 @@ pub struct AuthSession {
 #[derive(Debug, Serialize)]
 pub struct CompanyConfigOut {
     pub company_id: Uuid,
-    pub allowed_models: Vec<String>,
-    pub default_provider: String,
-    pub default_model: String,
     pub hivemind_enabled: bool,
     pub updated_at: i64,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CompanyConfigPatch {
-    pub allowed_models: Option<Vec<String>>,
-    pub default_provider: Option<String>,
-    pub default_model: Option<String>,
     pub hivemind_enabled: Option<bool>,
 }
 
@@ -124,28 +118,6 @@ pub struct CompanyApiKeyOut {
     pub key_prefix: String,
     pub created_at: i64,
     pub last_used_at: Option<i64>,
-}
-
-// ─── API Keys (provider) ───────────────────────────────────────────────
-
-#[derive(Debug, Serialize)]
-pub struct ApiKeyOut {
-    pub id: Uuid,
-    pub company_id: Uuid,
-    pub user_id: Uuid,
-    pub provider: String,
-    pub key_masked: String,
-    pub ollama_url: Option<String>,
-    pub created_at: i64,
-    pub updated_at: i64,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct MemberApiKeySet {
-    pub user_id: Uuid,
-    pub provider: String,
-    pub plain_key: String,
-    pub ollama_url: Option<String>,
 }
 
 // ─── Meetings ───────────────────────────────────────────────────────────────
@@ -226,37 +198,12 @@ pub struct KnowledgeDocumentOut {
     pub updated_at: i64,
 }
 
-// ─── Usage ──────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-pub struct UsageRecord {
-    pub user_id: Option<Uuid>,
-    pub session_id: String,
-    pub model: String,
-    pub provider: String,
-    pub input_tokens: i64,
-    pub output_tokens: i64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct UsageSummary {
-    pub user_id: Uuid,
-    pub email: String,
-    pub name: String,
-    pub total_input_tokens: i64,
-    pub total_output_tokens: i64,
-    pub total_cost_cents: i64,
-    pub session_count: i64,
-    pub last_active_at: Option<i64>,
-}
-
 // ─── Sessions ───────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
 pub struct SessionCreateRequest {
     pub title: Option<String>,
     pub cwd: Option<String>,
-    pub model: Option<String>,
     pub mode: Option<String>,
 }
 
@@ -264,7 +211,6 @@ pub struct SessionCreateRequest {
 pub struct SessionPatchRequest {
     pub title: Option<String>,
     pub status: Option<String>,
-    pub model: Option<String>,
     pub mode: Option<String>,
 }
 
@@ -276,7 +222,6 @@ pub struct SessionOut {
     pub title: String,
     pub status: String,
     pub cwd: Option<String>,
-    pub model: Option<String>,
     pub mode: String,
     pub created_at: i64,
     pub updated_at: i64,
@@ -290,7 +235,6 @@ pub struct MessageCreateRequest {
     pub role: String,
     pub content: serde_json::Value,
     pub timestamp: i64,
-    pub token_usage: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -300,7 +244,6 @@ pub struct MessageOut {
     pub role: String,
     pub content: serde_json::Value,
     pub timestamp: i64,
-    pub token_usage: Option<serde_json::Value>,
 }
 
 // ─── Trace Steps ────────────────────────────────────────────────────────────

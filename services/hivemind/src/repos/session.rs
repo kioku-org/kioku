@@ -26,8 +26,8 @@ impl SessionRepo {
 
         sqlx::query(
             r#"
-            INSERT INTO sessions (id, company_id, user_id, title, status, cwd, model, mode, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, 'idle', $5, $6, $7, $8, $8)
+            INSERT INTO sessions (id, company_id, user_id, title, status, cwd, mode, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, 'idle', $5, $6, $7, $7)
             "#,
         )
         .bind(id)
@@ -35,7 +35,6 @@ impl SessionRepo {
         .bind(user_id)
         .bind(&title)
         .bind(req.cwd.as_deref())
-        .bind(&req.model)
         .bind(&mode)
         .bind(now)
         .execute(&self.db)
@@ -49,7 +48,6 @@ impl SessionRepo {
             title,
             status: "idle".into(),
             cwd: req.cwd,
-            model: req.model,
             mode,
             created_at: now,
             updated_at: now,
@@ -59,7 +57,7 @@ impl SessionRepo {
     pub async fn list(&self, company_id: Uuid, user_id: Uuid) -> Result<Vec<SessionOut>, AppError> {
         let rows = sqlx::query(
             r#"
-            SELECT id, company_id, user_id, title, status, cwd, model, mode, created_at, updated_at
+            SELECT id, company_id, user_id, title, status, cwd, mode, created_at, updated_at
             FROM sessions
             WHERE company_id = $1 AND user_id = $2
             ORDER BY updated_at DESC
@@ -82,7 +80,7 @@ impl SessionRepo {
     ) -> Result<Option<SessionOut>, AppError> {
         let row = sqlx::query(
             r#"
-            SELECT id, company_id, user_id, title, status, cwd, model, mode, created_at, updated_at
+            SELECT id, company_id, user_id, title, status, cwd, mode, created_at, updated_at
             FROM sessions
             WHERE id = $1 AND company_id = $2 AND user_id = $3
             "#,
@@ -110,11 +108,10 @@ impl SessionRepo {
             UPDATE sessions
             SET title = COALESCE($4, title),
                 status = COALESCE($5, status),
-                model = COALESCE($6, model),
-                mode = COALESCE($7, mode),
-                updated_at = $8
+                mode = COALESCE($6, mode),
+                updated_at = $7
             WHERE id = $1 AND company_id = $2 AND user_id = $3
-            RETURNING id, company_id, user_id, title, status, cwd, model, mode, created_at, updated_at
+            RETURNING id, company_id, user_id, title, status, cwd, mode, created_at, updated_at
             "#,
         )
         .bind(session_id)
@@ -122,7 +119,6 @@ impl SessionRepo {
         .bind(user_id)
         .bind(req.title.as_deref())
         .bind(req.status.as_deref())
-        .bind(req.model.as_deref())
         .bind(req.mode.as_deref())
         .bind(now)
         .fetch_optional(&self.db)
@@ -180,7 +176,6 @@ pub fn session_from_row(row: sqlx::postgres::PgRow) -> SessionOut {
         title: row.get("title"),
         status: row.get("status"),
         cwd: row.get("cwd"),
-        model: row.get("model"),
         mode: row.get("mode"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),

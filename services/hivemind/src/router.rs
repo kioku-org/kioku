@@ -5,8 +5,8 @@ use axum::{
 use tower_http::cors::CorsLayer;
 
 use crate::handlers::{
-    api_key, auth, company, company_api_key, invite, knowledge, meeting, member, message, session,
-    trace, usage, vexa,
+    auth, company, company_api_key, invite, knowledge, meeting, member, message, session, trace,
+    vexa,
 };
 use crate::mcp::transport::mcp_routes;
 use crate::AppState;
@@ -38,10 +38,6 @@ pub fn build(state: AppState) -> Router {
         .route("/company/invites", get(invite::list))
         .route("/company/invites", post(invite::create))
         .route("/company/invites/:invite_id", delete(invite::remove))
-        // API Keys (provider)
-        .route("/company/apikeys/:user_id", get(api_key::list))
-        .route("/company/apikeys", post(api_key::set))
-        .route("/company/apikeys/key/:key_id", delete(api_key::delete))
         // Company API Keys (CLI auth)
         .route("/company/auth-keys", get(company_api_key::list_api_keys))
         .route("/company/auth-keys", post(company_api_key::create_api_key))
@@ -76,9 +72,6 @@ pub fn build(state: AppState) -> Router {
             "/sessions/:session_id/traces/:trace_id",
             patch(trace::update),
         )
-        // Usage
-        .route("/usage", post(usage::record))
-        .route("/usage/summary", get(usage::summary))
         // Vexa
         .route("/vexa/bots", post(vexa::request_bot))
         .route("/vexa/meetings", get(vexa::get_meetings))

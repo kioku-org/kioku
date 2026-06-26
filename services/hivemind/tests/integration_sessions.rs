@@ -43,7 +43,6 @@ async fn session_crud() {
         .json(&json!({
             "title": "Test Session",
             "cwd": "/home/user",
-            "model": "claude-sonnet-4-5",
             "mode": "research"
         }))
         .send()

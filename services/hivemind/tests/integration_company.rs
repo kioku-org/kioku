@@ -49,7 +49,7 @@ async fn company_config_get() {
     );
     let body: serde_json::Value = resp.json().await.unwrap();
     assert!(body.get("company_id").is_some());
-    assert!(body.get("default_provider").is_some());
+    assert!(body.get("hivemind_enabled").is_some());
 }
 
 #[tokio::test]
@@ -60,8 +60,7 @@ async fn company_config_update() {
         .put(format!("{}/company/config", base_url()))
         .header("Authorization", format!("Bearer {}", token))
         .json(&json!({
-            "default_provider": "openai",
-            "default_model": "gpt-4o"
+            "hivemind_enabled": false
         }))
         .send()
         .await
@@ -72,8 +71,7 @@ async fn company_config_update() {
         resp.status()
     );
     let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(body["default_provider"], "openai");
-    assert_eq!(body["default_model"], "gpt-4o");
+    assert_eq!(body["hivemind_enabled"], false);
 }
 
 #[tokio::test]
@@ -142,32 +140,30 @@ async fn member_list() {
 }
 
 #[tokio::test]
-async fn api_key_lifecycle() {
+async fn company_auth_key_lifecycle() {
     let c = client();
-    let (token, reg_body) = register_and_get_token("apikey").await;
-    let user_id = reg_body["user_id"].as_str().unwrap();
+    let (token, _) = register_and_get_token("authkey").await;
 
     let create = c
-        .post(format!("{}/company/apikeys", base_url()))
+        .post(format!("{}/company/auth-keys", base_url()))
         .header("Authorization", format!("Bearer {}", token))
         .json(&json!({
-            "user_id": user_id,
-            "provider": "anthropic",
-            "plain_key": "sk-test-12345"
+            "name": "test-cli-key"
         }))
         .send()
         .await
         .unwrap();
     assert!(
         create.status().is_success(),
-        "Create API key failed: {}",
+        "Create auth key failed: {}",
         create.status()
     );
     let key_resp: serde_json::Value = create.json().await.unwrap();
-    assert!(key_resp["key_masked"].as_str().unwrap().contains("..."));
+    assert!(key_resp.get("id").is_some());
+    assert!(key_resp.get("key").is_some());
 
     let list = c
-        .get(format!("{}/company/apikeys/{}", base_url(), user_id))
+        .get(format!("{}/company/auth-keys", base_url()))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await
@@ -178,14 +174,14 @@ async fn api_key_lifecycle() {
 
     let key_id = key_resp["id"].as_str().unwrap();
     let del = c
-        .delete(format!("{}/company/apikeys/key/{}", base_url(), key_id))
+        .delete(format!("{}/company/auth-keys/{}", base_url(), key_id))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await
         .unwrap();
     assert!(
         del.status().is_success(),
-        "Delete API key failed: {}",
+        "Delete auth key failed: {}",
         del.status()
     );
 }

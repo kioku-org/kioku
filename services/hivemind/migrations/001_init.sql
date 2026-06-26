@@ -46,25 +46,9 @@ CREATE TABLE IF NOT EXISTS company_invites (
 );
 CREATE INDEX IF NOT EXISTS idx_invites_company ON company_invites(company_id);
 
--- member_api_keys
-CREATE TABLE IF NOT EXISTS member_api_keys (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    provider VARCHAR(32) NOT NULL,
-    key_encrypted TEXT NOT NULL,
-    ollama_url VARCHAR(255),
-    created_at BIGINT NOT NULL,
-    updated_at BIGINT NOT NULL,
-    UNIQUE(company_id, user_id, provider)
-);
-
 -- company_config
 CREATE TABLE IF NOT EXISTS company_config (
     company_id UUID PRIMARY KEY REFERENCES companies(id) ON DELETE CASCADE,
-    allowed_models JSONB NOT NULL DEFAULT '[]',
-    default_provider VARCHAR(32) NOT NULL DEFAULT 'anthropic',
-    default_model VARCHAR(128) NOT NULL DEFAULT 'claude-sonnet-4-5',
     hivemind_enabled BOOLEAN NOT NULL DEFAULT true,
     updated_at BIGINT NOT NULL
 );
@@ -104,22 +88,6 @@ CREATE INDEX IF NOT EXISTS idx_chunks_type ON knowledge_chunks(chunk_type);
 -- FTS for keyword search
 CREATE INDEX IF NOT EXISTS idx_chunks_text_gin ON knowledge_chunks USING GIN(to_tsvector('english', text));
 
--- token_usage
-CREATE TABLE IF NOT EXISTS token_usage (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    session_id VARCHAR(64) NOT NULL,
-    model VARCHAR(128) NOT NULL,
-    provider VARCHAR(32) NOT NULL,
-    input_tokens BIGINT NOT NULL DEFAULT 0,
-    output_tokens BIGINT NOT NULL DEFAULT 0,
-    cost_cents INT NOT NULL DEFAULT 0,
-    recorded_at BIGINT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_token_usage_company ON token_usage(company_id, recorded_at DESC);
-CREATE INDEX IF NOT EXISTS idx_token_usage_user ON token_usage(user_id, company_id);
-
 -- auth_tokens
 CREATE TABLE IF NOT EXISTS auth_tokens (
     token VARCHAR(128) PRIMARY KEY,
@@ -139,7 +107,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     title VARCHAR(255) NOT NULL,
     status VARCHAR(16) NOT NULL DEFAULT 'idle',
     cwd TEXT,
-    model VARCHAR(255),
     mode VARCHAR(32) NOT NULL DEFAULT 'research',
     created_at BIGINT NOT NULL,
     updated_at BIGINT NOT NULL
@@ -152,8 +119,7 @@ CREATE TABLE IF NOT EXISTS messages (
     session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     role VARCHAR(16) NOT NULL,
     content JSONB NOT NULL DEFAULT '[]',
-    timestamp BIGINT NOT NULL,
-    token_usage JSONB
+    timestamp BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_messages_session_timestamp ON messages(session_id, timestamp ASC);
 

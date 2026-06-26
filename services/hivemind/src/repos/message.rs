@@ -15,7 +15,7 @@ impl MessageRepo {
 
     pub async fn list_by_session(&self, session_id: Uuid) -> Result<Vec<MessageOut>, AppError> {
         let rows = sqlx::query(
-            r#"SELECT id, session_id, role, content, timestamp, token_usage
+            r#"SELECT id, session_id, role, content, timestamp
                FROM messages WHERE session_id = $1 ORDER BY timestamp ASC"#,
         )
         .bind(session_id)
@@ -33,9 +33,9 @@ impl MessageRepo {
     ) -> Result<MessageOut, AppError> {
         let row = sqlx::query(
             r#"
-            INSERT INTO messages (id, session_id, role, content, timestamp, token_usage)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, session_id, role, content, timestamp, token_usage
+            INSERT INTO messages (id, session_id, role, content, timestamp)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id, session_id, role, content, timestamp
             "#,
         )
         .bind(req.id)
@@ -43,7 +43,6 @@ impl MessageRepo {
         .bind(req.role)
         .bind(req.content)
         .bind(req.timestamp)
-        .bind(req.token_usage)
         .fetch_one(&self.db)
         .await
         .map_err(AppError::from)?;
@@ -60,6 +59,5 @@ pub fn message_from_row(row: sqlx::postgres::PgRow) -> MessageOut {
         role: row.get("role"),
         content: row.get("content"),
         timestamp: row.get("timestamp"),
-        token_usage: row.get("token_usage"),
     }
 }
