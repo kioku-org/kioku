@@ -20,8 +20,8 @@ impl MeetingRepo {
         now: i64,
     ) -> Result<MeetingOut, AppError> {
         let id = Uuid::new_v4();
-        let participants_json = serde_json::to_value(&req.participants)
-            .map_err(|e| AppError::Internal(e.into()))?;
+        let participants_json =
+            serde_json::to_value(&req.participants).map_err(|e| AppError::Internal(e.into()))?;
         let vexa_meeting_id = req.vexa_meeting_id;
         let vexa_platform = req.vexa_platform.clone();
         let vexa_native_meeting_id = req.vexa_native_meeting_id.clone();

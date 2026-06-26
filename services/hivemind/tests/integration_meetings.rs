@@ -5,7 +5,7 @@ fn base_url() -> String {
     std::env::var("HIVEMIND_URL").unwrap_or_else(|_| "http://localhost:9100".into())
 }
 
- fn client() -> Client {
+fn client() -> Client {
     reqwest::Client::new()
 }
 
@@ -23,7 +23,11 @@ async fn register_and_get_token(suffix: &str) -> (String, serde_json::Value) {
         .send()
         .await
         .unwrap();
-    assert!(resp.status().is_success(), "Register failed: {}", resp.status());
+    assert!(
+        resp.status().is_success(),
+        "Register failed: {}",
+        resp.status()
+    );
     let body: serde_json::Value = resp.json().await.unwrap();
     (body["token"].as_str().unwrap().to_string(), body)
 }
@@ -50,7 +54,11 @@ async fn meeting_ingest_and_list() {
         .send()
         .await
         .unwrap();
-    assert!(ingest.status().is_success(), "Ingest meeting failed: {}", ingest.status());
+    assert!(
+        ingest.status().is_success(),
+        "Ingest meeting failed: {}",
+        ingest.status()
+    );
     let meeting: serde_json::Value = ingest.json().await.unwrap();
     assert_eq!(meeting["title"], "Weekly Standup");
     assert!(meeting["id"].is_string());
@@ -86,7 +94,11 @@ async fn usage_record_and_summary() {
         .send()
         .await
         .unwrap();
-    assert!(record.status().is_success(), "Record usage failed: {}", record.status());
+    assert!(
+        record.status().is_success(),
+        "Record usage failed: {}",
+        record.status()
+    );
 
     let summary = c
         .get(format!("{}/usage/summary", base_url()))
@@ -94,7 +106,11 @@ async fn usage_record_and_summary() {
         .send()
         .await
         .unwrap();
-    assert!(summary.status().is_success(), "Usage summary failed: {}", summary.status());
+    assert!(
+        summary.status().is_success(),
+        "Usage summary failed: {}",
+        summary.status()
+    );
     let summary_body: serde_json::Value = summary.json().await.unwrap();
     assert!(summary_body.as_array().unwrap().len() >= 1);
 }

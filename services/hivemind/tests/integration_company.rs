@@ -5,7 +5,7 @@ fn base_url() -> String {
     std::env::var("HIVEMIND_URL").unwrap_or_else(|_| "http://localhost:9100".into())
 }
 
- fn client() -> Client {
+fn client() -> Client {
     reqwest::Client::new()
 }
 
@@ -23,7 +23,11 @@ async fn register_and_get_token(suffix: &str) -> (String, serde_json::Value) {
         .send()
         .await
         .unwrap();
-    assert!(resp.status().is_success(), "Register failed: {}", resp.status());
+    assert!(
+        resp.status().is_success(),
+        "Register failed: {}",
+        resp.status()
+    );
     let body: serde_json::Value = resp.json().await.unwrap();
     (body["token"].as_str().unwrap().to_string(), body)
 }
@@ -38,7 +42,11 @@ async fn company_config_get() {
         .send()
         .await
         .unwrap();
-    assert!(resp.status().is_success(), "Get config failed: {}", resp.status());
+    assert!(
+        resp.status().is_success(),
+        "Get config failed: {}",
+        resp.status()
+    );
     let body: serde_json::Value = resp.json().await.unwrap();
     assert!(body.get("company_id").is_some());
     assert!(body.get("default_provider").is_some());
@@ -58,7 +66,11 @@ async fn company_config_update() {
         .send()
         .await
         .unwrap();
-    assert!(resp.status().is_success(), "Update config failed: {}", resp.status());
+    assert!(
+        resp.status().is_success(),
+        "Update config failed: {}",
+        resp.status()
+    );
     let body: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(body["default_provider"], "openai");
     assert_eq!(body["default_model"], "gpt-4o");
@@ -80,7 +92,11 @@ async fn invite_lifecycle() {
         .send()
         .await
         .unwrap();
-    assert!(create.status().is_success(), "Create invite failed: {}", create.status());
+    assert!(
+        create.status().is_success(),
+        "Create invite failed: {}",
+        create.status()
+    );
     let invite: serde_json::Value = create.json().await.unwrap();
     let invite_id = invite["id"].as_str().unwrap();
 
@@ -100,7 +116,11 @@ async fn invite_lifecycle() {
         .send()
         .await
         .unwrap();
-    assert!(del.status().is_success(), "Delete invite failed: {}", del.status());
+    assert!(
+        del.status().is_success(),
+        "Delete invite failed: {}",
+        del.status()
+    );
 }
 
 #[tokio::test]
@@ -115,7 +135,10 @@ async fn member_list() {
         .unwrap();
     assert!(resp.status().is_success());
     let body: serde_json::Value = resp.json().await.unwrap();
-    assert!(body.as_array().unwrap().len() >= 1, "Admin should be a member");
+    assert!(
+        body.as_array().unwrap().len() >= 1,
+        "Admin should be a member"
+    );
 }
 
 #[tokio::test]
@@ -135,7 +158,11 @@ async fn api_key_lifecycle() {
         .send()
         .await
         .unwrap();
-    assert!(create.status().is_success(), "Create API key failed: {}", create.status());
+    assert!(
+        create.status().is_success(),
+        "Create API key failed: {}",
+        create.status()
+    );
     let key_resp: serde_json::Value = create.json().await.unwrap();
     assert!(key_resp["key_masked"].as_str().unwrap().contains("..."));
 
@@ -156,5 +183,9 @@ async fn api_key_lifecycle() {
         .send()
         .await
         .unwrap();
-    assert!(del.status().is_success(), "Delete API key failed: {}", del.status());
+    assert!(
+        del.status().is_success(),
+        "Delete API key failed: {}",
+        del.status()
+    );
 }

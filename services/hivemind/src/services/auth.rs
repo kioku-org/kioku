@@ -3,7 +3,10 @@ use uuid::Uuid;
 use crate::config::Settings;
 use crate::errors::AppError;
 use crate::repos::auth::{self, AuthRepo};
-use crate::types::{AuthSession, RegisterAdminRequest, RegisterMemberRequest, RegisterPersonalRequest, SignInRequest};
+use crate::types::{
+    AuthSession, RegisterAdminRequest, RegisterMemberRequest, RegisterPersonalRequest,
+    SignInRequest,
+};
 
 #[derive(Clone)]
 pub struct AuthService;
@@ -22,7 +25,9 @@ impl AuthService {
             return Err(AppError::BadRequest("Valid email is required".into()));
         }
         if req.password.len() < 8 {
-            return Err(AppError::BadRequest("Password must be at least 8 characters".into()));
+            return Err(AppError::BadRequest(
+                "Password must be at least 8 characters".into(),
+            ));
         }
 
         if repo.find_user_by_email(&req.email).await?.is_some() {
@@ -32,12 +37,18 @@ impl AuthService {
         let now = crate::util::now_ms();
         let company_id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
-        let slug = req.company_slug.clone().unwrap_or_else(|| auth::slugify(&req.company_name));
+        let slug = req
+            .company_slug
+            .clone()
+            .unwrap_or_else(|| auth::slugify(&req.company_name));
         let password_hash = auth::hash_password(&req.password)?;
 
-        repo.create_company(company_id, &req.company_name, &slug, now).await?;
-        repo.create_user(user_id, &req.email, &req.name, &password_hash, now).await?;
-        repo.create_membership(Uuid::new_v4(), company_id, user_id, "admin", now).await?;
+        repo.create_company(company_id, &req.company_name, &slug, now)
+            .await?;
+        repo.create_user(user_id, &req.email, &req.name, &password_hash, now)
+            .await?;
+        repo.create_membership(Uuid::new_v4(), company_id, user_id, "admin", now)
+            .await?;
         repo.create_default_config(company_id, now).await?;
 
         let token = auth::create_token(
@@ -48,7 +59,8 @@ impl AuthService {
             settings.jwt_ttl_seconds,
         )?;
         let expires_at = now + (settings.jwt_ttl_seconds * 1000);
-        repo.create_auth_token(&token, user_id, company_id, now, expires_at).await?;
+        repo.create_auth_token(&token, user_id, company_id, now, expires_at)
+            .await?;
 
         Ok(AuthSession::new(
             user_id,
@@ -72,7 +84,9 @@ impl AuthService {
             return Err(AppError::BadRequest("Valid email is required".into()));
         }
         if req.password.len() < 8 {
-            return Err(AppError::BadRequest("Password must be at least 8 characters".into()));
+            return Err(AppError::BadRequest(
+                "Password must be at least 8 characters".into(),
+            ));
         }
 
         let company = repo
@@ -93,8 +107,10 @@ impl AuthService {
         let user_id = Uuid::new_v4();
         let password_hash = auth::hash_password(&req.password)?;
 
-        repo.create_user(user_id, &req.email, &req.name, &password_hash, now).await?;
-        repo.create_membership(Uuid::new_v4(), company.id, user_id, &invite.role, now).await?;
+        repo.create_user(user_id, &req.email, &req.name, &password_hash, now)
+            .await?;
+        repo.create_membership(Uuid::new_v4(), company.id, user_id, &invite.role, now)
+            .await?;
         repo.mark_invite_used(invite.id, now).await?;
 
         let token = auth::create_token(
@@ -105,7 +121,8 @@ impl AuthService {
             settings.jwt_ttl_seconds,
         )?;
         let expires_at = now + (settings.jwt_ttl_seconds * 1000);
-        repo.create_auth_token(&token, user_id, company.id, now, expires_at).await?;
+        repo.create_auth_token(&token, user_id, company.id, now, expires_at)
+            .await?;
 
         Ok(AuthSession::new(
             user_id,
@@ -129,7 +146,9 @@ impl AuthService {
             return Err(AppError::BadRequest("Valid email is required".into()));
         }
         if req.password.len() < 8 {
-            return Err(AppError::BadRequest("Password must be at least 8 characters".into()));
+            return Err(AppError::BadRequest(
+                "Password must be at least 8 characters".into(),
+            ));
         }
 
         if repo.find_user_by_email(&req.email).await?.is_some() {
@@ -146,9 +165,12 @@ impl AuthService {
 
         let password_hash = auth::hash_password(&req.password)?;
 
-        repo.create_company(company_id, &company_name, &slug, now).await?;
-        repo.create_user(user_id, &req.email, &req.name, &password_hash, now).await?;
-        repo.create_membership(Uuid::new_v4(), company_id, user_id, "admin", now).await?;
+        repo.create_company(company_id, &company_name, &slug, now)
+            .await?;
+        repo.create_user(user_id, &req.email, &req.name, &password_hash, now)
+            .await?;
+        repo.create_membership(Uuid::new_v4(), company_id, user_id, "admin", now)
+            .await?;
         repo.create_default_config(company_id, now).await?;
 
         let token = auth::create_token(
@@ -159,7 +181,8 @@ impl AuthService {
             settings.jwt_ttl_seconds,
         )?;
         let expires_at = now + (settings.jwt_ttl_seconds * 1000);
-        repo.create_auth_token(&token, user_id, company_id, now, expires_at).await?;
+        repo.create_auth_token(&token, user_id, company_id, now, expires_at)
+            .await?;
 
         Ok(AuthSession::new(
             user_id,
@@ -204,7 +227,8 @@ impl AuthService {
             settings.jwt_ttl_seconds,
         )?;
         let expires_at = now + (settings.jwt_ttl_seconds * 1000);
-        repo.create_auth_token(&token, user.id, company.id, now, expires_at).await?;
+        repo.create_auth_token(&token, user.id, company.id, now, expires_at)
+            .await?;
 
         Ok(AuthSession::new(
             user.id,

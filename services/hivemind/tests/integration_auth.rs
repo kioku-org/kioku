@@ -3,7 +3,7 @@ mod auth_tests {
     use reqwest::Client;
     use serde_json::json;
 
-     fn client() -> Client {
+    fn client() -> Client {
         reqwest::Client::new()
     }
 
@@ -16,7 +16,11 @@ mod auth_tests {
         let resp = client().get(format!("{}/health", base_url())).send().await;
         match resp {
             Ok(r) => {
-                assert!(r.status().is_success(), "Health check failed: {}", r.status());
+                assert!(
+                    r.status().is_success(),
+                    "Health check failed: {}",
+                    r.status()
+                );
                 let body: serde_json::Value = r.json().await.unwrap();
                 assert_eq!(body["status"], "ok");
             }
@@ -39,7 +43,11 @@ mod auth_tests {
             .send()
             .await
             .unwrap();
-        assert!(resp.status().is_success(), "Register admin failed: {}", resp.status());
+        assert!(
+            resp.status().is_success(),
+            "Register admin failed: {}",
+            resp.status()
+        );
         let body: serde_json::Value = resp.json().await.unwrap();
         assert!(body.get("token").is_some(), "Missing token in response");
         assert_eq!(body["role"], "admin");
@@ -73,10 +81,23 @@ mod auth_tests {
             "name": "Dup User",
             "password": "testpassword123"
         });
-        let resp1 = c.post(format!("{}/auth/register/admin", base_url())).json(&body).send().await.unwrap();
+        let resp1 = c
+            .post(format!("{}/auth/register/admin", base_url()))
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
         assert!(resp1.status().is_success());
-        let resp2 = c.post(format!("{}/auth/register/admin", base_url())).json(&body).send().await.unwrap();
-        assert!(resp2.status().is_client_error(), "Duplicate email should fail");
+        let resp2 = c
+            .post(format!("{}/auth/register/admin", base_url()))
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            resp2.status().is_client_error(),
+            "Duplicate email should fail"
+        );
     }
 
     #[tokio::test]
@@ -105,7 +126,11 @@ mod auth_tests {
             .send()
             .await
             .unwrap();
-        assert!(signin.status().is_success(), "Signin failed: {}", signin.status());
+        assert!(
+            signin.status().is_success(),
+            "Signin failed: {}",
+            signin.status()
+        );
         let body: serde_json::Value = signin.json().await.unwrap();
         assert!(body.get("token").is_some());
     }
@@ -157,7 +182,11 @@ mod auth_tests {
     #[tokio::test]
     async fn auth_me_without_token() {
         let c = client();
-        let resp = c.get(format!("{}/auth/me", base_url())).send().await.unwrap();
+        let resp = c
+            .get(format!("{}/auth/me", base_url()))
+            .send()
+            .await
+            .unwrap();
         assert_eq!(resp.status(), 401, "Should require auth token");
     }
 
@@ -185,7 +214,11 @@ mod auth_tests {
             .send()
             .await
             .unwrap();
-        assert!(out.status().is_success(), "Signout failed: {}", out.status());
+        assert!(
+            out.status().is_success(),
+            "Signout failed: {}",
+            out.status()
+        );
 
         let me = c
             .get(format!("{}/auth/me", base_url()))
@@ -193,6 +226,10 @@ mod auth_tests {
             .send()
             .await
             .unwrap();
-        assert_eq!(me.status(), 401, "Token should be invalidated after signout");
+        assert_eq!(
+            me.status(),
+            401,
+            "Token should be invalidated after signout"
+        );
     }
 }

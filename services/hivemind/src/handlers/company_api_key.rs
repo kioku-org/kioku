@@ -3,12 +3,12 @@ use axum::http::HeaderMap;
 use axum::response::Json;
 use uuid::Uuid;
 
-use crate::AppState;
 use crate::errors::AppError;
 use crate::middleware::AuthContext;
 use crate::repos::auth::AuthRepo;
 use crate::repos::company_api_key::CompanyApiKeyRepo;
 use crate::types::{AuthSession, CompanyApiKeyCreate, CompanyApiKeyOut};
+use crate::AppState;
 
 fn extract_api_key(headers: &HeaderMap) -> Result<&str, AppError> {
     headers
@@ -35,8 +35,8 @@ pub async fn exchange_api_key(
         .await?
         .ok_or_else(|| AppError::Unauthorized("API key not found".into()))?;
 
-    let valid = bcrypt::verify(raw_key, &key_record.key_hash)
-        .map_err(|e| AppError::Internal(e.into()))?;
+    let valid =
+        bcrypt::verify(raw_key, &key_record.key_hash).map_err(|e| AppError::Internal(e.into()))?;
 
     if !valid {
         return Err(AppError::Unauthorized("Invalid API key".into()));
@@ -61,7 +61,13 @@ pub async fn exchange_api_key(
 
     let expires_at = now + (state.settings.jwt_ttl_seconds * 1000);
     auth_repo
-        .create_auth_token(&token, key_record.user_id, key_record.company_id, now, expires_at)
+        .create_auth_token(
+            &token,
+            key_record.user_id,
+            key_record.company_id,
+            now,
+            expires_at,
+        )
         .await?;
 
     Ok(Json(AuthSession::new(
@@ -82,20 +88,30 @@ pub async fn create_api_key(
     Json(req): Json<CompanyApiKeyCreate>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     if auth.role != "admin" {
-        return Err(AppError::Forbidden("Only admins can create API keys".into()));
+        return Err(AppError::Forbidden(
+            "Only admins can create API keys".into(),
+        ));
     }
 
     let raw_key = format!("cmp_{}", Uuid::new_v4().simple());
     let key_prefix = &raw_key[..12];
-    let key_hash = bcrypt::hash(&raw_key, bcrypt::DEFAULT_COST)
-        .map_err(|e| AppError::Internal(e.into()))?;
+    let key_hash =
+        bcrypt::hash(&raw_key, bcrypt::DEFAULT_COST).map_err(|e| AppError::Internal(e.into()))?;
 
     let id = Uuid::new_v4();
     let now = crate::util::now_ms();
 
     let repo = CompanyApiKeyRepo::new(state.db.clone());
-    repo.create(id, auth.company_id, auth.user_id, &req.name, key_prefix, &key_hash, now)
-        .await?;
+    repo.create(
+        id,
+        auth.company_id,
+        auth.user_id,
+        &req.name,
+        key_prefix,
+        &key_hash,
+        now,
+    )
+    .await?;
 
     Ok(Json(serde_json::json!({
         "id": id,
@@ -134,7 +150,9 @@ pub async fn delete_api_key(
     axum::extract::Path(key_id): axum::extract::Path<Uuid>,
 ) -> Result<Json<()>, AppError> {
     if auth.role != "admin" {
-        return Err(AppError::Forbidden("Only admins can delete API keys".into()));
+        return Err(AppError::Forbidden(
+            "Only admins can delete API keys".into(),
+        ));
     }
 
     let repo = CompanyApiKeyRepo::new(state.db.clone());

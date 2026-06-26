@@ -42,7 +42,11 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let settings = config::load();
-    tracing::info!("Embedding config: url={} model={}", settings.embedding_api_url, settings.embedding_model);
+    tracing::info!(
+        "Embedding config: url={} model={}",
+        settings.embedding_api_url,
+        settings.embedding_model
+    );
     let db = db::connect(&settings).await?;
 
     // Initialize embedding service (Ollama)
@@ -53,12 +57,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize Qdrant vector store
     let vector_store = Arc::new(
-        HivemindVectorStore::new(
-            &settings.qdrant_url,
-            &settings.qdrant_api_key,
-            embedder,
-        )
-        .await?,
+        HivemindVectorStore::new(&settings.qdrant_url, &settings.qdrant_api_key, embedder).await?,
     );
     vector_store.ensure_collection().await?;
 

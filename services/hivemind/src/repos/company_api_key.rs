@@ -12,7 +12,10 @@ impl CompanyApiKeyRepo {
         Self { db }
     }
 
-    pub async fn find_by_key_prefix(&self, key_prefix: &str) -> Result<Option<CompanyApiKeyRecord>, AppError> {
+    pub async fn find_by_key_prefix(
+        &self,
+        key_prefix: &str,
+    ) -> Result<Option<CompanyApiKeyRecord>, AppError> {
         sqlx::query_as::<_, CompanyApiKeyRecord>(
             r#"SELECT id, company_id, user_id, name, key_prefix, key_hash, created_at, last_used_at
                FROM company_api_keys WHERE key_prefix = $1"#,
@@ -50,7 +53,10 @@ impl CompanyApiKeyRepo {
         Ok(())
     }
 
-    pub async fn list_by_company(&self, company_id: Uuid) -> Result<Vec<CompanyApiKeyRecord>, AppError> {
+    pub async fn list_by_company(
+        &self,
+        company_id: Uuid,
+    ) -> Result<Vec<CompanyApiKeyRecord>, AppError> {
         sqlx::query_as::<_, CompanyApiKeyRecord>(
             r#"SELECT id, company_id, user_id, name, key_prefix, key_hash, created_at, last_used_at
                FROM company_api_keys WHERE company_id = $1 ORDER BY created_at DESC"#,
@@ -62,14 +68,13 @@ impl CompanyApiKeyRepo {
     }
 
     pub async fn delete(&self, id: Uuid, company_id: Uuid) -> Result<(), AppError> {
-        let result = sqlx::query(
-            r#"DELETE FROM company_api_keys WHERE id = $1 AND company_id = $2"#,
-        )
-        .bind(id)
-        .bind(company_id)
-        .execute(&self.db)
-        .await
-        .map_err(AppError::from)?;
+        let result =
+            sqlx::query(r#"DELETE FROM company_api_keys WHERE id = $1 AND company_id = $2"#)
+                .bind(id)
+                .bind(company_id)
+                .execute(&self.db)
+                .await
+                .map_err(AppError::from)?;
 
         if result.rows_affected() == 0 {
             return Err(AppError::NotFound("API key not found".into()));
@@ -78,14 +83,12 @@ impl CompanyApiKeyRepo {
     }
 
     pub async fn update_last_used(&self, id: Uuid, now: i64) -> Result<(), AppError> {
-        sqlx::query(
-            r#"UPDATE company_api_keys SET last_used_at = $1 WHERE id = $2"#,
-        )
-        .bind(now)
-        .bind(id)
-        .execute(&self.db)
-        .await
-        .map_err(AppError::from)?;
+        sqlx::query(r#"UPDATE company_api_keys SET last_used_at = $1 WHERE id = $2"#)
+            .bind(now)
+            .bind(id)
+            .execute(&self.db)
+            .await
+            .map_err(AppError::from)?;
         Ok(())
     }
 }

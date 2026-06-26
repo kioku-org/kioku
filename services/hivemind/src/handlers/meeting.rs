@@ -1,12 +1,12 @@
 use axum::extract::State;
 use axum::response::Json;
 
-use crate::AppState;
 use crate::errors::AppError;
 use crate::middleware::AuthContext;
 use crate::repos::meeting::MeetingRepo;
 use crate::services::knowledge::KnowledgeService;
 use crate::types::{MeetingIngestRequest, MeetingOut};
+use crate::AppState;
 
 pub async fn ingest(
     State(state): State<AppState>,

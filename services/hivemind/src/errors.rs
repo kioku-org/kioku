@@ -57,7 +57,11 @@ impl From<sqlx::Error> for AppError {
             sqlx::Error::Database(db_err) => {
                 let msg = db_err.message();
                 // Check for unique constraint violations
-                if msg.contains("unique") || msg.contains("duplicate") || msg.contains("already exists") || msg.contains("UNIQUE") {
+                if msg.contains("unique")
+                    || msg.contains("duplicate")
+                    || msg.contains("already exists")
+                    || msg.contains("UNIQUE")
+                {
                     return AppError::Conflict(msg.to_string());
                 }
                 // Check for foreign key violations

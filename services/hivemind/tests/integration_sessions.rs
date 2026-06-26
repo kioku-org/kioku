@@ -5,7 +5,7 @@ fn base_url() -> String {
     std::env::var("HIVEMIND_URL").unwrap_or_else(|_| "http://localhost:9100".into())
 }
 
- fn client() -> Client {
+fn client() -> Client {
     reqwest::Client::new()
 }
 
@@ -23,7 +23,11 @@ async fn register_and_get_token(suffix: &str) -> (String, serde_json::Value) {
         .send()
         .await
         .unwrap();
-    assert!(resp.status().is_success(), "Register failed: {}", resp.status());
+    assert!(
+        resp.status().is_success(),
+        "Register failed: {}",
+        resp.status()
+    );
     let body: serde_json::Value = resp.json().await.unwrap();
     (body["token"].as_str().unwrap().to_string(), body)
 }
@@ -45,7 +49,11 @@ async fn session_crud() {
         .send()
         .await
         .unwrap();
-    assert!(create.status().is_success(), "Create session failed: {}", create.status());
+    assert!(
+        create.status().is_success(),
+        "Create session failed: {}",
+        create.status()
+    );
     let session: serde_json::Value = create.json().await.unwrap();
     let session_id = session["id"].as_str().unwrap();
     assert_eq!(session["title"], "Test Session");
@@ -130,7 +138,11 @@ async fn message_lifecycle() {
         .send()
         .await
         .unwrap();
-    assert!(msg.status().is_success(), "Create message failed: {}", msg.status());
+    assert!(
+        msg.status().is_success(),
+        "Create message failed: {}",
+        msg.status()
+    );
 
     let list = c
         .get(format!("{}/sessions/{}/messages", base_url(), session_id))
@@ -172,12 +184,21 @@ async fn trace_lifecycle() {
         .send()
         .await
         .unwrap();
-    assert!(trace.status().is_success(), "Create trace failed: {}", trace.status());
+    assert!(
+        trace.status().is_success(),
+        "Create trace failed: {}",
+        trace.status()
+    );
     let trace_body: serde_json::Value = trace.json().await.unwrap();
     let trace_id = trace_body["id"].as_str().unwrap();
 
     let update = c
-        .patch(format!("{}/sessions/{}/traces/{}", base_url(), session_id, trace_id))
+        .patch(format!(
+            "{}/sessions/{}/traces/{}",
+            base_url(),
+            session_id,
+            trace_id
+        ))
         .header("Authorization", format!("Bearer {}", token))
         .json(&json!({
             "status": "done",

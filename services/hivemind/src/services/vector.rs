@@ -5,8 +5,8 @@ use langchain_rust::{
     vectorstore::{VecStoreOptions, VectorStore},
 };
 use qdrant_client::qdrant::{Filter, PointStruct, SearchPointsBuilder, UpsertPointsBuilder};
-use qdrant_client::Qdrant;
 use qdrant_client::Payload;
+use qdrant_client::Qdrant;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::error::Error;
@@ -23,7 +23,11 @@ pub struct HivemindVectorStore {
 }
 
 impl HivemindVectorStore {
-    pub async fn new(url: &str, api_key: &str, embedder: Arc<dyn Embedder>) -> anyhow::Result<Self> {
+    pub async fn new(
+        url: &str,
+        api_key: &str,
+        embedder: Arc<dyn Embedder>,
+    ) -> anyhow::Result<Self> {
         let mut builder = Qdrant::from_url(url);
         if !api_key.is_empty() {
             builder = builder.api_key(api_key);
@@ -66,7 +70,8 @@ impl HivemindVectorStore {
 
         // Try to create the collection, but don't fail if it already exists
         // (another instance may have created it)
-        if let Err(e) = self.client
+        if let Err(e) = self
+            .client
             .create_collection(
                 CreateCollectionBuilder::new(&self.collection_name)
                     .vectors_config(VectorParamsBuilder::new(dimension, Distance::Cosine)),
@@ -116,11 +121,7 @@ impl HivemindVectorStore {
                 "company_id": company_id.to_string(),
             });
 
-            let point = PointStruct::new(
-                point_id,
-                vector_f32,
-                Payload::try_from(payload).unwrap(),
-            );
+            let point = PointStruct::new(point_id, vector_f32, Payload::try_from(payload).unwrap());
             points.push(point);
         }
 

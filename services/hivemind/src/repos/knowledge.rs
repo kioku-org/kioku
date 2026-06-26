@@ -104,14 +104,12 @@ impl KnowledgeRepo {
 
     /// Delete a knowledge document (cascades to chunks).
     pub async fn delete_document(&self, id: Uuid, company_id: Uuid) -> Result<(), AppError> {
-        sqlx::query(
-            "DELETE FROM knowledge_documents WHERE id = $1 AND company_id = $2",
-        )
-        .bind(id)
-        .bind(company_id)
-        .execute(&self.db)
-        .await
-        .map_err(AppError::from)?;
+        sqlx::query("DELETE FROM knowledge_documents WHERE id = $1 AND company_id = $2")
+            .bind(id)
+            .bind(company_id)
+            .execute(&self.db)
+            .await
+            .map_err(AppError::from)?;
 
         Ok(())
     }
@@ -152,17 +150,20 @@ impl KnowledgeRepo {
         .await
         .map_err(AppError::from)?;
 
-        Ok(rows.into_iter().map(|row| {
-            use sqlx::Row;
-            serde_json::json!({
-                "id": row.get::<Uuid, _>("id").to_string(),
-                "meeting_id": row.get::<Option<Uuid>, _>("meeting_id").map(|u| u.to_string()),
-                "text": row.get::<Option<String>, _>("text"),
-                "speaker": row.get::<Option<String>, _>("speaker"),
-                "timestamp": row.get::<Option<i64>, _>("timestamp"),
-                "chunk_type": row.get::<Option<String>, _>("chunk_type"),
-                "metadata": row.get::<Option<serde_json::Value>, _>("metadata"),
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                use sqlx::Row;
+                serde_json::json!({
+                    "id": row.get::<Uuid, _>("id").to_string(),
+                    "meeting_id": row.get::<Option<Uuid>, _>("meeting_id").map(|u| u.to_string()),
+                    "text": row.get::<Option<String>, _>("text"),
+                    "speaker": row.get::<Option<String>, _>("speaker"),
+                    "timestamp": row.get::<Option<i64>, _>("timestamp"),
+                    "chunk_type": row.get::<Option<String>, _>("chunk_type"),
+                    "metadata": row.get::<Option<serde_json::Value>, _>("metadata"),
+                })
             })
-        }).collect())
+            .collect())
     }
 }

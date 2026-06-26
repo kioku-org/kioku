@@ -1,11 +1,11 @@
 use axum::extract::State;
 use axum::response::Json;
 
-use crate::AppState;
 use crate::errors::AppError;
 use crate::middleware::AuthContext;
 use crate::repos::company::CompanyRepo;
 use crate::types::{CompanyConfigOut, CompanyConfigPatch};
+use crate::AppState;
 
 pub async fn get_config(
     State(state): State<AppState>,

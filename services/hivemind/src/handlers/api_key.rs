@@ -2,12 +2,12 @@ use axum::extract::{Path, State};
 use axum::response::Json;
 use uuid::Uuid;
 
-use crate::AppState;
 use crate::errors::AppError;
 use crate::middleware::AuthContext;
 use crate::repos::api_key::ApiKeyRepo;
 use crate::services::crypto::CryptoService;
 use crate::types::{ApiKeyOut, MemberApiKeySet};
+use crate::AppState;
 
 pub async fn set(
     State(state): State<AppState>,

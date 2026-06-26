@@ -2,7 +2,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::errors::AppError;
-use crate::types::{TraceStepCreateRequest, TraceStepPatchRequest, TraceStepOut};
+use crate::types::{TraceStepCreateRequest, TraceStepOut, TraceStepPatchRequest};
 
 pub struct TraceRepo {
     db: PgPool,

@@ -44,18 +44,21 @@ impl MemberRepo {
     }
 
     pub async fn remove(&self, user_id: Uuid, company_id: Uuid) -> Result<(), AppError> {
-        sqlx::query(
-            r#"DELETE FROM company_members WHERE user_id = $1 AND company_id = $2"#,
-        )
-        .bind(user_id)
-        .bind(company_id)
-        .execute(&self.db)
-        .await
-        .map_err(AppError::from)?;
+        sqlx::query(r#"DELETE FROM company_members WHERE user_id = $1 AND company_id = $2"#)
+            .bind(user_id)
+            .bind(company_id)
+            .execute(&self.db)
+            .await
+            .map_err(AppError::from)?;
         Ok(())
     }
 
-    pub async fn update_role(&self, user_id: Uuid, company_id: Uuid, role: &str) -> Result<(), AppError> {
+    pub async fn update_role(
+        &self,
+        user_id: Uuid,
+        company_id: Uuid,
+        role: &str,
+    ) -> Result<(), AppError> {
         sqlx::query(
             r#"UPDATE company_members SET role = $1 WHERE user_id = $2 AND company_id = $3"#,
         )

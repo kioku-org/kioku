@@ -53,23 +53,57 @@ pub struct Settings {
 }
 
 // Default functions for serde
-fn default_db_host() -> String { "supabase-db".into() }
-fn default_db_port() -> u16 { 5432 }
-fn default_db_name() -> String { "postgres".into() }
-fn default_db_user() -> String { "postgres".into() }
-fn default_db_password() -> String { "postgres".into() }
-fn default_db_max_connections() -> u32 { 10 }
-fn default_db_schema() -> String { "hivemind".into() }
-fn default_jwt_secret() -> String { "hivemind-secret-change-me".into() }
-fn default_jwt_ttl_seconds() -> i64 { 30 * 24 * 60 * 60 }
-fn default_encryption_secret() -> String { "hivemind-encryption-secret-change-me".into() }
-fn default_vexa_api_url() -> String { "http://vexa-api-gateway:8000".into() }
-fn default_vexa_admin_api_url() -> String { "http://vexa-admin-api:8001".into() }
-fn default_host() -> String { "0.0.0.0".into() }
-fn default_port() -> u16 { 9100 }
-fn default_embedding_api_url() -> String { "http://localhost:11434".into() }
-fn default_embedding_model() -> String { "nomic-embed-text".into() }
-fn default_qdrant_url() -> String { "http://localhost:6334".into() }
+fn default_db_host() -> String {
+    "supabase-db".into()
+}
+fn default_db_port() -> u16 {
+    5432
+}
+fn default_db_name() -> String {
+    "postgres".into()
+}
+fn default_db_user() -> String {
+    "postgres".into()
+}
+fn default_db_password() -> String {
+    "postgres".into()
+}
+fn default_db_max_connections() -> u32 {
+    10
+}
+fn default_db_schema() -> String {
+    "hivemind".into()
+}
+fn default_jwt_secret() -> String {
+    "hivemind-secret-change-me".into()
+}
+fn default_jwt_ttl_seconds() -> i64 {
+    30 * 24 * 60 * 60
+}
+fn default_encryption_secret() -> String {
+    "hivemind-encryption-secret-change-me".into()
+}
+fn default_vexa_api_url() -> String {
+    "http://vexa-api-gateway:8000".into()
+}
+fn default_vexa_admin_api_url() -> String {
+    "http://vexa-admin-api:8001".into()
+}
+fn default_host() -> String {
+    "0.0.0.0".into()
+}
+fn default_port() -> u16 {
+    9100
+}
+fn default_embedding_api_url() -> String {
+    "http://localhost:11434".into()
+}
+fn default_embedding_model() -> String {
+    "nomic-embed-text".into()
+}
+fn default_qdrant_url() -> String {
+    "http://localhost:6334".into()
+}
 
 impl Settings {
     pub fn normalized_db_schema(&self) -> String {
@@ -120,17 +154,15 @@ pub fn load() -> Settings {
     let result = config::Config::builder()
         .add_source(config::Environment::default().separator("__"))
         .build();
-    
+
     match result {
-        Ok(c) => {
-            match c.try_deserialize::<Settings>() {
-                Ok(settings) => settings,
-                Err(e) => {
-                    eprintln!("Failed to deserialize config: {}", e);
-                    Settings::default()
-                }
+        Ok(c) => match c.try_deserialize::<Settings>() {
+            Ok(settings) => settings,
+            Err(e) => {
+                eprintln!("Failed to deserialize config: {}", e);
+                Settings::default()
             }
-        }
+        },
         Err(e) => {
             eprintln!("Failed to build config: {}", e);
             Settings::default()

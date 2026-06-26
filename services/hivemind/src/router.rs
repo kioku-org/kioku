@@ -4,19 +4,21 @@ use axum::{
 };
 use tower_http::cors::CorsLayer;
 
-use crate::AppState;
 use crate::handlers::{
-    api_key, auth, company, company_api_key, invite, knowledge, member, meeting, message, session, trace, usage, vexa,
+    api_key, auth, company, company_api_key, invite, knowledge, meeting, member, message, session,
+    trace, usage, vexa,
 };
 use crate::mcp::transport::mcp_routes;
+use crate::AppState;
 
 /// Build the application router with all routes and middleware.
 pub fn build(state: AppState) -> Router {
     Router::new()
         // Health
-        .route("/health", get(|| async {
-            axum::Json(serde_json::json!({ "status": "ok" }))
-        }))
+        .route(
+            "/health",
+            get(|| async { axum::Json(serde_json::json!({ "status": "ok" })) }),
+        )
         // Auth
         .route("/auth/register/admin", post(auth::register_admin))
         .route("/auth/register/personal", post(auth::register_personal))
@@ -43,7 +45,10 @@ pub fn build(state: AppState) -> Router {
         // Company API Keys (CLI auth)
         .route("/company/auth-keys", get(company_api_key::list_api_keys))
         .route("/company/auth-keys", post(company_api_key::create_api_key))
-        .route("/company/auth-keys/:key_id", delete(company_api_key::delete_api_key))
+        .route(
+            "/company/auth-keys/:key_id",
+            delete(company_api_key::delete_api_key),
+        )
         // Meetings
         .route("/meetings", get(meeting::list))
         .route("/meetings", post(meeting::ingest))
@@ -51,7 +56,10 @@ pub fn build(state: AppState) -> Router {
         .route("/knowledge/search", post(knowledge_search))
         .route("/knowledge/documents", get(knowledge::list_documents))
         .route("/knowledge/documents", post(knowledge::upload_pdf))
-        .route("/knowledge/documents/:document_id", delete(knowledge::delete_document))
+        .route(
+            "/knowledge/documents/:document_id",
+            delete(knowledge::delete_document),
+        )
         // Sessions
         .route("/sessions", get(session::list))
         .route("/sessions", post(session::create))
@@ -64,7 +72,10 @@ pub fn build(state: AppState) -> Router {
         // Traces
         .route("/sessions/:session_id/traces", get(trace::list))
         .route("/sessions/:session_id/traces", post(trace::create))
-        .route("/sessions/:session_id/traces/:trace_id", patch(trace::update))
+        .route(
+            "/sessions/:session_id/traces/:trace_id",
+            patch(trace::update),
+        )
         // Usage
         .route("/usage", post(usage::record))
         .route("/usage/summary", get(usage::summary))

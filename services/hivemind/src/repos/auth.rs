@@ -23,7 +23,10 @@ impl AuthRepo {
         .map_err(AppError::from)
     }
 
-    pub async fn find_company_by_slug(&self, slug: &str) -> Result<Option<CompanyRecord>, AppError> {
+    pub async fn find_company_by_slug(
+        &self,
+        slug: &str,
+    ) -> Result<Option<CompanyRecord>, AppError> {
         sqlx::query_as::<_, CompanyRecord>(
             r#"SELECT id, name, slug FROM companies WHERE slug = $1"#,
         )
@@ -34,16 +37,18 @@ impl AuthRepo {
     }
 
     pub async fn find_company_by_id(&self, id: Uuid) -> Result<CompanyRecord, AppError> {
-        sqlx::query_as::<_, CompanyRecord>(
-            r#"SELECT id, name, slug FROM companies WHERE id = $1"#,
-        )
-        .bind(id)
-        .fetch_one(&self.db)
-        .await
-        .map_err(AppError::from)
+        sqlx::query_as::<_, CompanyRecord>(r#"SELECT id, name, slug FROM companies WHERE id = $1"#)
+            .bind(id)
+            .fetch_one(&self.db)
+            .await
+            .map_err(AppError::from)
     }
 
-    pub async fn find_invite(&self, email: &str, company_id: Uuid) -> Result<Option<InviteRecord>, AppError> {
+    pub async fn find_invite(
+        &self,
+        email: &str,
+        company_id: Uuid,
+    ) -> Result<Option<InviteRecord>, AppError> {
         sqlx::query_as::<_, InviteRecord>(
             r#"SELECT id, role FROM company_invites WHERE email = $1 AND company_id = $2 AND used_at IS NULL"#,
         )
@@ -54,7 +59,10 @@ impl AuthRepo {
         .map_err(AppError::from)
     }
 
-    pub async fn find_membership(&self, user_id: Uuid) -> Result<Option<MembershipRecord>, AppError> {
+    pub async fn find_membership(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<MembershipRecord>, AppError> {
         sqlx::query_as::<_, MembershipRecord>(
             r#"SELECT company_id, role FROM company_members WHERE user_id = $1 LIMIT 1"#,
         )
@@ -85,7 +93,13 @@ impl AuthRepo {
         .map_err(AppError::from)
     }
 
-    pub async fn create_company(&self, id: Uuid, name: &str, slug: &str, now: i64) -> Result<(), AppError> {
+    pub async fn create_company(
+        &self,
+        id: Uuid,
+        name: &str,
+        slug: &str,
+        now: i64,
+    ) -> Result<(), AppError> {
         sqlx::query(
             r#"INSERT INTO companies (id, name, slug, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)"#,
         )
@@ -100,7 +114,14 @@ impl AuthRepo {
         Ok(())
     }
 
-    pub async fn create_user(&self, id: Uuid, email: &str, name: &str, password_hash: &str, now: i64) -> Result<(), AppError> {
+    pub async fn create_user(
+        &self,
+        id: Uuid,
+        email: &str,
+        name: &str,
+        password_hash: &str,
+        now: i64,
+    ) -> Result<(), AppError> {
         sqlx::query(
             r#"INSERT INTO users (id, email, name, password_hash, created_at) VALUES ($1, $2, $3, $4, $5)"#,
         )
@@ -115,7 +136,14 @@ impl AuthRepo {
         Ok(())
     }
 
-    pub async fn create_membership(&self, id: Uuid, company_id: Uuid, user_id: Uuid, role: &str, now: i64) -> Result<(), AppError> {
+    pub async fn create_membership(
+        &self,
+        id: Uuid,
+        company_id: Uuid,
+        user_id: Uuid,
+        role: &str,
+        now: i64,
+    ) -> Result<(), AppError> {
         sqlx::query(
             r#"INSERT INTO company_members (id, company_id, user_id, role, joined_at) VALUES ($1, $2, $3, $4, $5)"#,
         )
@@ -149,7 +177,14 @@ impl AuthRepo {
         Ok(())
     }
 
-    pub async fn create_auth_token(&self, token: &str, user_id: Uuid, company_id: Uuid, now: i64, expires_at: i64) -> Result<(), AppError> {
+    pub async fn create_auth_token(
+        &self,
+        token: &str,
+        user_id: Uuid,
+        company_id: Uuid,
+        now: i64,
+        expires_at: i64,
+    ) -> Result<(), AppError> {
         sqlx::query(
             r#"INSERT INTO auth_tokens (token, user_id, company_id, created_at, expires_at) VALUES ($1, $2, $3, $4, $5)
                ON CONFLICT (token) DO UPDATE SET expires_at = $5, created_at = $4"#,
@@ -165,27 +200,27 @@ impl AuthRepo {
         Ok(())
     }
 
-    pub async fn delete_auth_tokens(&self, user_id: Uuid, company_id: Uuid) -> Result<(), AppError> {
-        sqlx::query(
-            r#"DELETE FROM auth_tokens WHERE user_id = $1 AND company_id = $2"#,
-        )
-        .bind(user_id)
-        .bind(company_id)
-        .execute(&self.db)
-        .await
-        .map_err(AppError::from)?;
+    pub async fn delete_auth_tokens(
+        &self,
+        user_id: Uuid,
+        company_id: Uuid,
+    ) -> Result<(), AppError> {
+        sqlx::query(r#"DELETE FROM auth_tokens WHERE user_id = $1 AND company_id = $2"#)
+            .bind(user_id)
+            .bind(company_id)
+            .execute(&self.db)
+            .await
+            .map_err(AppError::from)?;
         Ok(())
     }
 
     pub async fn mark_invite_used(&self, invite_id: Uuid, now: i64) -> Result<(), AppError> {
-        sqlx::query(
-            r#"UPDATE company_invites SET used_at = $1 WHERE id = $2"#,
-        )
-        .bind(now)
-        .bind(invite_id)
-        .execute(&self.db)
-        .await
-        .map_err(AppError::from)?;
+        sqlx::query(r#"UPDATE company_invites SET used_at = $1 WHERE id = $2"#)
+            .bind(now)
+            .bind(invite_id)
+            .execute(&self.db)
+            .await
+            .map_err(AppError::from)?;
         Ok(())
     }
 }
@@ -235,7 +270,7 @@ pub fn create_token(
     role: &str,
     ttl_seconds: i64,
 ) -> Result<String, AppError> {
-    use jsonwebtoken::{EncodingKey, Header, encode};
+    use jsonwebtoken::{encode, EncodingKey, Header};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let now = SystemTime::now()
@@ -250,12 +285,16 @@ pub fn create_token(
         exp: now + ttl_seconds,
     };
 
-    encode(&Header::default(), &claims, &EncodingKey::from_secret(secret.as_bytes()))
-        .map_err(|e| AppError::Internal(e.into()))
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )
+    .map_err(|e| AppError::Internal(e.into()))
 }
 
 pub fn validate_token(secret: &str, token: &str) -> Result<Claims, AppError> {
-    use jsonwebtoken::{DecodingKey, Validation, decode};
+    use jsonwebtoken::{decode, DecodingKey, Validation};
 
     let token_data = decode::<Claims>(
         token,
@@ -270,13 +309,11 @@ pub fn validate_token(secret: &str, token: &str) -> Result<Claims, AppError> {
 // ─── Password helpers ────────────────────────────────────────────────────────
 
 pub fn hash_password(password: &str) -> Result<String, AppError> {
-    bcrypt::hash(password, bcrypt::DEFAULT_COST)
-        .map_err(|e| AppError::Internal(e.into()))
+    bcrypt::hash(password, bcrypt::DEFAULT_COST).map_err(|e| AppError::Internal(e.into()))
 }
 
 pub fn verify_password(password: &str, hash: &str) -> Result<bool, AppError> {
-    bcrypt::verify(password, hash)
-        .map_err(|e| AppError::Internal(e.into()))
+    bcrypt::verify(password, hash).map_err(|e| AppError::Internal(e.into()))
 }
 
 // ─── Slugify ─────────────────────────────────────────────────────────────────

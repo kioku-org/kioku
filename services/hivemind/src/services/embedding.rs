@@ -1,5 +1,7 @@
 use async_trait::async_trait;
-use langchain_rust::embedding::{embedder_trait::Embedder, EmbedderError, ollama::OllamaEmbedder as LcOllamaEmbedder};
+use langchain_rust::embedding::{
+    embedder_trait::Embedder, ollama::OllamaEmbedder as LcOllamaEmbedder, EmbedderError,
+};
 use ollama_rs::Ollama;
 use std::sync::Arc;
 use url::Url;

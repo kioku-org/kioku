@@ -5,7 +5,7 @@ fn base_url() -> String {
     std::env::var("HIVEMIND_URL").unwrap_or_else(|_| "http://localhost:9100".into())
 }
 
- fn client() -> Client {
+fn client() -> Client {
     reqwest::Client::new()
 }
 
@@ -23,7 +23,11 @@ async fn register_and_get_token(suffix: &str) -> (String, serde_json::Value) {
         .send()
         .await
         .unwrap();
-    assert!(resp.status().is_success(), "Register failed: {}", resp.status());
+    assert!(
+        resp.status().is_success(),
+        "Register failed: {}",
+        resp.status()
+    );
     let body: serde_json::Value = resp.json().await.unwrap();
     (body["token"].as_str().unwrap().to_string(), body)
 }
@@ -53,7 +57,10 @@ async fn vexa_request_bot_endpoint() {
             eprintln!("Vexa service unavailable (expected if voice stack not running)");
         }
         _ => {
-            eprintln!("Vexa bot request status: {} (may be expected if voice stack not deployed)", resp.status());
+            eprintln!(
+                "Vexa bot request status: {} (may be expected if voice stack not deployed)",
+                resp.status()
+            );
         }
     }
 }
@@ -73,13 +80,19 @@ async fn vexa_get_meetings_endpoint() {
     match resp.status().as_u16() {
         200..=299 => {
             let body: serde_json::Value = resp.json().await.unwrap();
-            assert!(body.is_object() || body.is_array(), "Vexa meetings should return data");
+            assert!(
+                body.is_object() || body.is_array(),
+                "Vexa meetings should return data"
+            );
         }
         502 | 503 => {
             eprintln!("Vexa service unavailable (expected if voice stack not running)");
         }
         _ => {
-            eprintln!("Vexa meetings status: {} (may be expected if voice stack not deployed)", resp.status());
+            eprintln!(
+                "Vexa meetings status: {} (may be expected if voice stack not deployed)",
+                resp.status()
+            );
         }
     }
 }

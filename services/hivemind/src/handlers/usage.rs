@@ -1,11 +1,11 @@
 use axum::extract::State;
 use axum::response::Json;
 
-use crate::AppState;
 use crate::errors::AppError;
 use crate::middleware::AuthContext;
 use crate::repos::usage::UsageRepo;
 use crate::types::{UsageRecord, UsageSummary};
+use crate::AppState;
 
 pub async fn record(
     State(state): State<AppState>,

@@ -13,7 +13,12 @@ impl InviteRepo {
         Self { db }
     }
 
-    pub async fn create(&self, company_id: Uuid, req: InviteCreate, now: i64) -> Result<InviteOut, AppError> {
+    pub async fn create(
+        &self,
+        company_id: Uuid,
+        req: InviteCreate,
+        now: i64,
+    ) -> Result<InviteOut, AppError> {
         let id = Uuid::new_v4();
         let email = req.email.clone();
         let role = req.role.clone();
@@ -63,14 +68,12 @@ impl InviteRepo {
     }
 
     pub async fn remove(&self, invite_id: Uuid, company_id: Uuid) -> Result<(), AppError> {
-        sqlx::query(
-            r#"DELETE FROM company_invites WHERE id = $1 AND company_id = $2"#,
-        )
-        .bind(invite_id)
-        .bind(company_id)
-        .execute(&self.db)
-        .await
-        .map_err(AppError::from)?;
+        sqlx::query(r#"DELETE FROM company_invites WHERE id = $1 AND company_id = $2"#)
+            .bind(invite_id)
+            .bind(company_id)
+            .execute(&self.db)
+            .await
+            .map_err(AppError::from)?;
         Ok(())
     }
 }

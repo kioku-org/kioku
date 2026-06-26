@@ -1,6 +1,6 @@
-use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use aes_gcm::aead::{Aead, Key};
-use sha2::{Sha256, Digest};
+use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+use sha2::{Digest, Sha256};
 
 pub struct CryptoService;
 
@@ -13,20 +13,19 @@ impl CryptoService {
         let nonce_bytes: [u8; 12] = rand::random();
         let nonce = Nonce::from_slice(&nonce_bytes);
 
-        let ciphertext = cipher.encrypt(nonce, plaintext.as_bytes())
+        let ciphertext = cipher
+            .encrypt(nonce, plaintext.as_bytes())
             .expect("encryption failed");
 
-        format!(
-            "{}:{}",
-            hex::encode(nonce_bytes),
-            hex::encode(ciphertext),
-        )
+        format!("{}:{}", hex::encode(nonce_bytes), hex::encode(ciphertext),)
     }
 
     #[allow(dead_code)]
     pub fn decrypt(stored: &str, secret: &str) -> Option<String> {
         let parts: Vec<&str> = stored.split(':').collect();
-        if parts.len() != 2 { return None; }
+        if parts.len() != 2 {
+            return None;
+        }
 
         let nonce_bytes = hex::decode(parts[0]).ok()?;
         let ciphertext = hex::decode(parts[1]).ok()?;

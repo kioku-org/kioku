@@ -26,7 +26,11 @@ async fn register_and_get_token(suffix: &str) -> (String, serde_json::Value) {
         .send()
         .await
         .unwrap();
-    assert!(resp.status().is_success(), "Register failed: {}", resp.status());
+    assert!(
+        resp.status().is_success(),
+        "Register failed: {}",
+        resp.status()
+    );
     let body: serde_json::Value = resp.json().await.unwrap();
     (body["token"].as_str().unwrap().to_string(), body)
 }
@@ -62,8 +66,11 @@ async fn knowledge_search_empty_query_rejected() {
         .await
         .unwrap();
     // Empty query should either be rejected or return no results
-    assert!(resp.status().is_success() || resp.status() == 400,
-        "Empty query should return 200 (empty) or 400, got {}", resp.status());
+    assert!(
+        resp.status().is_success() || resp.status() == 400,
+        "Empty query should return 200 (empty) or 400, got {}",
+        resp.status()
+    );
 }
 
 #[tokio::test]
@@ -78,7 +85,10 @@ async fn knowledge_search_missing_query_rejected() {
         .send()
         .await
         .unwrap();
-    assert!(!resp.status().is_success(), "Missing query should be rejected");
+    assert!(
+        !resp.status().is_success(),
+        "Missing query should be rejected"
+    );
 }
 
 #[tokio::test]
@@ -89,12 +99,10 @@ async fn knowledge_upload_non_pdf_rejected() {
     let resp = c
         .post(format!("{}/knowledge/documents", base_url()))
         .header("Authorization", auth_header(&token))
-        .multipart(
-            reqwest::multipart::Form::new().part(
-                "file",
-                reqwest::multipart::Part::text("not a pdf").file_name("test.txt"),
-            ),
-        )
+        .multipart(reqwest::multipart::Form::new().part(
+            "file",
+            reqwest::multipart::Part::text("not a pdf").file_name("test.txt"),
+        ))
         .send()
         .await
         .unwrap();
@@ -109,12 +117,10 @@ async fn knowledge_upload_empty_file_rejected() {
     let resp = c
         .post(format!("{}/knowledge/documents", base_url()))
         .header("Authorization", auth_header(&token))
-        .multipart(
-            reqwest::multipart::Form::new().part(
-                "file",
-                reqwest::multipart::Part::text("").file_name("empty.pdf"),
-            ),
-        )
+        .multipart(reqwest::multipart::Form::new().part(
+            "file",
+            reqwest::multipart::Part::text("").file_name("empty.pdf"),
+        ))
         .send()
         .await
         .unwrap();
@@ -159,7 +165,11 @@ async fn meeting_ingest_then_search() {
         .send()
         .await
         .unwrap();
-    assert!(resp.status().is_success(), "Ingest meeting failed: {}", resp.status());
+    assert!(
+        resp.status().is_success(),
+        "Ingest meeting failed: {}",
+        resp.status()
+    );
     let meeting: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(meeting["title"], "Q4 Product Roadmap Review");
 
@@ -174,22 +184,38 @@ async fn meeting_ingest_then_search() {
         .send()
         .await
         .unwrap();
-    assert!(search_resp.status().is_success(), "Search failed: {}", search_resp.status());
+    assert!(
+        search_resp.status().is_success(),
+        "Search failed: {}",
+        search_resp.status()
+    );
     let results: serde_json::Value = search_resp.json().await.unwrap();
     let results_arr = results.as_array().expect("results should be array");
-    assert!(!results_arr.is_empty(), "Should find results for mobile redesign query");
+    assert!(
+        !results_arr.is_empty(),
+        "Should find results for mobile redesign query"
+    );
 
     // Verify the result contains relevant content
     let first = &results_arr[0];
     let chunk_text = first["chunk"]["text"].as_str().unwrap_or("").to_lowercase();
     assert!(
-        chunk_text.contains("mobile") || chunk_text.contains("redesign") || chunk_text.contains("react"),
-        "Top result should contain mobile/redesign/React, got: {}", chunk_text
+        chunk_text.contains("mobile")
+            || chunk_text.contains("redesign")
+            || chunk_text.contains("react"),
+        "Top result should contain mobile/redesign/React, got: {}",
+        chunk_text
     );
 
     // Verify meeting metadata is attached
-    assert!(first["meeting"]["id"].is_string(), "Meeting ID should be present");
-    assert_eq!(first["meeting"]["title"].as_str().unwrap(), "Q4 Product Roadmap Review");
+    assert!(
+        first["meeting"]["id"].is_string(),
+        "Meeting ID should be present"
+    );
+    assert_eq!(
+        first["meeting"]["title"].as_str().unwrap(),
+        "Q4 Product Roadmap Review"
+    );
 
     // Search for analytics content
     let analytics_resp = c
@@ -201,9 +227,14 @@ async fn meeting_ingest_then_search() {
         .unwrap();
     assert!(analytics_resp.status().is_success());
     let analytics: serde_json::Value = analytics_resp.json().await.unwrap();
-    let analytics_arr = analytics.as_array().expect("analytics results should be array");
+    let analytics_arr = analytics
+        .as_array()
+        .expect("analytics results should be array");
     if !analytics_arr.is_empty() {
-        let text = analytics_arr[0]["chunk"]["text"].as_str().unwrap_or("").to_lowercase();
+        let text = analytics_arr[0]["chunk"]["text"]
+            .as_str()
+            .unwrap_or("")
+            .to_lowercase();
         assert!(
             text.contains("analytics") || text.contains("superset") || text.contains("dashboard"),
             "Analytics result should mention analytics/superset/dashboard"
@@ -222,7 +253,10 @@ async fn meeting_ingest_then_search() {
     let api_results: serde_json::Value = api_resp.json().await.unwrap();
     let api_arr = api_results.as_array().expect("api results should be array");
     if !api_arr.is_empty() {
-        let text = api_arr[0]["chunk"]["text"].as_str().unwrap_or("").to_lowercase();
+        let text = api_arr[0]["chunk"]["text"]
+            .as_str()
+            .unwrap_or("")
+            .to_lowercase();
         assert!(
             text.contains("api") || text.contains("migration") || text.contains("v3"),
             "API result should mention api/migration/v3"
@@ -271,8 +305,14 @@ async fn meeting_ingest_search_scoped_to_company() {
     let arr = results.as_array().unwrap();
     // Either empty results, or no mention of "Phoenix"
     for result in arr {
-        let text = result["chunk"]["text"].as_str().unwrap_or("").to_lowercase();
-        assert!(!text.contains("phoenix"), "Company B should not see Company A's data");
+        let text = result["chunk"]["text"]
+            .as_str()
+            .unwrap_or("")
+            .to_lowercase();
+        assert!(
+            !text.contains("phoenix"),
+            "Company B should not see Company A's data"
+        );
     }
 }
 
@@ -316,20 +356,36 @@ async fn knowledge_search_result_format() {
     for result in arr {
         // Each result must have chunk, meeting, and score
         assert!(result["chunk"].is_object(), "Result must have chunk object");
-        assert!(result["meeting"].is_object(), "Result must have meeting object");
-        assert!(result["score"].is_number(), "Result must have numeric score");
+        assert!(
+            result["meeting"].is_object(),
+            "Result must have meeting object"
+        );
+        assert!(
+            result["score"].is_number(),
+            "Result must have numeric score"
+        );
 
         // Chunk must have text and chunk_type
         assert!(result["chunk"]["text"].is_string(), "Chunk must have text");
-        assert!(result["chunk"]["chunk_type"].is_string(), "Chunk must have chunk_type");
+        assert!(
+            result["chunk"]["chunk_type"].is_string(),
+            "Chunk must have chunk_type"
+        );
 
         // Score should be between 0 and 1 for cosine similarity
         let score = result["score"].as_f64().unwrap();
-        assert!((0.0..=1.0).contains(&score), "Cosine similarity score should be 0-1, got {}", score);
+        assert!(
+            (0.0..=1.0).contains(&score),
+            "Cosine similarity score should be 0-1, got {}",
+            score
+        );
 
         // Meeting must have id and title
         assert!(result["meeting"]["id"].is_string(), "Meeting must have id");
-        assert!(result["meeting"]["title"].is_string(), "Meeting must have title");
+        assert!(
+            result["meeting"]["title"].is_string(),
+            "Meeting must have title"
+        );
     }
 }
 
@@ -405,7 +461,11 @@ async fn knowledge_search_ranking_accuracy() {
     if arr.len() >= 2 {
         let top_score = arr[0]["score"].as_f64().unwrap();
         // Top result should be reasonably similar (cosine > 0.3 for nomic-embed-text)
-        assert!(top_score > 0.2, "Top result should have reasonable similarity score, got {}", top_score);
+        assert!(
+            top_score > 0.2,
+            "Top result should have reasonable similarity score, got {}",
+            top_score
+        );
     }
 }
 
@@ -441,7 +501,10 @@ async fn knowledge_search_no_results_for_new_company() {
         .unwrap();
     assert!(resp.status().is_success());
     let results: serde_json::Value = resp.json().await.unwrap();
-    assert!(results.as_array().unwrap().is_empty(), "New company should have no search results");
+    assert!(
+        results.as_array().unwrap().is_empty(),
+        "New company should have no search results"
+    );
 }
 
 #[tokio::test]
@@ -481,7 +544,11 @@ async fn knowledge_search_limit_respected() {
     assert!(resp.status().is_success());
     let results: serde_json::Value = resp.json().await.unwrap();
     let arr = results.as_array().unwrap();
-    assert!(arr.len() <= 2, "Should respect limit of 2, got {}", arr.len());
+    assert!(
+        arr.len() <= 2,
+        "Should respect limit of 2, got {}",
+        arr.len()
+    );
 }
 
 // ─── Meeting Deletion & Search Consistency ───────────────────────────────────
@@ -531,7 +598,10 @@ async fn meeting_search_after_delete() {
         .send()
         .await
         .unwrap();
-    assert!(del_resp.status().is_success(), "Delete meeting should succeed");
+    assert!(
+        del_resp.status().is_success(),
+        "Delete meeting should succeed"
+    );
 
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
@@ -546,8 +616,14 @@ async fn meeting_search_after_delete() {
     assert!(post_del_search.status().is_success());
     let post_results: serde_json::Value = post_del_search.json().await.unwrap();
     for result in post_results.as_array().unwrap() {
-        let text = result["chunk"]["text"].as_str().unwrap_or("").to_lowercase();
-        assert!(!text.contains("serengeti"), "Deleted meeting content should not appear in search");
+        let text = result["chunk"]["text"]
+            .as_str()
+            .unwrap_or("")
+            .to_lowercase();
+        assert!(
+            !text.contains("serengeti"),
+            "Deleted meeting content should not appear in search"
+        );
     }
 }
 
@@ -587,7 +663,10 @@ async fn meeting_search_finds_content_across_chunks() {
         .unwrap();
     assert!(resp.status().is_success());
     let results: serde_json::Value = resp.json().await.unwrap();
-    assert!(!results.as_array().unwrap().is_empty(), "Should find results across chunks");
+    assert!(
+        !results.as_array().unwrap().is_empty(),
+        "Should find results across chunks"
+    );
 }
 
 // ─── Speaker Attribution ────────────────────────────────────────────────────

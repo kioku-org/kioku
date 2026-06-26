@@ -2,7 +2,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::errors::AppError;
-use crate::types::{SessionCreateRequest, SessionPatchRequest, SessionOut};
+use crate::types::{SessionCreateRequest, SessionOut, SessionPatchRequest};
 
 pub struct SessionRepo {
     db: PgPool,

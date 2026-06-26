@@ -2,11 +2,11 @@ use axum::extract::{Path, State};
 use axum::response::Json;
 use uuid::Uuid;
 
-use crate::AppState;
 use crate::errors::AppError;
 use crate::middleware::AuthContext;
 use crate::repos::member::MemberRepo;
 use crate::types::MemberOut;
+use crate::AppState;
 
 pub async fn list(
     State(state): State<AppState>,

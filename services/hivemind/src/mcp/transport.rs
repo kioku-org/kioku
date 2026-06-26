@@ -1,23 +1,21 @@
 use axum::{
-    Router,
-    routing::{get, post},
+    body::Body,
     extract::State,
     http::{Request, Response, StatusCode},
-    body::Body,
     response::IntoResponse,
+    routing::{get, post},
+    Router,
 };
 use rmcp::transport::streamable_http_server::{
-    StreamableHttpServerConfig,
-    StreamableHttpService,
-    session::local::LocalSessionManager,
+    session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
 };
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
-use crate::AppState;
 use crate::mcp::handler::KiokuMcpService;
+use crate::AppState;
 
 type McpService = StreamableHttpService<KiokuMcpService, LocalSessionManager>;
 
@@ -68,7 +66,9 @@ async fn mcp_handler(
     State(service): State<McpService>,
     req: Request<Body>,
 ) -> Result<Response<Body>, StatusCode> {
-    let response = service.oneshot(req).await
+    let response = service
+        .oneshot(req)
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let (parts, body) = response.into_parts();

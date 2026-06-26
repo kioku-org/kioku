@@ -85,14 +85,12 @@ impl ApiKeyRepo {
     }
 
     pub async fn delete(&self, key_id: Uuid, company_id: Uuid) -> Result<(), AppError> {
-        sqlx::query(
-            r#"DELETE FROM member_api_keys WHERE id = $1 AND company_id = $2"#,
-        )
-        .bind(key_id)
-        .bind(company_id)
-        .execute(&self.db)
-        .await
-        .map_err(AppError::from)?;
+        sqlx::query(r#"DELETE FROM member_api_keys WHERE id = $1 AND company_id = $2"#)
+            .bind(key_id)
+            .bind(company_id)
+            .execute(&self.db)
+            .await
+            .map_err(AppError::from)?;
         Ok(())
     }
 }

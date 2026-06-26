@@ -1,13 +1,13 @@
 use axum::extract::{Multipart, State};
 use axum::response::Json;
 
-use crate::AppState;
 use crate::errors::AppError;
 use crate::middleware::AuthContext;
 use crate::repos::knowledge::KnowledgeRepo;
 use crate::services::knowledge::KnowledgeService;
 use crate::services::pdf;
 use crate::types::KnowledgeDocumentOut;
+use crate::AppState;
 
 const MAX_PDF_SIZE: usize = 50 * 1024 * 1024; // 50MB
 
@@ -21,18 +21,22 @@ pub async fn upload_pdf(
     let mut filename = String::from("unknown.pdf");
     let mut file_data = Vec::new();
 
-    while let Some(field) = multipart.next_field().await.map_err(|e| {
-        AppError::BadRequest(format!("Failed to read multipart field: {}", e))
-    })? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("Failed to read multipart field: {}", e)))?
+    {
         let name = field.name().unwrap_or("").to_string();
 
         if name == "file" {
             if let Some(fname) = field.file_name() {
                 filename = fname.to_string();
             }
-            file_data = field.bytes().await.map_err(|e| {
-                AppError::BadRequest(format!("Failed to read file bytes: {}", e))
-            })?.to_vec();
+            file_data = field
+                .bytes()
+                .await
+                .map_err(|e| AppError::BadRequest(format!("Failed to read file bytes: {}", e)))?
+                .to_vec();
 
             if file_data.len() > MAX_PDF_SIZE {
                 return Err(AppError::BadRequest(format!(
@@ -92,10 +96,13 @@ pub async fn upload_pdf(
     .await?;
 
     // Update document status to "completed"
-    repo.update_document_status(doc_id, "completed", chunk_count, now).await?;
+    repo.update_document_status(doc_id, "completed", chunk_count, now)
+        .await?;
 
     // Return the document
-    let doc = repo.get_document(doc_id, auth.company_id).await?
+    let doc = repo
+        .get_document(doc_id, auth.company_id)
+        .await?
         .ok_or_else(|| AppError::NotFound("Document not found".into()))?;
 
     Ok(Json(doc))
@@ -120,11 +127,14 @@ pub async fn delete_document(
     let repo = KnowledgeRepo::new(state.db.clone());
 
     // Verify document belongs to company
-    let doc = repo.get_document(document_id, auth.company_id).await?
+    let doc = repo
+        .get_document(document_id, auth.company_id)
+        .await?
         .ok_or_else(|| AppError::NotFound("Document not found".into()))?;
 
     // Delete vector embeddings from Qdrant
-    state.vector_store
+    state
+        .vector_store
         .delete_for_document(document_id)
         .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("Failed to delete vectors: {}", e)))?;

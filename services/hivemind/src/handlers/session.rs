@@ -2,11 +2,11 @@ use axum::extract::{Path, State};
 use axum::response::Json;
 use uuid::Uuid;
 
-use crate::AppState;
 use crate::errors::AppError;
 use crate::middleware::AuthContext;
 use crate::repos::session::SessionRepo;
 use crate::types::{SessionCreateRequest, SessionOut, SessionPatchRequest};
+use crate::AppState;
 
 pub async fn create(
     State(state): State<AppState>,
@@ -60,7 +60,9 @@ pub async fn delete(
     Path(session_id): Path<Uuid>,
 ) -> Result<Json<()>, AppError> {
     let repo = SessionRepo::new(state.db.clone());
-    let affected = repo.delete(session_id, auth.company_id, auth.user_id).await?;
+    let affected = repo
+        .delete(session_id, auth.company_id, auth.user_id)
+        .await?;
     if affected == 0 {
         return Err(AppError::NotFound("Session not found".into()));
     }

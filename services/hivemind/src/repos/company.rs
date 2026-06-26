@@ -45,7 +45,10 @@ impl CompanyRepo {
         patch: CompanyConfigPatch,
         now: i64,
     ) -> Result<CompanyConfigOut, AppError> {
-        let allowed_models_json = patch.allowed_models.as_ref().map(|v| serde_json::to_value(v).unwrap());
+        let allowed_models_json = patch
+            .allowed_models
+            .as_ref()
+            .map(|v| serde_json::to_value(v).unwrap());
         sqlx::query(
             r#"
             INSERT INTO company_config (company_id, allowed_models, default_provider, default_model, hivemind_enabled, updated_at)
@@ -77,6 +80,10 @@ impl CompanyRepo {
 fn parse_string_array(value: &serde_json::Value) -> Vec<String> {
     value
         .as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default()
 }

@@ -68,13 +68,11 @@ impl UsageRepo {
         let users = if user_ids.is_empty() {
             Vec::new()
         } else {
-            sqlx::query(
-                r#"SELECT id, email, name FROM users WHERE id = ANY($1)"#,
-            )
-            .bind(&user_ids)
-            .fetch_all(&self.db)
-            .await
-            .unwrap_or_default()
+            sqlx::query(r#"SELECT id, email, name FROM users WHERE id = ANY($1)"#)
+                .bind(&user_ids)
+                .fetch_all(&self.db)
+                .await
+                .unwrap_or_default()
         };
 
         let summaries = rows
@@ -90,7 +88,9 @@ impl UsageRepo {
                     email: user.as_ref().map(|u| u.get("email")).unwrap_or_default(),
                     name: user.as_ref().map(|u| u.get("name")).unwrap_or_default(),
                     total_input_tokens: r.get::<Option<i64>, _>("total_input_tokens").unwrap_or(0),
-                    total_output_tokens: r.get::<Option<i64>, _>("total_output_tokens").unwrap_or(0),
+                    total_output_tokens: r
+                        .get::<Option<i64>, _>("total_output_tokens")
+                        .unwrap_or(0),
                     total_cost_cents: r.get::<Option<i64>, _>("total_cost_cents").unwrap_or(0),
                     session_count: r.get::<Option<i64>, _>("session_count").unwrap_or(0),
                     last_active_at: r.get::<Option<i64>, _>("last_active_at"),
@@ -118,5 +118,6 @@ fn estimate_cost_cents(model: &str, input_tokens: i64, output_tokens: i64) -> i3
         .copied()
         .unwrap_or(("unknown", 0.1, 0.3));
 
-    ((input_tokens as f64 / 1000.0) * in_rate + (output_tokens as f64 / 1000.0) * out_rate).round() as i32
+    ((input_tokens as f64 / 1000.0) * in_rate + (output_tokens as f64 / 1000.0) * out_rate).round()
+        as i32
 }

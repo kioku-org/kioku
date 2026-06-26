@@ -36,10 +36,7 @@ pub fn chunk_pdf_text(
             "document_name".to_string(),
             serde_json::json!(document_name),
         );
-        metadata.insert(
-            "chunk_type".to_string(),
-            serde_json::json!("pdf_document"),
-        );
+        metadata.insert("chunk_type".to_string(), serde_json::json!("pdf_document"));
         metadata.insert("chunk_index".to_string(), serde_json::json!(i));
 
         docs.push(langchain_rust::schemas::Document {
@@ -69,11 +66,7 @@ mod tests {
                 "pdf_document"
             );
             assert_eq!(
-                doc.metadata
-                    .get("document_id")
-                    .unwrap()
-                    .as_str()
-                    .unwrap(),
+                doc.metadata.get("document_id").unwrap().as_str().unwrap(),
                 document_id.to_string()
             );
         }

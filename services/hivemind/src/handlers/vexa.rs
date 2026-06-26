@@ -1,9 +1,9 @@
-use axum::response::Json;
 use axum::extract::State;
+use axum::response::Json;
 
-use crate::AppState;
 use crate::errors::AppError;
 use crate::middleware::AuthContext;
+use crate::AppState;
 
 pub async fn request_bot(
     State(state): State<AppState>,
@@ -11,13 +11,12 @@ pub async fn request_bot(
     Json(mut body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     if body.get("bot_name").is_none() {
-        let company_name = sqlx::query_scalar::<_, String>(
-            "SELECT name FROM hivemind.companies WHERE id = $1"
-        )
-        .bind(_auth.company_id)
-        .fetch_one(&state.db)
-        .await
-        .unwrap_or_else(|_| "Kioku".to_string());
+        let company_name =
+            sqlx::query_scalar::<_, String>("SELECT name FROM hivemind.companies WHERE id = $1")
+                .bind(_auth.company_id)
+                .fetch_one(&state.db)
+                .await
+                .unwrap_or_else(|_| "Kioku".to_string());
         body["bot_name"] = serde_json::Value::String(format!("{}'s assistant", company_name));
     }
 
