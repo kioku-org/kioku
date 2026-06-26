@@ -4,26 +4,31 @@
 
 | Directory | Type | Description |
 |---|---|---|
-| `tests/run-tests.sh` | Runner | Runs all kioku test suites |
-| `apps/cli/crates/cc-auth/tests/` | Unit | Auth file serialization tests |
-| `apps/cli/crates/cc-kioku/tests/` | Unit | API type serialization/deserialization tests |
+| `services/cli/crates/cc-auth/tests/` | Unit | Auth file serialization tests |
+| `services/cli/crates/cc-cli/src/main.rs` | Unit | CLI arg parsing + target resolution tests |
+| `services/cli/crates/cc-kioku/tests/types_test.rs` | Unit | API type serialization tests |
+| `services/cli/crates/cc-kioku/tests/integration_test.rs` | Integration | Client library tests (requires running server) |
+| `services/hivemind/src/` | Unit | Knowledge chunking, PDF parsing tests |
 | `services/hivemind/tests/` | Integration | HTTP API tests (require running server) |
+| `services/dashboard/tests/` | Unit | vitest tests |
+| `services/mcp/tests/` | Unit | pytest tests |
 
 ## Running Tests
 
-### All tests (recommended)
+### All unit tests (no server required)
 
 ```bash
-./tests/run-tests.sh
-```
+# CLI
+cd services/cli && cargo test --lib --bins --tests
 
-This runs CLI unit tests, Hivemind compile check, and Docker stack health. Hivemind integration tests run automatically if the server is running on `:9100`.
+# Hivemind
+cd services/hivemind && SQLX_OFFLINE=true cargo test --bin kioku-hivemind
 
-### CLI unit tests only
+# Dashboard
+cd services/dashboard && npx vitest run
 
-```bash
-cd apps/cli
-cargo test -p cc-auth -p cc-kioku
+# MCP
+cd services/mcp && pytest tests/ -v
 ```
 
 ### Hivemind integration tests
@@ -35,6 +40,27 @@ cd deployment/docker && ./scripts/manage.sh start
 cd ../../services/hivemind
 HIVEMIND_URL=http://localhost:9100 cargo test
 ```
+
+### CLI integration tests
+
+Requires a running Hivemind server:
+
+```bash
+cd services/cli
+HIVEMIND_URL=http://localhost:9100 cargo test --test integration_test --features integration
+```
+
+### RunPod integration workflow
+
+To validate the published RunPod images for a specific commit SHA:
+
+```bash
+gh workflow run "RunPod Integration Test" -f image_sha=<short-or-full-git-sha>
+```
+
+The workflow waits for the published stateful/stateless images, boots the
+RunPod stateful pod, runs Hivemind and CLI integration tests against the live
+pod, then verifies stateless pod creation through `runtime-api`.
 
 ### Docker smoke test
 

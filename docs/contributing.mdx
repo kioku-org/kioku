@@ -51,14 +51,14 @@ cargo insta test --accept      # Update snapshots
 ### CLI (Rust)
 
 ```bash
-cd apps/cli
+cd services/cli
 cargo check
-cargo test -p cc-auth -p cc-kioku  # Unit tests
+cargo test --lib --bins --tests    # Unit tests
 cargo build                         # Debug build
 ./target/debug/kioku --help         # Run locally
 ```
 
-See `apps/cli/AGENTS.md` for Rust coding guidelines.
+See `services/cli/AGENTS.md` for Rust coding guidelines.
 
 ## Git Workflow
 
