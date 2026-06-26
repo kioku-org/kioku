@@ -46,13 +46,7 @@ async fn fresh_client(prefix: &str) -> KiokuClient {
     let company = format!("{prefix}-{unique}");
 
     let session = client
-        .register_admin(
-            &company,
-            None,
-            &email,
-            "CLI Test User",
-            "testpassword123",
-        )
+        .register_admin(&company, None, &email, "CLI Test User", "testpassword123")
         .await
         .expect("fresh admin registration failed");
 
