@@ -39,6 +39,7 @@ Images are built automatically by GitHub Actions on push to master.
 ## Deploy
 
 ```bash
+git submodule update --init --recursive
 cd deployment/runpod
 cp .env.example .env
 # Fill in RUNPOD_API_KEY, secrets, domain
@@ -46,6 +47,10 @@ $EDITOR .env
 
 ./deploy.sh
 ```
+
+`services/vexa` is a Git submodule. If you cloned Kioku without
+`--recurse-submodules`, run the update command above first so the RunPod image
+build contexts resolve correctly.
 
 The script creates a CPU pod with all stateful services via `runpodctl pod create --compute-type cpu`.
 

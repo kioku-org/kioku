@@ -1,7 +1,9 @@
 ---
 title: "Vexa"
 ---
-Vexa is the meeting-bot platform vendored into Kioku from [Vexa-ai/vexa](https://github.com/Vexa-ai/vexa).
+Vexa is the meeting-bot platform tracked in Kioku as a Git submodule from
+[kioku-org/vexa](https://github.com/kioku-org/vexa), which carries the Kioku
+RunPod and schema-split changes on top of the upstream Vexa codebase.
 
 ## Services
 
