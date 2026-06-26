@@ -323,6 +323,26 @@ jobs:
             exit 1
           fi
 
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Run hivemind integration tests
+        env:
+          HIVEMIND_URL: ${{ steps.wait.outputs.hivemind_url }}
+          EMBEDDING_API_URL: ${{ steps.wait.outputs.hivemind_url }}/../11434
+          DATABASE_URL: postgres://kioku:kioku@${{ steps.wait.outputs.pod_ip }}:5432/kioku
+        run: |
+          set -euo pipefail
+          cargo test --manifest-path services/hivemind/Cargo.toml -p kioku-hivemind-integration-tests 2>&1
+        working-directory: .
+
+      - name: Run CLI integration tests
+        env:
+          HIVEMIND_URL: ${{ steps.wait.outputs.hivemind_url }}
+        run: |
+          set -euo pipefail
+          cargo test --manifest-path services/cli/Cargo.toml -p cc-kioku --test integration_test --features integration 2>&1
+        working-directory: .
+
       - name: Spawn stateless bot pod via runtime-api
         id: stateless
         env:
