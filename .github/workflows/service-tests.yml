@@ -130,12 +130,11 @@ jobs:
           cache-dependency-path: services/dashboard/package-lock.json
       - name: Install dependencies
         run: npm install --legacy-peer-deps
-      - name: Generate release version
-        run: NEXT_PUBLIC_VEXA_OSS_VERSION="0.1.0" node scripts/generate-release-version.js
       - name: Build
         run: npm run build
         env:
           KIOKU_API_URL: http://localhost:8056
+          NEXT_PUBLIC_VEXA_OSS_VERSION: "0.1.0"
 
   # ── MCP ───────────────────────────────────────────────────────────────────
   mcp-unit:
@@ -291,8 +290,8 @@ jobs:
       - name: Dashboard build
         run: |
           npm install --legacy-peer-deps
-          NEXT_PUBLIC_VEXA_OSS_VERSION="0.1.0" node scripts/generate-release-version.js
           npm run build
         working-directory: services/dashboard
         env:
           KIOKU_API_URL: http://localhost:8056
+          NEXT_PUBLIC_VEXA_OSS_VERSION: "0.1.0"
