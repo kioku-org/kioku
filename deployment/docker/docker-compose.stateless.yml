@@ -6,6 +6,8 @@ services:
       context: ${KIOKU_VEXA_PATH:-../../services/vexa}
       dockerfile: services/api-gateway/Dockerfile
     container_name: kioku-vexa-api-gateway
+    ports:
+      - "${VEXA_API_PORT:-8056}:8000"
     environment:
       - ADMIN_API_URL=http://vexa-admin-api:8001
       - MEETING_API_URL=http://vexa-meeting-api:8080
@@ -41,6 +43,8 @@ services:
       context: ${KIOKU_VEXA_PATH:-../../services/vexa}
       dockerfile: services/admin-api/Dockerfile
     container_name: kioku-vexa-admin-api
+    ports:
+      - "${VEXA_ADMIN_PORT:-8057}:8001"
     environment:
       - DB_HOST=${DB_HOST:-postgres}
       - DB_PORT=5432
@@ -250,6 +254,8 @@ services:
   kioku-mcp:
     image: ghcr.io/kioku-org/kioku-mcp:latest
     container_name: kioku-mcp
+    ports:
+      - "18888:18888"
     environment:
       - KIOKU_API_URL=http://vexa-api-gateway:8000
       - KIOKU_ENV=${KIOKU_ENV:-production}
@@ -301,6 +307,9 @@ services:
     image: minio/minio:latest
     container_name: kioku-vexa-minio
     command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
     environment:
       - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-vexa-access-key}
       - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-vexa-secret-key}
@@ -374,6 +383,8 @@ services:
     build:
       context: ${HIVEMIND_PATH:-../../services/hivemind}
     container_name: kioku-hivemind
+    ports:
+      - "${HIVEMIND_PORT:-9100}:9100"
     environment:
       - DB_HOST=${DB_HOST:-postgres}
       - DB_PORT=5432
@@ -412,6 +423,8 @@ services:
   kioku-dashboard:
     image: ghcr.io/kioku-org/kioku-dashboard:latest
     container_name: kioku-dashboard
+    ports:
+      - "3001:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001
