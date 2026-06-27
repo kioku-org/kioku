@@ -1,6 +1,7 @@
 # ==============================================================================
-# Kioku Stateful Pod — all always-on services (CPU, persistent)
-# Build: docker build -f deployment/runpod/Dockerfile.stateful -t kyomoto/kioku-stateful .
+# Kioku Stateful Pod — all always-on services (GPU-optional, persistent)
+# Uses CUDA runtime so Ollama auto-detects GPU when available, falls back to CPU.
+# Build: docker build -f deployment/runpod/Dockerfile.stateful -t ghcr.io/kioku-org/kioku-stateful .
 # ==============================================================================
 
 # ─── Stage 1: Build hivemind (Rust) ───────────────────────────────────────────
@@ -63,14 +64,25 @@ COPY services/vexa/services/mcp/ /opt/vexa/services/mcp/
 COPY services/vexa/services/tts-service/ /opt/vexa/services/tts-service/
 COPY services/vexa/services/runtime-api/ /opt/vexa/services/runtime-api/
 
-# ─── Stage 3: Runtime ─────────────────────────────────────────────────────────
-FROM python:3.11-slim-bookworm
+# ─── Stage 3: Runtime (CUDA base so Ollama uses GPU when available) ───────────
+FROM nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PG_MAJOR=16 \
     OLLAMA_HOST=0.0.0.0:11434 \
     OLLAMA_MODELS=/data/ollama/models \
     PATH="/opt/venv/bin:$PATH"
+
+# Python 3.11 (not default on Ubuntu 22.04)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3.11 python3.11-venv python3.11-distutils \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
