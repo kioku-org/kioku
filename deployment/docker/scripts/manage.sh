@@ -6,6 +6,7 @@ DEPLOY_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$DEPLOY_DIR"
 
 STATEFUL_FILE="docker-compose.stateful.yml"
+STATELESS_FILE="docker-compose.stateless.yml"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -17,7 +18,7 @@ warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 
 compose_stateful()  { docker compose -f "$STATEFUL_FILE" "$@"; }
-compose_stateless() { docker compose "$@"; }
+compose_stateless() { docker compose -f "$STATELESS_FILE" "$@"; }
 
 # ─── Pre-flight checks ────────────────────────────────────────────────────────
 

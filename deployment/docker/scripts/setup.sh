@@ -31,14 +31,28 @@ if grep -q "change-me-to-a-random-64-char-hex-string" .env 2>/dev/null; then
     warn "Default secrets detected. Generating secure ones..."
     JWT_SECRET=$(openssl rand -hex 32)
     ENCRYPTION_SECRET=$(openssl rand -hex 32)
-    sed -i "s|change-me-to-a-random-64-char-hex-string|$JWT_SECRET|g" .env
-    sed -i "s|change-me-to-a-random-64-char-hex-string|$ENCRYPTION_SECRET|g" .env
-    info "Secrets updated"
+    NEXTAUTH_SECRET=$(openssl rand -base64 32)
+    sed -i "s|HIVEMIND_JWT_SECRET=change-me-to-a-random-64-char-hex-string|HIVEMIND_JWT_SECRET=$JWT_SECRET|" .env
+    sed -i "s|HIVEMIND_ENCRYPTION_SECRET=change-me-to-a-random-64-char-hex-string|HIVEMIND_ENCRYPTION_SECRET=$ENCRYPTION_SECRET|" .env
+    sed -i "s|NEXTAUTH_SECRET=change-me-to-a-random-secret|NEXTAUTH_SECRET=$NEXTAUTH_SECRET|" .env
+    info "Secrets generated"
 fi
 
-# Pull images
-info "Pulling base images..."
-docker compose pull --quiet 2>/dev/null || warn "Some images may need to be built"
+# Detect Docker GID and inject into .env if not set
+if ! grep -q "^DOCKER_GID=" .env 2>/dev/null; then
+    DOCKER_GID=$(getent group docker | cut -d: -f3 2>/dev/null || stat -c '%g' /var/run/docker.sock 2>/dev/null || echo "")
+    if [[ -n "$DOCKER_GID" ]]; then
+        echo "DOCKER_GID=$DOCKER_GID" >> .env
+        info "Detected Docker GID: $DOCKER_GID"
+    else
+        warn "Could not detect Docker GID — set DOCKER_GID manually in .env if bot spawning fails"
+    fi
+fi
+
+# Pull pre-built images
+info "Pulling pre-built images..."
+docker compose -f docker-compose.stateless.yml pull --quiet --ignore-buildable 2>/dev/null \
+    || warn "Some images could not be pulled (will be built on first start)"
 
 info ""
 info "Setup complete!"
