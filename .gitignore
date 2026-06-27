@@ -9,7 +9,7 @@ __pycache__/
 *.log
 .DS_Store
 CHECKPOINT.md
-LEFTOVER.md
+/LEFTOVER.md
 backups/
 ollama-data/
 output/
