@@ -56,6 +56,19 @@ cmd_down_stateful() {
     compose_stateful down
 }
 
+cmd_start_stateless() {
+    check_prerequisites
+    info "Starting stateless services (assumes postgres + qdrant already running on kioku-network)..."
+    compose_stateless up -d --build
+    info ""
+    info "Platform is starting. Services will be available at:"
+    info "  Hivemind API:   http://localhost:9100"
+    info "  Vexa API:       http://localhost:8056"
+    info "  Dashboard:      http://localhost:3001"
+    info ""
+    info "Check health: ./scripts/healthcheck.sh"
+}
+
 cmd_start() {
     check_prerequisites
     info "Starting stateful services (postgres, qdrant)..."
@@ -220,9 +233,12 @@ Stateful-only commands (postgres, qdrant):
   start-stateful     Start only postgres and qdrant
   stop-stateful      Stop only postgres and qdrant
   down-stateful      Remove stateful containers (preserves volumes)
+  start-stateless    Start only stateless services (use when postgres + qdrant
+                     are managed externally and already on kioku-network)
 
 Examples:
   $0 start
+  $0 start-stateless         # bring up app services only (external db)
   $0 logs kioku-hivemind
   $0 backup
   $0 restore backups/kioku_20260401_120000.sql
@@ -231,20 +247,21 @@ EOF
 }
 
 case "${1:-help}" in
-    start)            cmd_start ;;
-    stop)             cmd_stop ;;
-    down)             cmd_down ;;
-    down-volumes)     cmd_down_volumes ;;
-    restart)          cmd_restart ;;
-    status)           cmd_status ;;
-    logs)             cmd_logs "${2:-}" ;;
-    backup)           cmd_backup ;;
-    restore)          cmd_restore "${2:-}" ;;
-    shell)            cmd_shell "${2:-}" ;;
-    db-shell)         cmd_db_shell ;;
-    start-stateful)   cmd_start_stateful ;;
-    stop-stateful)    cmd_stop_stateful ;;
-    down-stateful)    cmd_down_stateful ;;
-    help|--help|-h)   usage ;;
-    *)                error "Unknown command: $1. Run '$0 help' for usage." ;;
+    start)             cmd_start ;;
+    stop)              cmd_stop ;;
+    down)              cmd_down ;;
+    down-volumes)      cmd_down_volumes ;;
+    restart)           cmd_restart ;;
+    status)            cmd_status ;;
+    logs)              cmd_logs "${2:-}" ;;
+    backup)            cmd_backup ;;
+    restore)           cmd_restore "${2:-}" ;;
+    shell)             cmd_shell "${2:-}" ;;
+    db-shell)          cmd_db_shell ;;
+    start-stateful)    cmd_start_stateful ;;
+    stop-stateful)     cmd_stop_stateful ;;
+    down-stateful)     cmd_down_stateful ;;
+    start-stateless)   cmd_start_stateless ;;
+    help|--help|-h)    usage ;;
+    *)                 error "Unknown command: $1. Run '$0 help' for usage." ;;
 esac
