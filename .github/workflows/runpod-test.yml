@@ -42,8 +42,14 @@ jobs:
 
           echo "Testing published images for SHA: $SHORT_SHA"
           echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
-          echo "stateful_image=kyomoto/kioku-stateful:$SHORT_SHA" >> "$GITHUB_OUTPUT"
-          echo "stateless_image=kyomoto/kioku-stateless:$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "stateful_image=ghcr.io/kioku-org/kioku-stateful:$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "stateless_image=ghcr.io/kioku-org/kioku-stateless:$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Wait for published images
         env:
