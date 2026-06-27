@@ -364,7 +364,7 @@ jobs:
           DATABASE_URL: postgres://kioku:kioku@${{ steps.wait.outputs.pod_ip }}:5432/kioku
         run: |
           set -euo pipefail
-          cargo test --manifest-path services/hivemind/tests/Cargo.toml -p kioku-hivemind-integration-tests 2>&1
+          cargo test --manifest-path services/hivemind/tests/Cargo.toml -p kioku-hivemind-integration-tests -- --test-threads=1 2>&1
         working-directory: .
 
       - name: Run CLI integration tests
