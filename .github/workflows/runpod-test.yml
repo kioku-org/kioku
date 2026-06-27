@@ -365,12 +365,12 @@ jobs:
             echo "SKIP: no Ollama port mapping, embedding tests will be skipped"
             exit 0
           fi
-          echo "Warming up nomic-embed-text (first inference triggers model load)..."
+          echo "Warming up nomic-embed-text-v2-moe (first inference triggers model load)..."
           for i in $(seq 1 30); do
             CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 300 \
               -X POST "http://$POD_IP:$EMBEDDING_PUBLIC_PORT/api/embeddings" \
               -H "Content-Type: application/json" \
-              -d '{"model":"nomic-embed-text","prompt":"warmup"}' 2>/dev/null || echo "000")
+              -d '{"model":"nomic-embed-text-v2-moe","prompt":"warmup"}' 2>/dev/null || echo "000")
             if [ "$CODE" = "200" ]; then
               echo "  Ollama model ready (try $i)"
               exit 0

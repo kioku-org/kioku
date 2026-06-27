@@ -93,7 +93,7 @@ fn default_embedding_api_url() -> String {
     "http://localhost:11434".into()
 }
 fn default_embedding_model() -> String {
-    "nomic-embed-text".into()
+    "nomic-embed-text-v2-moe".into()
 }
 fn default_qdrant_url() -> String {
     "http://localhost:6334".into()
