@@ -43,7 +43,7 @@ export function usePendingMeeting() {
     if (parsed.originalUrl) {
       request.meeting_url = parsed.originalUrl;
     }
-    request.bot_name = "Vexa - Open Source Bot";
+    request.bot_name = "Kioku Bot";
 
     toast.promise(
       vexaAPI.createBot(request).then((meeting) => {
