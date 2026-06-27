@@ -126,12 +126,14 @@ services:
       context: ${KIOKU_VEXA_PATH:-../../services/vexa}/services/runtime-api
       dockerfile: Dockerfile
     container_name: kioku-vexa-runtime-api-local
+    group_add:
+      - "${DOCKER_GID:-983}"
     environment:
       - ORCHESTRATOR_BACKEND=docker
       - REDIS_URL=redis://vexa-redis:6379/0
       - DOCKER_HOST=unix:///var/run/docker.sock
       - DOCKER_NETWORK=kioku-network
-      - BROWSER_IMAGE=${VEXA_BOT_IMAGE:-kyomoto/kioku-stateless:latest}
+      - BROWSER_IMAGE=${VEXA_BOT_IMAGE:-ghcr.io/kioku-org/kioku-stateless:latest}
       - TRANSCRIPTION_SERVICE_URL=http://vexa-transcription-service:80
       - TRANSCRIPTION_SERVICE_TOKEN=${VEXA_TRANSCRIBER_API_KEY:-}
       - TTS_SERVICE_URL=http://vexa-tts-service:8002
