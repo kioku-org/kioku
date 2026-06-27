@@ -4,7 +4,7 @@ Last updated: 2026-06-27
 
 ## Current Status
 
-CI is fully green. `ghcr.io/kioku-org/kioku-dashboard:latest` is published and ready to pull.
+CI is fully green. `ghcr.io/kioku-org/kioku-dashboard:latest` and `ghcr.io/kioku-org/kioku-mcp:latest` are published and ready to pull.
 
 The stateless docker-compose is now complete end-to-end: dashboard, MCP, and bot spawning all wired correctly.
 
@@ -20,10 +20,14 @@ The stateless docker-compose is now complete end-to-end: dashboard, MCP, and bot
 - `cloudflared.yml.example` updated with both `dashboard.example.com` and `mcp.example.com` entries
 - Dashboard + RunPod env vars added to `deployment/docker/.env.example`
 - `services/dashboard/deploy/` created for standalone dashboard-only deployments
-- **Fixed**: `vexa-runtime-api` service added to `docker-compose.stateless.yml` — was missing, causing bot spawning to silently fail (meeting-api was pointing `RUNTIME_API_URL` to itself)
+- **Fixed**: `vexa-runtime-api` service added to `docker-compose.stateless.yml` — was missing, causing bot spawning to silently fail
 - `deployment/docker/configs/runtime-profiles.yaml` — profiles config for the local runtime-api
-- `RUNTIME_ORCHESTRATOR` env var: `docker` (default, local) or `runpod` (spawn on RunPod)
-- Docker socket mount moved from `vexa-meeting-api` to `vexa-runtime-api` (where it belongs)
+- Docker socket mount moved from `vexa-meeting-api` to `vexa-runtime-api`
+- **MCP (issue #30)**: `services/mcp/` wired into compose as `kioku-mcp` using published image — replaces the vexa submodule's MCP
+- `build-mcp` CI job added — builds and pushes `ghcr.io/kioku-org/kioku-mcp:latest` on every push to master
+- MCP `/health` endpoint added; CI integration job starts MCP and runs `parse_meeting_link` test against it
+- `kioku mcp` CLI command now outputs both Hivemind MCP + Meetings MCP configs; 3 unit tests added
+- `docs/mcp/overview.md` updated to document both MCPs and `kioku mcp` CLI usage
 
 ## Deploy Server Steps (Run on the Server)
 
@@ -31,12 +35,12 @@ The stateless docker-compose is now complete end-to-end: dashboard, MCP, and bot
 cd deployment/docker
 
 # 1. Pull updated images
-docker compose -f docker-compose.stateless.yml pull kioku-dashboard
+docker compose -f docker-compose.stateless.yml pull kioku-dashboard kioku-mcp
 
-# 2. Start/update services (runtime-api is new — will be built from source)
-docker compose -f docker-compose.stateless.yml up -d --build vexa-runtime-api kioku-dashboard
+# 2. Start/update services
+docker compose -f docker-compose.stateless.yml up -d --build vexa-runtime-api kioku-dashboard kioku-mcp
 
-# 3. Reload cloudflared to pick up new tunnel routes (dashboard + mcp)
+# 3. Reload cloudflared to pick up tunnel routes (dashboard + mcp)
 docker restart kioku-cloudflared
 ```
 
@@ -65,16 +69,50 @@ curl -X PATCH -H "Authorization: Bearer $VEXA_ADMIN_API_TOKEN" \
   http://localhost:8001/admin/users/{user_id}
 ```
 
-There is no global server-side cap in the current vexa code — the per-user limit is the mechanism.
+## Runtime Router (issue #32) — NOT YET IMPLEMENTED
 
-## RunPod Overflow (Future)
+Tracks: `USE_LOCAL_RESOURCE` (bool) + `LOCAL_BOT_THRESHOLD` (int N).
 
-To route overflow bots to RunPod when the local count is exhausted, a runtime-router
-proxy service is needed between the meeting-api and the two runtime backends (local Docker +
-RunPod). This is not yet implemented.
+### Behaviour
 
-Short-term workaround: set `RUNTIME_ORCHESTRATOR=runpod` in `.env` to use RunPod for **all**
-bots (no local spawning). This bypasses the 3-bot local cap entirely and bills RunPod per bot.
+| `USE_LOCAL_RESOURCE` | local bot count | Routes to |
+|---|---|---|
+| `false` | any | RunPod (all bots) |
+| `true` | < N | local Docker |
+| `true` | ≥ N (overflow) | RunPod |
+
+### Design
+
+New service: `services/runtime-router/` (FastAPI, ~100 lines).
+
+- Two runtime-api instances in compose:
+  - `vexa-runtime-api-local` — `ORCHESTRATOR_BACKEND=docker`, mounts Docker socket
+  - `vexa-runtime-api-runpod` — `ORCHESTRATOR_BACKEND=runpod`, needs `RUNPOD_API_KEY`
+- `kioku-runtime-router` (port 8090) sits between `vexa-meeting-api` and the two backends
+  - `vexa-meeting-api` points `RUNTIME_API_URL=http://kioku-runtime-router:8090`
+  - On `POST /bots`: checks in-memory local bot count vs `LOCAL_BOT_THRESHOLD`; routes to local or RunPod accordingly; increments/decrements counter on success
+  - Tracks per-bot backend origin by `platform:meeting_id` key so stop/delete goes to the right backend
+  - All other paths forwarded to local backend (or RunPod if `USE_LOCAL_RESOURCE=false`)
+  - `GET /health` returns current count + config for observability
+
+### New env vars (`.env.example`)
+
+```env
+# Runtime routing
+USE_LOCAL_RESOURCE=true          # false = RunPod for all bots
+LOCAL_BOT_THRESHOLD=3            # max local concurrent bots before overflow to RunPod
+```
+
+### Compose changes needed
+
+- Rename `vexa-runtime-api` → `vexa-runtime-api-local` (docker socket stays here)
+- Add `vexa-runtime-api-runpod` (same image, `ORCHESTRATOR_BACKEND=runpod`, no socket mount)
+- Add `kioku-runtime-router` service
+- Update `vexa-meeting-api` env: `RUNTIME_API_URL=http://kioku-runtime-router:8090`
+
+### E2E test on RunPod (no deployment server)
+
+Set `USE_LOCAL_RESOURCE=false` in `.env` — router sends everything to RunPod, local runtime-api idles harmlessly.
 
 ## After Deploy — Verify
 
@@ -90,5 +128,6 @@ Expected health response: `"status": "ok"` or `"degraded"` (degraded is fine if 
 
 - `#27` closed: RunPod stateful path
 - `#28` closed: stateless GPU path
-- `#30` open: dashboard+MCP in Kioku — both halves done; close after successful deploy
+- `#30` open: dashboard+MCP in Kioku — dashboard done, MCP wired; close after successful deploy
 - `#31` open: publish dashboard.kioku.chat — image ready, pending deploy server steps above
+- `#32` open: runtime router (`USE_LOCAL_RESOURCE` + `LOCAL_BOT_THRESHOLD`) — design above, not yet implemented

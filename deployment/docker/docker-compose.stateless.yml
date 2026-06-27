@@ -10,7 +10,7 @@ services:
       - ADMIN_API_URL=http://vexa-admin-api:8001
       - MEETING_API_URL=http://vexa-meeting-api:8080
       - TRANSCRIPTION_COLLECTOR_URL=http://vexa-meeting-api:8080
-      - MCP_URL=http://vexa-mcp:18888
+      - MCP_URL=http://kioku-mcp:18888
       - AGENT_API_URL=http://vexa-agent-api:8100
       - REDIS_URL=redis://vexa-redis:6379/0
       - PUBLIC_BASE_URL=${VEXA_PUBLIC_URL:-http://localhost:8056}
@@ -192,14 +192,12 @@ services:
       - kioku-network
     restart: unless-stopped
 
-  vexa-mcp:
-    build:
-      context: ${KIOKU_VEXA_PATH:-../../services/vexa}
-      dockerfile: services/mcp/Dockerfile
-    container_name: kioku-vexa-mcp
+  kioku-mcp:
+    image: ghcr.io/kioku-org/kioku-mcp:latest
+    container_name: kioku-mcp
     environment:
-      - API_GATEWAY_URL=http://vexa-api-gateway:8000
-      - VEXA_ENV=${VEXA_ENV:-production}
+      - KIOKU_API_URL=http://vexa-api-gateway:8000
+      - KIOKU_ENV=${KIOKU_ENV:-production}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     init: true
     depends_on:
@@ -208,6 +206,12 @@ services:
     networks:
       - kioku-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:18888/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   vexa-tts-service:
     build:
@@ -397,6 +401,8 @@ services:
       vexa-api-gateway:
         condition: service_started
       kioku-dashboard:
+        condition: service_started
+      kioku-mcp:
         condition: service_started
     networks:
       - kioku-network

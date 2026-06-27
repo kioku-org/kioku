@@ -1,17 +1,32 @@
 ---
 title: "MCP Integration"
 ---
-Connect AI clients to your Kioku knowledge base via the Model Context Protocol.
+Connect AI clients to your Kioku knowledge base and meeting tools via the Model Context Protocol.
 
 ## What is MCP?
 
-The [Model Context Protocol](https://modelcontextprotocol.io) (MCP) is an open standard that lets AI applications call external tools. Kioku runs an MCP server with streamable-http transport at `/mcp`.
+The [Model Context Protocol](https://modelcontextprotocol.io) (MCP) is an open standard that lets AI applications call external tools. Kioku runs two MCP servers:
 
-## Configuration
+| Server | Endpoint | Purpose |
+|--------|----------|---------|
+| **Knowledge MCP** | `api.kioku.chat/mcp` | Search knowledge, sessions, documents |
+| **Meetings MCP** | `mcp.kioku.chat/mcp` | Bot management, transcripts, recordings |
 
-### Claude Desktop / Claude Code
+## Quick Setup
 
-Add to your MCP client config:
+Run `kioku mcp` after signing in — it prints a ready-to-paste config JSON with both servers and your current token:
+
+```bash
+kioku mcp
+```
+
+Paste the output into your AI client's MCP config file.
+
+## Manual Configuration
+
+### Knowledge MCP (Claude Desktop / Claude Code)
+
+Provides `kioku_search`, `kioku_list_meetings`, `kioku_get_transcript`, and related tools.
 
 ```json
 {
@@ -26,13 +41,24 @@ Add to your MCP client config:
 }
 ```
 
-### Via CLI
+### Meetings MCP (Claude Desktop / Claude Code)
 
-```bash
-kioku mcp
+Provides tools for requesting bots, reading real-time transcripts, managing recordings, and meeting bundles.
+
+```json
+{
+    "mcpServers": {
+        "Kioku Meetings": {
+            "url": "https://mcp.kioku.chat/mcp",
+            "headers": {
+                "Authorization": "Bearer YOUR_VEXA_API_KEY"
+            }
+        }
+    }
+}
 ```
 
-Prints ready-to-paste MCP server config JSON with your current auth token.
+Get your Vexa API key from the Kioku dashboard under **Settings → API Keys**.
 
 ### Local Development
 
@@ -44,6 +70,12 @@ Prints ready-to-paste MCP server config JSON with your current auth token.
             "headers": {
                 "Authorization": "Bearer YOUR_JWT_TOKEN"
             }
+        },
+        "Kioku Meetings": {
+            "url": "http://localhost:18888/mcp",
+            "headers": {
+                "Authorization": "Bearer YOUR_VEXA_API_KEY"
+            }
         }
     }
 }
@@ -51,12 +83,16 @@ Prints ready-to-paste MCP server config JSON with your current auth token.
 
 ## How It Works
 
-1. AI client (Claude, Cursor) connects to Hivemind's `/mcp` endpoint
-2. Authentication via `Authorization: Bearer <token>` header
-3. Company and user context extracted from MCP session `_meta`
-4. AI client can call any of the registered MCP tools
-5. Results are returned as structured data the AI can reason about
+**Knowledge MCP** (Hivemind, port 9100):
+1. AI client connects to `/mcp` on the Hivemind API
+2. Auth via `Authorization: Bearer <jwt>` (same token as `kioku signin`)
+3. Tools operate within your company's knowledge base
+
+**Meetings MCP** (Kioku MCP service, port 18888):
+1. AI client connects to `/mcp` on the Meetings MCP service
+2. Auth via `Authorization: Bearer <vexa_api_key>`
+3. Requests are proxied to the Vexa API gateway for bot and transcript operations
 
 <Note>
-  The MCP session is scoped to your company. All tool calls operate within your company's knowledge base.
+  Both MCP sessions are scoped to your company. `kioku mcp` outputs config for both servers using your current auth token.
 </Note>

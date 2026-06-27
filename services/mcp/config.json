@@ -1,16 +1,9 @@
 {
     "mcpServers": {
-      "Kioku": {
-        "command": "npx",
-        "args": [
-          "-y",
-          "mcp-remote",
-          "http://localhost:8056/mcp",
-          "--header",
-          "X-API-Key: ${KIOKU_API_KEY}"
-        ],
-        "env": {
-          "KIOKU_API_KEY": "YOUR_KIOKU_API_KEY_HERE"
+      "Kioku Meetings": {
+        "url": "https://mcp.kioku.chat/mcp",
+        "headers": {
+          "Authorization": "Bearer YOUR_VEXA_API_KEY"
         }
       }
     }

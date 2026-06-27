@@ -134,6 +134,44 @@ fn prompt_or(value: Option<String>, label: &str) -> Result<String> {
     }
 }
 
+fn meeting_mcp_url(server_url: &str) -> String {
+    // Derive the meeting MCP URL from the Hivemind server URL.
+    // For local/Docker deployments, replace the port with 18888.
+    // For hostnames without a port (e.g. https://api.kioku.chat), the operator
+    // exposes the meeting MCP at a separate hostname (e.g. mcp.kioku.chat).
+    let trimmed = server_url.trim_end_matches('/');
+    if let Some(pos) = trimmed.rfind(':') {
+        let after_colon = &trimmed[pos + 1..];
+        // Only substitute if it looks like a port number
+        if after_colon.chars().all(|c| c.is_ascii_digit()) {
+            let prefix = &trimmed[..pos + 1];
+            return format!("{}18888/mcp", prefix);
+        }
+    }
+    // No port: can't derive automatically, show a placeholder
+    format!("{}/meeting-mcp/mcp", trimmed)
+}
+
+fn mcp_config_json(server_url: &str, token: &str) -> String {
+    serde_json::to_string_pretty(&serde_json::json!({
+        "mcpServers": {
+            "Kioku": {
+                "url": format!("{}/mcp", server_url.trim_end_matches('/')),
+                "headers": {
+                    "Authorization": format!("Bearer {}", token)
+                }
+            },
+            "Kioku Meetings": {
+                "url": meeting_mcp_url(server_url),
+                "headers": {
+                    "Authorization": format!("Bearer {}", token)
+                }
+            }
+        }
+    }))
+    .expect("json serialization is infallible")
+}
+
 fn resolve_auth_key_delete_target(
     keys: &[cc_kioku::CompanyAuthKeyOut],
     key_prefix_or_id: &str,
@@ -394,19 +432,7 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
         }
         Commands::Mcp => {
             let auth = require_auth()?;
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&serde_json::json!({
-                    "mcpServers": {
-                        "Kioku": {
-                            "url": format!("{}/mcp", auth.server_url.trim_end_matches('/')),
-                            "headers": {
-                                "Authorization": format!("Bearer {}", auth.token)
-                            }
-                        }
-                    }
-                }))?
-            );
+            println!("{}", mcp_config_json(&auth.server_url, &auth.token));
         }
         Commands::UpgradeCheck => {
             let info = cc_upgrade::check_for_update(REPO, VERSION).await?;
@@ -430,7 +456,8 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        resolve_auth_key_delete_target, resolve_server_url_from, Cli, Commands, DEFAULT_SERVER_URL,
+        mcp_config_json, meeting_mcp_url, resolve_auth_key_delete_target, resolve_server_url_from,
+        Cli, Commands, DEFAULT_SERVER_URL,
     };
     use cc_kioku::CompanyAuthKeyOut;
     use clap::Parser;
@@ -523,6 +550,29 @@ mod tests {
         let expected = "key-uuid-1".to_string();
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn mcp_config_json_contains_both_servers() {
+        let json_str = mcp_config_json("http://localhost:9100", "test-token");
+        let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        let servers = &v["mcpServers"];
+        assert_eq!(servers["Kioku"]["url"], "http://localhost:9100/mcp");
+        assert_eq!(servers["Kioku"]["headers"]["Authorization"], "Bearer test-token");
+        assert_eq!(servers["Kioku Meetings"]["url"], "http://localhost:18888/mcp");
+        assert_eq!(servers["Kioku Meetings"]["headers"]["Authorization"], "Bearer test-token");
+    }
+
+    #[test]
+    fn meeting_mcp_url_replaces_port() {
+        assert_eq!(meeting_mcp_url("http://localhost:9100"), "http://localhost:18888/mcp");
+        assert_eq!(meeting_mcp_url("http://localhost:9100/"), "http://localhost:18888/mcp");
+    }
+
+    #[test]
+    fn meeting_mcp_url_no_port_returns_placeholder() {
+        let url = meeting_mcp_url("https://api.kioku.chat");
+        assert!(url.contains("mcp"), "should contain mcp in URL: {url}");
     }
 
     #[test]

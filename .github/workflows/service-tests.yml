@@ -275,11 +275,41 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: MCP tests
+      - name: MCP unit tests
         run: |
           pip install -r requirements.txt pytest
           pytest tests/ -v
         working-directory: services/mcp
+
+      - name: Start MCP service
+        run: |
+          pip install -r services/mcp/requirements.txt
+          KIOKU_API_URL=http://localhost:9100 python services/mcp/main.py &
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:18888/health >/dev/null 2>&1; then
+              echo "MCP service is ready"
+              exit 0
+            fi
+            echo "Waiting for MCP service... ($i/20)"
+            sleep 2
+          done
+          echo "MCP service failed to start"
+          exit 1
+
+      - name: MCP integration test
+        run: |
+          result=$(curl -sf -X POST http://localhost:18888/parse-meeting-link \
+            -H "Authorization: Bearer test-token" \
+            -H "Content-Type: application/json" \
+            -d '{"meeting_url":"https://meet.google.com/abc-defg-hij"}')
+          echo "$result"
+          echo "$result" | python3 -c "
+          import json, sys
+          r = json.load(sys.stdin)
+          assert r['platform'] == 'google_meet', f'expected google_meet, got {r[\"platform\"]}'
+          assert r['native_meeting_id'] == 'abc-defg-hij', f'bad id: {r[\"native_meeting_id\"]}'
+          print('MCP integration test passed')
+          "
 
       - uses: actions/setup-node@v4
         with:

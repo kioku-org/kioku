@@ -9,5 +9,5 @@ ingress:
   - hostname: dashboard.example.com
     service: http://kioku-dashboard:3001
   - hostname: mcp.example.com
-    service: http://kioku-vexa-mcp:18888
+    service: http://kioku-mcp:18888
   - service: http_status:404
