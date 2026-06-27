@@ -226,19 +226,26 @@ services:
   vexa-transcription-service:
     build:
       context: ${KIOKU_VEXA_PATH:-../../services/vexa}/services/transcription-service
-      dockerfile: Dockerfile.cpu
+      dockerfile: Dockerfile
     container_name: kioku-vexa-transcription-service
     environment:
       - API_TOKEN=${VEXA_TRANSCRIBER_API_KEY:-}
       - MODEL_SIZE=large-v3-turbo
-      - COMPUTE_TYPE=int8
-      - DEVICE=cpu
+      - COMPUTE_TYPE=float16
+      - DEVICE=cuda
       - VEXA_ENV=${VEXA_ENV:-production}
     expose:
       - "80"
     networks:
       - kioku-network
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   kioku-mcp:
     image: ghcr.io/kioku-org/kioku-mcp:latest
