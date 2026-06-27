@@ -16,6 +16,10 @@ COPY next.config.ts tsconfig.json postcss.config.mjs eslint.config.mjs component
 ARG KIOKU_API_URL=http://vexa-api-gateway:8000
 ENV KIOKU_API_URL=$KIOKU_API_URL
 
+# Version shown in the dashboard UI. Pass a real semver at build time if desired.
+ARG NEXT_PUBLIC_VEXA_OSS_VERSION=0.1.0
+ENV NEXT_PUBLIC_VEXA_OSS_VERSION=$NEXT_PUBLIC_VEXA_OSS_VERSION
+
 RUN npm run build
 
 # Production stage
