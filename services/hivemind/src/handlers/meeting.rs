@@ -17,19 +17,19 @@ pub async fn ingest(
     let now = crate::util::now_ms();
     let meeting_out = repo.create(auth.company_id, req.clone(), now).await?;
 
-    // Ingest knowledge chunks into vector store
+    // Embed transcript in the background so the HTTP response returns immediately
     let docs = KnowledgeService::chunk_transcript(&req.transcript, meeting_out.id, req.date);
-    if let Err(e) = KnowledgeService::ingest_documents(
-        &state.db,
-        &state.vector_store,
-        auth.company_id,
-        meeting_out.id,
-        &docs,
-    )
-    .await
-    {
-        tracing::error!(error = %e, "Failed to ingest knowledge chunks into vector store");
-    }
+    let db = state.db.clone();
+    let vs = state.vector_store.clone();
+    let company_id = auth.company_id;
+    let meeting_id = meeting_out.id;
+    tokio::spawn(async move {
+        if let Err(e) =
+            KnowledgeService::ingest_documents(&db, &vs, company_id, meeting_id, &docs).await
+        {
+            tracing::error!(error = %e, "Failed to ingest knowledge chunks into vector store");
+        }
+    });
 
     Ok(Json(meeting_out))
 }
