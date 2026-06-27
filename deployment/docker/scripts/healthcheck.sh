@@ -69,7 +69,7 @@ check_http "http://localhost:8056"             "Vexa API Gateway"
 check_http "http://localhost:8057"             "Vexa Admin API"
 check_http "http://localhost:18888/health"     "Kioku MCP"
 check_http "http://localhost:3001/api/health"  "Dashboard"
-check_http "http://localhost:9001"             "Minio Console"
+check_http "http://localhost:9000/minio/health/live" "Minio"
 
 echo ""
 echo "═══════════════════════════════════════════"
