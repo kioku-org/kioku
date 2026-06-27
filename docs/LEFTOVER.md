@@ -69,7 +69,7 @@ curl -X PATCH -H "Authorization: Bearer $VEXA_ADMIN_API_TOKEN" \
   http://localhost:8001/admin/users/{user_id}
 ```
 
-## Runtime Router (issue #32) — NOT YET IMPLEMENTED
+## Runtime Router (issue #32) — IMPLEMENTED
 
 Tracks: `USE_LOCAL_RESOURCE` (bool) + `LOCAL_BOT_THRESHOLD` (int N).
 
@@ -81,34 +81,17 @@ Tracks: `USE_LOCAL_RESOURCE` (bool) + `LOCAL_BOT_THRESHOLD` (int N).
 | `true` | < N | local Docker |
 | `true` | ≥ N (overflow) | RunPod |
 
-### Design
+### What was done
 
-New service: `services/runtime-router/` (FastAPI, ~100 lines).
-
-- Two runtime-api instances in compose:
-  - `vexa-runtime-api-local` — `ORCHESTRATOR_BACKEND=docker`, mounts Docker socket
-  - `vexa-runtime-api-runpod` — `ORCHESTRATOR_BACKEND=runpod`, needs `RUNPOD_API_KEY`
-- `kioku-runtime-router` (port 8090) sits between `vexa-meeting-api` and the two backends
-  - `vexa-meeting-api` points `RUNTIME_API_URL=http://kioku-runtime-router:8090`
-  - On `POST /bots`: checks in-memory local bot count vs `LOCAL_BOT_THRESHOLD`; routes to local or RunPod accordingly; increments/decrements counter on success
-  - Tracks per-bot backend origin by `platform:meeting_id` key so stop/delete goes to the right backend
-  - All other paths forwarded to local backend (or RunPod if `USE_LOCAL_RESOURCE=false`)
-  - `GET /health` returns current count + config for observability
-
-### New env vars (`.env.example`)
-
-```env
-# Runtime routing
-USE_LOCAL_RESOURCE=true          # false = RunPod for all bots
-LOCAL_BOT_THRESHOLD=3            # max local concurrent bots before overflow to RunPod
-```
-
-### Compose changes needed
-
-- Rename `vexa-runtime-api` → `vexa-runtime-api-local` (docker socket stays here)
-- Add `vexa-runtime-api-runpod` (same image, `ORCHESTRATOR_BACKEND=runpod`, no socket mount)
-- Add `kioku-runtime-router` service
-- Update `vexa-meeting-api` env: `RUNTIME_API_URL=http://kioku-runtime-router:8090`
+- `services/runtime-router/main.py` — FastAPI proxy (~100 lines), intercepts `POST /bots` and `DELETE /bots/{platform}/{id}`, proxies everything else
+- `build-runtime-router` CI job builds and pushes `ghcr.io/kioku-org/kioku-runtime-router:latest`
+- `runtime-router-unit` CI job runs 5 unit tests covering routing logic
+- Compose changes:
+  - `vexa-runtime-api` renamed to `vexa-runtime-api-local` (docker socket stays here)
+  - `vexa-runtime-api-runpod` added (same image, `ORCHESTRATOR_BACKEND=runpod`, no socket mount)
+  - `kioku-runtime-router` added as `ghcr.io/kioku-org/kioku-runtime-router:latest`
+  - `vexa-meeting-api` now points `RUNTIME_API_URL=http://kioku-runtime-router:8090`
+- `.env.example` updated: `RUNTIME_ORCHESTRATOR` replaced with `USE_LOCAL_RESOURCE` + `LOCAL_BOT_THRESHOLD`
 
 ### E2E test on RunPod (no deployment server)
 
@@ -130,4 +113,4 @@ Expected health response: `"status": "ok"` or `"degraded"` (degraded is fine if 
 - `#28` closed: stateless GPU path
 - `#30` open: dashboard+MCP in Kioku — dashboard done, MCP wired; close after successful deploy
 - `#31` open: publish dashboard.kioku.chat — image ready, pending deploy server steps above
-- `#32` open: runtime router (`USE_LOCAL_RESOURCE` + `LOCAL_BOT_THRESHOLD`) — design above, not yet implemented
+- `#32` open: runtime router — implemented, pending CI image build and deploy

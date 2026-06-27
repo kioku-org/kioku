@@ -88,7 +88,7 @@ services:
       - REMOTE_TRANSCRIBER_URL=http://vexa-transcription-service:80/v1/audio/transcriptions
       - REMOTE_TRANSCRIBER_API_KEY=${VEXA_TRANSCRIBER_API_KEY:-}
       - TTS_SERVICE_URL=http://vexa-tts-service:8002
-      - RUNTIME_API_URL=http://vexa-runtime-api:8090
+      - RUNTIME_API_URL=http://kioku-runtime-router:8090
       - MEETING_API_URL=http://vexa-meeting-api:8080
       - ADMIN_TOKEN=${VEXA_ADMIN_API_TOKEN}
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
@@ -115,34 +115,29 @@ services:
         condition: service_started
       vexa-transcription-service:
         condition: service_started
-      vexa-runtime-api:
+      kioku-runtime-router:
         condition: service_started
     networks:
       - kioku-network
     restart: unless-stopped
 
-  vexa-runtime-api:
+  vexa-runtime-api-local:
     build:
       context: ${KIOKU_VEXA_PATH:-../../services/vexa}
       dockerfile: services/runtime-api/Dockerfile
-    container_name: kioku-vexa-runtime-api
+    container_name: kioku-vexa-runtime-api-local
     environment:
-      - ORCHESTRATOR_BACKEND=${RUNTIME_ORCHESTRATOR:-docker}
+      - ORCHESTRATOR_BACKEND=docker
       - REDIS_URL=redis://vexa-redis:6379/0
       - DOCKER_HOST=unix:///var/run/docker.sock
       - DOCKER_NETWORK=kioku-network
       - BROWSER_IMAGE=${VEXA_BOT_IMAGE:-kyomoto/kioku-stateless:latest}
-      - REDIS_URL=redis://vexa-redis:6379/0
       - TRANSCRIPTION_SERVICE_URL=http://vexa-transcription-service:80
       - TRANSCRIPTION_SERVICE_TOKEN=${VEXA_TRANSCRIBER_API_KEY:-}
       - TTS_SERVICE_URL=http://vexa-tts-service:8002
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
       - PROFILES_PATH=/app/profiles.yaml
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      # RunPod backend (used when RUNTIME_ORCHESTRATOR=runpod)
-      - RUNPOD_ACCOUNT_API_KEY=${RUNPOD_API_KEY:-}
-      - RUNPOD_GPU_TYPES=${RUNPOD_GPU_TYPES:-NVIDIA GeForce RTX 3090,NVIDIA RTX A5000,NVIDIA RTX A4000}
-      - RUNPOD_CLOUD_TYPE=${RUNPOD_CLOUD_TYPE:-COMMUNITY}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./configs/runtime-profiles.yaml:/app/profiles.yaml:ro
@@ -152,6 +147,57 @@ services:
     networks:
       - kioku-network
     restart: unless-stopped
+
+  vexa-runtime-api-runpod:
+    build:
+      context: ${KIOKU_VEXA_PATH:-../../services/vexa}
+      dockerfile: services/runtime-api/Dockerfile
+    container_name: kioku-vexa-runtime-api-runpod
+    environment:
+      - ORCHESTRATOR_BACKEND=runpod
+      - REDIS_URL=redis://vexa-redis:6379/0
+      - TRANSCRIPTION_SERVICE_URL=http://vexa-transcription-service:80
+      - TRANSCRIPTION_SERVICE_TOKEN=${VEXA_TRANSCRIBER_API_KEY:-}
+      - TTS_SERVICE_URL=http://vexa-tts-service:8002
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
+      - PROFILES_PATH=/app/profiles.yaml
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - RUNPOD_ACCOUNT_API_KEY=${RUNPOD_API_KEY:-}
+      - RUNPOD_GPU_TYPES=${RUNPOD_GPU_TYPES:-NVIDIA GeForce RTX 3090,NVIDIA RTX A5000,NVIDIA RTX A4000}
+      - RUNPOD_CLOUD_TYPE=${RUNPOD_CLOUD_TYPE:-COMMUNITY}
+    volumes:
+      - ./configs/runtime-profiles.yaml:/app/profiles.yaml:ro
+    depends_on:
+      vexa-redis:
+        condition: service_started
+    networks:
+      - kioku-network
+    restart: unless-stopped
+
+  kioku-runtime-router:
+    image: ghcr.io/kioku-org/kioku-runtime-router:latest
+    container_name: kioku-runtime-router
+    environment:
+      - USE_LOCAL_RESOURCE=${USE_LOCAL_RESOURCE:-true}
+      - LOCAL_BOT_THRESHOLD=${LOCAL_BOT_THRESHOLD:-3}
+      - LOCAL_BACKEND_URL=http://vexa-runtime-api-local:8090
+      - RUNPOD_BACKEND_URL=http://vexa-runtime-api-runpod:8090
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    init: true
+    depends_on:
+      vexa-runtime-api-local:
+        condition: service_started
+      vexa-runtime-api-runpod:
+        condition: service_started
+    networks:
+      - kioku-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8090/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   vexa-agent-api:
     build:
