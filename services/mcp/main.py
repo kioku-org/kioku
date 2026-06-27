@@ -22,6 +22,7 @@ app = FastAPI(
 async def health() -> Dict[str, str]:
     return {"status": "ok"}
 
+
 BASE_URL = os.getenv("KIOKU_API_URL", "http://api-gateway:8000")
 
 # Standard bearer-token auth parsing. We treat the token value as the Kioku API key.

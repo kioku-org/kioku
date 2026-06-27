@@ -558,15 +558,30 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
         let servers = &v["mcpServers"];
         assert_eq!(servers["Kioku"]["url"], "http://localhost:9100/mcp");
-        assert_eq!(servers["Kioku"]["headers"]["Authorization"], "Bearer test-token");
-        assert_eq!(servers["Kioku Meetings"]["url"], "http://localhost:18888/mcp");
-        assert_eq!(servers["Kioku Meetings"]["headers"]["Authorization"], "Bearer test-token");
+        assert_eq!(
+            servers["Kioku"]["headers"]["Authorization"],
+            "Bearer test-token"
+        );
+        assert_eq!(
+            servers["Kioku Meetings"]["url"],
+            "http://localhost:18888/mcp"
+        );
+        assert_eq!(
+            servers["Kioku Meetings"]["headers"]["Authorization"],
+            "Bearer test-token"
+        );
     }
 
     #[test]
     fn meeting_mcp_url_replaces_port() {
-        assert_eq!(meeting_mcp_url("http://localhost:9100"), "http://localhost:18888/mcp");
-        assert_eq!(meeting_mcp_url("http://localhost:9100/"), "http://localhost:18888/mcp");
+        assert_eq!(
+            meeting_mcp_url("http://localhost:9100"),
+            "http://localhost:18888/mcp"
+        );
+        assert_eq!(
+            meeting_mcp_url("http://localhost:9100/"),
+            "http://localhost:18888/mcp"
+        );
     }
 
     #[test]
