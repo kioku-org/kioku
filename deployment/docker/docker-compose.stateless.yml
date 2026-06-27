@@ -320,6 +320,40 @@ services:
       retries: 3
       start_period: 30s
 
+  kioku-dashboard:
+    image: ghcr.io/kioku-org/kioku-dashboard:latest
+    container_name: kioku-dashboard
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - HOSTNAME=0.0.0.0
+      - VEXA_API_URL=http://vexa-api-gateway:8000
+      - VEXA_ADMIN_API_KEY=${VEXA_ADMIN_API_TOKEN}
+      - VEXA_ADMIN_API_URL=http://vexa-admin-api:8001
+      - VEXA_ALLOW_DIRECT_LOGIN=${VEXA_ALLOW_DIRECT_LOGIN:-true}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://dashboard.kioku.chat}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - NEXT_PUBLIC_DOCS_URL=${NEXT_PUBLIC_DOCS_URL:-https://docs.kioku.chat}
+    depends_on:
+      vexa-api-gateway:
+        condition: service_started
+      vexa-admin-api:
+        condition: service_started
+    networks:
+      - kioku-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: kioku-cloudflared
@@ -331,6 +365,8 @@ services:
       kioku-hivemind:
         condition: service_healthy
       vexa-api-gateway:
+        condition: service_started
+      kioku-dashboard:
         condition: service_started
     networks:
       - kioku-network

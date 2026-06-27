@@ -6,4 +6,6 @@ ingress:
     service: http://kioku-hivemind:9100
   - hostname: meetings.example.com
     service: http://vexa-api-gateway:8000
+  - hostname: dashboard.example.com
+    service: http://kioku-dashboard:3001
   - service: http_status:404

@@ -1,0 +1,10 @@
+# Cloudflare Tunnel configuration for dashboard.kioku.chat
+# Replace <your-tunnel-id> with your actual tunnel ID
+
+tunnel: <your-tunnel-id>
+credentials-file: /etc/cloudflared/creds/<your-tunnel-id>.json
+
+ingress:
+  - hostname: dashboard.kioku.chat
+    service: http://kioku-dashboard:3001
+  - service: http_status:404
