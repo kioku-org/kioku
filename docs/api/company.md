@@ -13,8 +13,6 @@ Manage company members, invites, and API keys.
 
 ```json
 {
-    "default_provider": "openai",
-    "default_model": "gpt-4o",
     "hivemind_enabled": true
 }
 ```
@@ -40,26 +38,6 @@ Manage company members, invites, and API keys.
 
 ### Revoke Invite
 <Endpoint method="DELETE" path="/company/invites/:invite_id" />
-
-## Provider API Keys
-
-Encrypted storage for third-party API keys (OpenAI, Anthropic, etc.) using AES-GCM.
-
-### List API Keys
-<Endpoint method="GET" path="/company/apikeys/:user_id" />
-
-### Set API Key
-<Endpoint method="POST" path="/company/apikeys" />
-
-```json
-{
-    "provider": "openai",
-    "plain_key": "sk-..."
-}
-```
-
-### Delete API Key
-<Endpoint method="DELETE" path="/company/apikeys/key/:key_id" />
 
 ## CLI Auth Keys
 

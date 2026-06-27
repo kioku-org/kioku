@@ -16,7 +16,6 @@ Full reference for all configuration options.
 | Variable | Default | Description |
 |---|---|---|
 | `HIVEMIND_JWT_SECRET` | — | JWT signing secret (64-char hex, required) |
-| `HIVEMIND_ENCRYPTION_SECRET` | — | API key encryption secret (64-char hex, required) |
 | `HIVEMIND_PORT` | `9100` | Hivemind API port |
 
 ## Vexa

@@ -19,12 +19,18 @@ Returns ranked results from both documents and meeting transcripts:
 ```json
 [
     {
-        "id": "r-1",
-        "meeting_id": null,
-        "text": "We decided to use RunPod for GPU pods...",
-        "speaker": "Alice",
-        "score": 0.95,
-        "metadata": null
+        "chunk": {
+            "text": "We decided to use RunPod for GPU pods...",
+            "chunk_type": "transcript",
+            "speaker": "Alice",
+            "meeting_id": "m-42"
+        },
+        "meeting": {
+            "id": "m-42",
+            "title": "Weekly Standup",
+            "date": 1700000000000
+        },
+        "score": 0.95
     }
 ]
 ```

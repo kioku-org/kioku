@@ -15,13 +15,13 @@ The `kioku` CLI is a Rust binary that provides terminal access to the Hivemind A
 ## Installation
 
 ```bash
-cargo install --path apps/cli/crates/cc-cli
+cargo install --path services/cli/crates/cc-cli
 ```
 
 Or build from source:
 
 ```bash
-cd apps/cli
+cd services/cli
 cargo build --release
 # Binary at target/release/kioku
 ```
@@ -71,20 +71,6 @@ kioku knowledge-delete <id>     # delete a document
 kioku meetings-list             # list all meetings
 ```
 
-### Usage
-
-```bash
-kioku usage                     # show token usage summary
-```
-
-### API Keys
-
-```bash
-kioku apikeys-list              # list provider API keys
-kioku apikeys-set openai sk-... # set a provider API key
-kioku apikeys-delete openai     # delete a provider API key
-```
-
 ### MCP
 
 ```bash
@@ -102,6 +88,6 @@ kioku upgrade                   # upgrade to latest
 
 | Env Variable | Default | Description |
 |---|---|---|
-| `KIOKU_SERVER` | `https://api.coolcmyk.dev` | Hivemind API base URL |
+| `KIOKU_SERVER` | `http://localhost:9100` | Hivemind API base URL |
 
 Auth is stored at `~/.config/kioku/auth.json`.

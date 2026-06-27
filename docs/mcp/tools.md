@@ -17,7 +17,7 @@ Search the knowledge base (documents + meetings) with semantic similarity.
 }
 ```
 
-Returns ranked results with `id`, `text`, `speaker`, `score`, and `metadata`.
+Returns ranked results with `chunk` (text, speaker, chunk_type), `meeting` (id, title, date), and `score`.
 
 ## kioku_list_meetings
 

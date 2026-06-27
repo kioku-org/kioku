@@ -51,8 +51,8 @@ This lets Claude, Cursor, and other MCP-compatible clients directly access your 
 
 Kioku supports multi-tenant organization:
 
-- **Admin** — creates the company, manages members and API keys
+- **Admin** — creates the company, manages members and invites
 - **Members** — invited by admin, can use sessions/knowledge/search
 - **Personal** — standalone accounts without a company
 
-API keys can be scoped per-company and per-user. CLI auth keys are long-lived tokens for terminal access.
+CLI auth keys are long-lived tokens for terminal access.

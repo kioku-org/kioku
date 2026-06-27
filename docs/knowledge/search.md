@@ -24,12 +24,19 @@ curl -X POST http://localhost:9100/knowledge/search \
 ```json
 [
     {
-        "id": "r-1",
-        "meeting_id": "m-42",
-        "text": "We decided to use RunPod for GPU pods and keep the stateful services on CPU.",
-        "speaker": "Alice",
-        "score": 0.92,
-        "metadata": null
+        "chunk": {
+            "text": "We decided to use RunPod for GPU pods and keep the stateful services on CPU.",
+            "chunk_type": "transcript",
+            "score": 0.92,
+            "speaker": "Alice",
+            "meeting_id": "m-42"
+        },
+        "meeting": {
+            "id": "m-42",
+            "title": "Weekly Standup",
+            "date": 1700000000000
+        },
+        "score": 0.92
     }
 ]
 ```
@@ -38,8 +45,8 @@ curl -X POST http://localhost:9100/knowledge/search \
 
 ```bash
 kioku knowledge-search "deployment strategy"
-# r-1 [score=0.920]: We decided to use RunPod for GPU pods...
-# r-2 [score=0.845]: The stateful pod runs on CPU...
+# [score=0.920]: We decided to use RunPod for GPU pods...
+# [score=0.845]: The stateful pod runs on CPU...
 ```
 
 ## MCP

@@ -83,17 +83,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kioku-hivemind-integration-tests"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "reqwest",
- "serde_json",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -589,6 +578,17 @@ dependencies = [
  "futures-util",
  "once_cell",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "kioku-hivemind-integration-tests"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
