@@ -106,7 +106,7 @@ export const authOptions: NextAuthOptions = {
         user.email
       ) {
         try {
-          // Step 1: Find or create user in Vexa Admin API
+          // Step 1: Find or create user in Kioku Admin API
           let vexaUser;
           const findResult = await findUserByEmail(user.email);
           let isNewUser = false;
@@ -153,7 +153,7 @@ export const authOptions: NextAuthOptions = {
 
           // Step 3: Set cookie (same as existing auth flow)
           const cookieStore = await cookies();
-          cookieStore.set("vexa-token", apiToken, {
+          cookieStore.set("kioku-token", apiToken, {
             httpOnly: true,
             secure: isSecureRequest(),
             sameSite: "lax",
@@ -161,7 +161,7 @@ export const authOptions: NextAuthOptions = {
             path: "/",
           });
 
-          // Store Vexa user info in the user object for the JWT callback
+          // Store Kioku user info in the user object for the JWT callback
           (user as any).vexaUser = vexaUser;
           (user as any).vexaToken = apiToken;
           (user as any).isNewUser = isNewUser;
@@ -176,7 +176,7 @@ export const authOptions: NextAuthOptions = {
       return false; // Deny sign-in for other providers
     },
     async jwt({ token, user }) {
-      // Persist the Vexa user data to the token
+      // Persist the Kioku user data to the token
       if (user && (user as any).vexaUser) {
         token.vexaUser = (user as any).vexaUser;
         token.vexaToken = (user as any).vexaToken;
@@ -185,7 +185,7 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
-      // Add Vexa user data to the session
+      // Add Kioku user data to the session
       if (token.vexaUser) {
         (session as any).vexaUser = token.vexaUser;
         (session as any).vexaToken = token.vexaToken;

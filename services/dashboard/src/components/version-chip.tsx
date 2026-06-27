@@ -46,7 +46,7 @@ export function VersionChip({
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      title={`Vexa ${RELEASE.version} · released ${RELEASE.releaseDate} · click for release notes`}
+      title={`Kioku ${RELEASE.version} · released ${RELEASE.releaseDate} · click for release notes`}
       className={baseClasses + " " + className}
     >
       <span>{label}</span>

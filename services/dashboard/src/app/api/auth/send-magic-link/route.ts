@@ -25,7 +25,7 @@ function isDirectLoginAllowed(_request: NextRequest): boolean {
 }
 
 /**
- * Check if user exists in Vexa API
+ * Check if user exists in Kioku API
  */
 async function checkUserExists(email: string): Promise<{ exists: boolean; error?: string }> {
   const VEXA_ADMIN_API_URL = process.env.VEXA_ADMIN_API_URL || "";
@@ -67,7 +67,7 @@ async function checkUserExists(email: string): Promise<{ exists: boolean; error?
     if (message.includes("timeout") || message.includes("abort")) {
       return {
         exists: false,
-        error: "Cannot reach Vexa API. Please check VEXA_API_URL configuration.",
+        error: "Cannot reach Kioku API. Please check VEXA_API_URL configuration.",
       };
     }
     return { exists: false, error: `API error: ${message}` };

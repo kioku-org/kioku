@@ -56,7 +56,7 @@ export function MCPConfigButton() {
   const getMCPUrl = () => {
     if (!config?.apiUrl) {
       // Fallback to cloud if no API URL is configured
-      return "https://api.cloud.vexa.ai/mcp";
+      return "https://mcp.kioku.chat";
     }
     
     // Derive MCP URL from API URL
@@ -69,7 +69,7 @@ export function MCPConfigButton() {
     if (!config?.authToken) {
       return JSON.stringify({
         mcpServers: {
-          Vexa: {
+          Kioku: {
             command: "npx",
             args: [
               "-y",
@@ -88,7 +88,7 @@ export function MCPConfigButton() {
 
     return JSON.stringify({
       mcpServers: {
-        Vexa: {
+        Kioku: {
           command: "npx",
           args: [
             "-y",
@@ -151,7 +151,7 @@ export function MCPConfigButton() {
     const apiKey = config.authToken;
     
     // Create the MCP server configuration matching the format in mcp.json
-    // This is the server config object (without the "Vexa" key wrapper)
+    // This is the server config object (without the "Kioku" key wrapper)
     const mcpServerConfig = {
       command: "npx",
       args: [
@@ -167,10 +167,10 @@ export function MCPConfigButton() {
     };
 
     // Create the full MCP configuration JSON for manual installation fallback
-    // This wraps it in mcpServers with the "Vexa" key for the complete mcp.json file
+    // This wraps it in mcpServers with the "Kioku" key for the complete mcp.json file
     const fullMCPConfig = {
       mcpServers: {
-        Vexa: mcpServerConfig,
+        Kioku: mcpServerConfig,
       },
     };
 
@@ -181,15 +181,15 @@ export function MCPConfigButton() {
     
     // Create Cursor deep link using the format from Tadata:
     // cursor://anysphere.cursor-deeplink/mcp/install?name=<name>&config=<base64-encoded-config>
-    // The config should be just the server config object (without the "Vexa" key)
-    // Cursor will add the "Vexa" key based on the name parameter
+    // The config should be just the server config object (without the "Kioku" key)
+    // Cursor will add the "Kioku" key based on the name parameter
     try {
       // Base64 encode the MCP server configuration (just the config object, not wrapped)
       const configBase64 = btoa(JSON.stringify(mcpServerConfig));
       const configEncoded = encodeURIComponent(configBase64);
       
       // Create the deep link
-      const deepLink = `cursor://anysphere.cursor-deeplink/mcp/install?name=Vexa&config=${configEncoded}`;
+      const deepLink = `cursor://anysphere.cursor-deeplink/mcp/install?name=Kioku&config=${configEncoded}`;
       
       // Try to open the deep link using an anchor element
       const link = document.createElement("a");
@@ -225,7 +225,7 @@ export function MCPConfigButton() {
     // Create the full MCP configuration
     const fullMCPConfig = {
       mcpServers: {
-        Vexa: {
+        Kioku: {
           command: "npx",
           args: [
             "-y",
@@ -379,7 +379,7 @@ export function MCPConfigButton() {
                 <code className="bg-background px-1.5 py-0.5 rounded">%APPDATA%\\Code\\User\\mcp.json</code> (Windows)
               </p>
               <p className="text-xs pt-2">
-                If you already have an mcp.json file, merge the Vexa configuration into the existing{" "}
+                If you already have an mcp.json file, merge the Kioku configuration into the existing{" "}
                 <code className="bg-background px-1.5 py-0.5 rounded">mcpServers</code> object.
               </p>
             </div>

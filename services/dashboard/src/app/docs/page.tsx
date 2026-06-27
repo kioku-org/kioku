@@ -5,8 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
-  title: "Vexa API Documentation | Complete API Reference",
-  description: "Complete API reference for Vexa meeting transcription platform. Learn how to integrate Vexa into your applications with REST and WebSocket APIs.",
+  title: "Kioku API Documentation | Complete API Reference",
+  description: "Complete API reference for Kioku meeting transcription platform. Learn how to integrate Kioku into your applications with REST and WebSocket APIs.",
 };
 
 export default function DocsPage() {
@@ -14,9 +14,9 @@ export default function DocsPage() {
     <div className="space-y-8">
       {/* Hero */}
       <div className="space-y-4">
-        <h1 className="text-4xl font-bold tracking-tight">Vexa API Documentation</h1>
+        <h1 className="text-4xl font-bold tracking-tight">Kioku API Documentation</h1>
         <p className="text-xl text-muted-foreground max-w-2xl">
-          Complete reference for integrating Vexa meeting transcription into your applications.
+          Complete reference for integrating Kioku meeting transcription into your applications.
           Use REST APIs for meeting management and WebSocket APIs for real-time transcript streaming.
         </p>
       </div>
@@ -99,7 +99,7 @@ export default function DocsPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground mb-4">
-                Vexa uses API keys for authentication. User API keys grant access to meeting operations,
+                Kioku uses API keys for authentication. User API keys grant access to meeting operations,
                 while Admin API keys provide full system access.
               </p>
               <Button asChild variant="outline">
@@ -136,7 +136,7 @@ export default function DocsPage() {
         <h2 className="text-2xl font-bold">API Overview</h2>
         <div className="prose prose-sm max-w-none">
           <p>
-            The Vexa API consists of two main components:
+            The Kioku API consists of two main components:
           </p>
           <ul>
             <li>

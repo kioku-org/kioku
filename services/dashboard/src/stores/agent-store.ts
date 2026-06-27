@@ -167,7 +167,7 @@ export const useAgentStore = create<AgentState>()(
       clearMessages: () => set({ messages: [] }),
     }),
     {
-      name: "vexa-agent-chat",
+      name: "kioku-agent-chat",
       storage: createJSONStorage(() => sessionStorage),
       partialize: (state) => ({
         sessions: state.sessions,

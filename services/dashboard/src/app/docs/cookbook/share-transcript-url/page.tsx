@@ -4,10 +4,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_VEXA_PUBLIC_API_URL || "https://api.vexa.ai";
+const API_BASE_URL = process.env.NEXT_PUBLIC_VEXA_PUBLIC_API_URL || "https://api.kioku.chat";
 
 export const metadata: Metadata = {
-  title: "Share Transcript URL | Vexa API Cookbook",
+  title: "Share Transcript URL | Kioku API Cookbook",
   description: "Learn how to create shareable transcript URLs for ChatGPT, Perplexity, and other AI tools",
 };
 

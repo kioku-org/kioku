@@ -108,7 +108,7 @@ export default function MeetingsPage() {
       const body: Record<string, string> = { mode: "browser_session" };
       // Read git workspace config from localStorage
       try {
-        const git = JSON.parse(localStorage.getItem("vexa-browser-git") || "{}");
+        const git = JSON.parse(localStorage.getItem("kioku-browser-git") || "{}");
         if (git.repo && git.token) {
           body.workspaceGitRepo = git.repo;
           body.workspaceGitToken = git.token;

@@ -263,7 +263,7 @@ export default function VerifyPage() {
         </Suspense>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          Vexa Dashboard - Open Source Meeting Transcription
+          Kioku Dashboard - Open Source Meeting Transcription
         </p>
       </div>
     </div>

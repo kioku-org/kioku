@@ -39,7 +39,7 @@ function ZoomCallbackContent() {
         const msg =
           oauthError === "access_denied"
             ? "Zoom authorization was cancelled or denied."
-            : `Zoom authorization was not completed: ${oauthError}. If you saw \"Application not found\", sign in to Zoom with the account that owns or is allowed to use the Vexa app, then try again.`;
+            : `Zoom authorization was not completed: ${oauthError}. If you saw \"Application not found\", sign in to Zoom with the account that owns or is allowed to use the Kioku app, then try again.`;
         setError(msg);
         return;
       }

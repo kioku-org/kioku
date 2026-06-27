@@ -245,7 +245,7 @@ export function BotStatusIndicator({ status, platform, meetingId, createdAt, upd
 
           <p className="text-sm text-muted-foreground max-w-sm">
             {status === "awaiting_admission" ? (
-              <>Look for <span className="font-medium text-foreground">Vexa Bot</span> in your meeting&apos;s waiting room and click admit</>
+              <>Look for <span className="font-medium text-foreground">Kioku Bot</span> in your meeting&apos;s waiting room and click admit</>
             ) : (
               "This usually takes a few seconds"
             )}

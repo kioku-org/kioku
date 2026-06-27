@@ -1,4 +1,4 @@
-const STORAGE_KEY = "vexa-pending-meeting-url";
+const STORAGE_KEY = "kioku-pending-meeting-url";
 
 export function savePendingMeetingUrl(url: string) {
   if (typeof window !== "undefined") {

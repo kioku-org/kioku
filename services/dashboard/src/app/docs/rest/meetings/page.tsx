@@ -2,7 +2,7 @@
 import { APIEndpointDoc } from "@/components/docs/api-endpoint-doc";
 
 export const metadata: Metadata = {
-  title: "Meetings API | Vexa API Documentation",
+  title: "Meetings API | Kioku API Documentation",
   description: "API reference for managing meetings and meeting metadata",
 };
 

@@ -432,7 +432,7 @@ export default function UserDetailPage() {
                   API Tokens
                 </CardTitle>
                 <CardDescription>
-                  Tokens allow this user to access the Vexa API
+                  Tokens allow this user to access the Kioku API
                 </CardDescription>
               </div>
               <Button onClick={handleCreateToken} disabled={isCreatingToken}>

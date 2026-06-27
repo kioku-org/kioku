@@ -7,7 +7,7 @@ const AGENT_API_TOKEN = process.env.AGENT_API_TOKEN || "";
 
 async function getUserToken(): Promise<string> {
   const cookieStore = await cookies();
-  return cookieStore.get("vexa-token")?.value || "";
+  return cookieStore.get("kioku-token")?.value || "";
 }
 
 async function safeJsonResponse(resp: globalThis.Response): Promise<Response> {

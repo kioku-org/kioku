@@ -160,7 +160,7 @@ export default function MeetingDetailPage() {
   // ChatGPT prompt editing state
   const [chatgptPrompt, setChatgptPrompt] = useState(() => {
     if (typeof window !== "undefined") {
-      return getCookie("vexa-chatgpt-prompt") || "Read from {url} so I can ask questions about it.";
+      return getCookie("kioku-chatgpt-prompt") || "Read from {url} so I can ask questions about it.";
     }
     return "Read from {url} so I can ask questions about it.";
   });
@@ -659,7 +659,7 @@ export default function MeetingDetailPage() {
     const trimmed = editedChatgptPrompt.trim();
     if (trimmed && trimmed !== chatgptPrompt) {
       setChatgptPrompt(trimmed);
-      setCookie("vexa-chatgpt-prompt", trimmed);
+      setCookie("kioku-chatgpt-prompt", trimmed);
     }
   }, [editedChatgptPrompt, chatgptPrompt]);
 

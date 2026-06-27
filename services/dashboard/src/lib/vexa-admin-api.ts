@@ -18,7 +18,7 @@ export interface ApiResult<T> {
 }
 
 /**
- * Parse error response from Vexa API
+ * Parse error response from Kioku API
  */
 async function parseErrorResponse(response: Response): Promise<ApiError> {
   const status = response.status;
@@ -83,7 +83,7 @@ async function parseErrorResponse(response: Response): Promise<ApiError> {
     case 500:
       return {
         code: "SERVER_ERROR",
-        message: "Vexa API server error. Please try again later.",
+        message: "Kioku API server error. Please try again later.",
         details,
         status,
       };
@@ -92,7 +92,7 @@ async function parseErrorResponse(response: Response): Promise<ApiError> {
     case 504:
       return {
         code: "SERVICE_UNAVAILABLE",
-        message: "Vexa API is temporarily unavailable. Please try again later.",
+        message: "Kioku API is temporarily unavailable. Please try again later.",
         details,
         status,
       };
@@ -167,7 +167,7 @@ async function adminRequest<T>(
         success: false,
         error: {
           code: "TIMEOUT",
-          message: "Request timed out. Vexa API may be slow or unreachable.",
+          message: "Request timed out. Kioku API may be slow or unreachable.",
           status: 408,
         },
       };
@@ -179,7 +179,7 @@ async function adminRequest<T>(
         success: false,
         error: {
           code: "NETWORK_ERROR",
-          message: "Cannot reach Vexa API. Check your network connection and VEXA_API_URL.",
+          message: "Cannot reach Kioku API. Check your network connection and VEXA_API_URL.",
           details: err.message,
           status: 0,
         },
@@ -192,7 +192,7 @@ async function adminRequest<T>(
         success: false,
         error: {
           code: "DNS_ERROR",
-          message: "Cannot resolve Vexa API hostname. Check VEXA_API_URL configuration.",
+          message: "Cannot resolve Kioku API hostname. Check VEXA_API_URL configuration.",
           details: err.message,
           status: 0,
         },
@@ -205,7 +205,7 @@ async function adminRequest<T>(
         success: false,
         error: {
           code: "CONNECTION_REFUSED",
-          message: "Connection refused. Vexa API may not be running.",
+          message: "Connection refused. Kioku API may not be running.",
           details: err.message,
           status: 0,
         },
@@ -316,7 +316,7 @@ export async function checkAdminApiHealth(): Promise<ApiResult<{ reachable: bool
       success: false,
       error: {
         ...result.error,
-        message: "Vexa API is reachable but Admin API key is invalid",
+        message: "Kioku API is reachable but Admin API key is invalid",
       },
     };
   }

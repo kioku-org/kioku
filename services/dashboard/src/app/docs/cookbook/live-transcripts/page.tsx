@@ -4,7 +4,7 @@ import { ArrowRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = {
-  title: "Live Transcripts | Vexa API Cookbook",
+  title: "Live Transcripts | Kioku API Cookbook",
   description: "How to receive real-time transcript updates via WebSocket",
 };
 

@@ -2,8 +2,8 @@ import { Metadata } from "next";
 import { APIEndpointDoc } from "@/components/docs/api-endpoint-doc";
 
 export const metadata: Metadata = {
-  title: "Authentication | Vexa API Documentation",
-  description: "Learn how to authenticate API requests to Vexa using API keys",
+  title: "Authentication | Kioku API Documentation",
+  description: "Learn how to authenticate API requests to Kioku using API keys",
 };
 
 export default function AuthPage() {
@@ -12,7 +12,7 @@ export default function AuthPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Authentication</h1>
         <p className="text-muted-foreground mt-2">
-          Vexa uses API keys for authentication. There are two types of API keys: User API keys and Admin API keys.
+          Kioku uses API keys for authentication. There are two types of API keys: User API keys and Admin API keys.
         </p>
       </div>
 
@@ -52,7 +52,7 @@ export default function AuthPage() {
             (since browsers cannot set custom headers for WebSocket connections):
           </p>
           <pre className="bg-muted p-4 rounded-lg">
-            <code>wss://api.vexa.ai/ws?api_key=your_user_api_key_here</code>
+            <code>wss://api.kioku.chat/ws?api_key=your_user_api_key_here</code>
           </pre>
         </div>
 
@@ -62,7 +62,7 @@ export default function AuthPage() {
             To get a User API key:
           </p>
           <ol>
-            <li>Log in to the Vexa Dashboard</li>
+            <li>Log in to the Kioku Dashboard</li>
             <li>Go to Settings or use the Admin API to create a token</li>
             <li>Copy your API key and store it securely</li>
           </ol>

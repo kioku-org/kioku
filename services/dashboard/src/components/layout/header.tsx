@@ -108,7 +108,7 @@ export function Header({ onMenuClick }: HeaderProps) {
               </DropdownMenuItem>
               {config?.hostedMode && (
                 <DropdownMenuItem asChild>
-                  <a href={`${config?.webappUrl || "https://vexa.ai"}/account`}>
+                  <a href={`${config?.webappUrl || "https://kioku.chat"}/account`}>
                     <ExternalLink className="mr-2 h-4 w-4" />
                     Account
                   </a>

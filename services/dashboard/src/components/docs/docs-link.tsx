@@ -104,7 +104,7 @@ export function DocsLink({ href, className, label = "api" }: DocsLinkProps) {
     // Function to read from localStorage
     const readDocsMode = () => {
       try {
-        const stored = localStorage.getItem("vexa-docs-mode");
+        const stored = localStorage.getItem("kioku-docs-mode");
         if (stored) {
           const parsed = JSON.parse(stored);
           setEnabled(parsed?.state?.enabled ?? false);

@@ -71,7 +71,7 @@ function SettingsContent() {
       if (result.success) {
         setConnectionStatus("connected");
         toast.success("Connection successful", {
-          description: "Successfully connected to Vexa API",
+          description: "Successfully connected to Kioku API",
         });
       } else {
         setConnectionStatus("error");
@@ -97,7 +97,7 @@ function SettingsContent() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground">
-          Configure your Vexa Dashboard connection
+          Configure your Kioku Dashboard connection
         </p>
       </div>
 
@@ -107,10 +107,10 @@ function SettingsContent() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Settings className="h-5 w-5" />
-              Vexa API Configuration
+              Kioku API Configuration
             </CardTitle>
             <CardDescription>
-              Configure the connection to your Vexa instance. These settings are managed via environment variables.
+              Configure the connection to your Kioku instance. These settings are managed via environment variables.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -298,7 +298,7 @@ function SettingsContent() {
           </CardHeader>
           <CardContent>
             <pre className="bg-muted p-4 rounded-lg text-sm overflow-x-auto">
-{`# Vexa API Configuration (required)
+{`# Kioku API Configuration (required)
 	VEXA_API_URL=<your-api-gateway-url>
 VEXA_ADMIN_API_KEY=your_admin_api_key_here
 
@@ -323,25 +323,25 @@ AI_API_KEY=your_ai_api_key_here`}
             <Separator />
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">
-                Vexa Dashboard is an open source web interface for Vexa, the self-hosted meeting transcription API.
+                Kioku Dashboard is an open source web interface for the self-hosted meeting transcription API.
               </p>
               <div className="flex gap-4">
                 <a
-                  href="https://github.com/Vexa-ai/vexa"
+                  href="https://github.com/kioku-org/kioku"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-sm text-primary hover:underline inline-flex items-center gap-1"
                 >
-                  Vexa GitHub
+                  Kioku GitHub
                   <ExternalLink className="h-3 w-3" />
                 </a>
                 <a
-                  href="https://vexa.ai"
+                  href="https://kioku.chat"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-sm text-primary hover:underline inline-flex items-center gap-1"
                 >
-                  Vexa Website
+                  Kioku Website
                   <ExternalLink className="h-3 w-3" />
                 </a>
               </div>

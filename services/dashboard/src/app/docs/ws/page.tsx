@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export const metadata: Metadata = {
-  title: "WebSocket API | Vexa API Documentation",
+  title: "WebSocket API | Kioku API Documentation",
   description: "Real-time transcript streaming via WebSocket API",
 };
 
@@ -13,7 +13,7 @@ export default function WebSocketPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">WebSocket API</h1>
         <p className="text-muted-foreground mt-2">
-          Connect to Vexa's WebSocket API to receive real-time transcript updates as meetings progress.
+          Connect to Kioku's WebSocket API to receive real-time transcript updates as meetings progress.
         </p>
       </div>
 
@@ -36,7 +36,7 @@ export default function WebSocketPage() {
               WebSocket URL format (derived from your API URL):
             </p>
             <pre className="bg-muted p-4 rounded-lg text-sm">
-              <code>wss://api.vexa.ai/ws?api_key=YOUR_API_KEY</code>
+              <code>wss://api.kioku.chat/ws?api_key=YOUR_API_KEY</code>
             </pre>
             <p className="text-sm text-muted-foreground mt-4">
               <strong>Note:</strong> Authentication is done via query parameter since browsers cannot set custom headers for WebSocket connections.
@@ -98,7 +98,7 @@ export default function WebSocketPage() {
           </TabsList>
           <TabsContent value="javascript">
             <pre className="bg-muted p-4 rounded-lg text-sm overflow-x-auto">
-              <code>{`const ws = new WebSocket('wss://api.vexa.ai/ws?api_key=YOUR_API_KEY');
+              <code>{`const ws = new WebSocket('wss://api.kioku.chat/ws?api_key=YOUR_API_KEY');
 
 ws.onopen = () => {
   // Subscribe to meeting
@@ -144,7 +144,7 @@ import json
 import os
 
 async def connect_vexa():
-    uri = f"wss://api.vexa.ai/ws?api_key={os.getenv('VEXA_API_KEY')}"
+    uri = f"wss://api.kioku.chat/ws?api_key={os.getenv('VEXA_API_KEY')}"
     
     async with websockets.connect(uri) as websocket:
         # Subscribe to meeting

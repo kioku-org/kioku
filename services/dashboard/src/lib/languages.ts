@@ -133,7 +133,7 @@ export const WHISPER_LANGUAGE_CODES = (() => {
   });
 })();
 
-export const RECENT_LANGUAGES_KEY = "vexa-recent-transcription-languages";
+export const RECENT_LANGUAGES_KEY = "kioku-recent-transcription-languages";
 const RECENT_MAX = 10;
 
 export function getRecentLanguageCodes(): string[] {

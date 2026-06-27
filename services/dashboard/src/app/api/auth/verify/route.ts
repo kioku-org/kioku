@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
 
     // Step 5: Set token in HTTP-only cookie
     const cookieStore = await cookies();
-    cookieStore.set("vexa-token", apiToken, {
+    cookieStore.set("kioku-token", apiToken, {
       httpOnly: true,
       secure: isSecureRequest(),
       sameSite: "lax",
@@ -194,7 +194,7 @@ export async function POST(request: NextRequest) {
       path: "/",
     });
     // Set user-info cookie so getAuthenticatedUserId can resolve the user
-    cookieStore.set("vexa-user-info", JSON.stringify({ email: user!.email, name: user!.name }), {
+    cookieStore.set("kioku-user-info", JSON.stringify({ email: user!.email, name: user!.name }), {
       httpOnly: true,
       secure: isSecureRequest(),
       sameSite: "lax",

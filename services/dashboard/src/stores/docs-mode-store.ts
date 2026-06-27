@@ -15,7 +15,7 @@ export const useDocsModeStore = create<DocsModeState>()(
       setEnabled: (enabled: boolean) => set({ enabled }),
     }),
     {
-      name: "vexa-docs-mode",
+      name: "kioku-docs-mode",
     }
   )
 );

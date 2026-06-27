@@ -4,7 +4,7 @@ import { ArrowRight, CheckCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = {
-  title: "Start Transcription Bot | Vexa API Cookbook",
+  title: "Start Transcription Bot | Kioku API Cookbook",
   description: "Step-by-step guide to sending a transcription bot to a meeting",
 };
 

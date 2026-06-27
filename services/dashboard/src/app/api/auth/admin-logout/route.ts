@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-const ADMIN_COOKIE_NAME = "vexa-admin-session";
+const ADMIN_COOKIE_NAME = "kioku-admin-session";
 
 export async function POST() {
   try {

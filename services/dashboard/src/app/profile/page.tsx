@@ -521,7 +521,7 @@ function GitWorkspaceCard() {
     }).catch(() => {});
     // Also check localStorage as fallback
     try {
-      const git = JSON.parse(localStorage.getItem("vexa-browser-git") || "{}");
+      const git = JSON.parse(localStorage.getItem("kioku-browser-git") || "{}");
       if (git.repo) {
         setRepo(git.repo);
         setToken(git.token || "");
@@ -541,7 +541,7 @@ function GitWorkspaceCard() {
       });
       if (!response.ok) throw new Error(await response.text());
       // Also save to localStorage for the join modal to read
-      localStorage.setItem("vexa-browser-git", JSON.stringify({ repo, token, branch }));
+      localStorage.setItem("kioku-browser-git", JSON.stringify({ repo, token, branch }));
       setSaved(true);
       toast.success("Git workspace saved");
     } catch (error) {
@@ -554,7 +554,7 @@ function GitWorkspaceCard() {
   async function handleClear() {
     try {
       await fetch(withBasePath("/api/vexa/user/workspace-git"), { method: "DELETE" });
-      localStorage.removeItem("vexa-browser-git");
+      localStorage.removeItem("kioku-browser-git");
       setRepo("");
       setToken("");
       setBranch("main");

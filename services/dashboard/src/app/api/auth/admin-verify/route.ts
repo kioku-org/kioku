@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import crypto from "crypto";
 
-const ADMIN_COOKIE_NAME = "vexa-admin-session";
+const ADMIN_COOKIE_NAME = "kioku-admin-session";
 
 function isSecureRequest(): boolean {
   return process.env.NEXTAUTH_URL?.startsWith("https://") ||

@@ -2,7 +2,7 @@ import { Metadata } from "next";
 import { APIEndpointDoc } from "@/components/docs/api-endpoint-doc";
 
 export const metadata: Metadata = {
-  title: "Bots API | Vexa API Documentation",
+  title: "Bots API | Kioku API Documentation",
   description: "API reference for managing transcription bots",
 };
 
@@ -32,7 +32,7 @@ export default function BotsPage() {
             native_meeting_id: "abc-defg-hij",
             passcode: "optional_passcode",
             meeting_url: "https://meet.google.com/abc-defg-hij",
-            bot_name: "Vexa Transcription Bot",
+            bot_name: "Kioku Bot",
             language: "en",
           },
         }}

@@ -16,7 +16,7 @@ interface Notification {
 
 const DISMISSED_KEY = "dismissed-notifications";
 const BLOG_URL =
-  process.env.NEXT_PUBLIC_BLOG_URL || "https://blog.vexa.ai";
+  process.env.NEXT_PUBLIC_BLOG_URL || "https://kioku.chat";
 
 function getDismissedIds(): string[] {
   if (typeof window === "undefined") return [];

@@ -2,7 +2,7 @@ import { Metadata } from "next";
 import { APIEndpointDoc } from "@/components/docs/api-endpoint-doc";
 
 export const metadata: Metadata = {
-  title: "Admin Tokens API | Vexa API Documentation",
+  title: "Admin Tokens API | Kioku API Documentation",
   description: "API reference for managing API tokens via Admin API",
 };
 

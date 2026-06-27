@@ -1,10 +1,10 @@
 import { Metadata } from "next";
 import { APIEndpointDoc } from "@/components/docs/api-endpoint-doc";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_VEXA_PUBLIC_API_URL || "https://api.vexa.ai";
+const API_BASE_URL = process.env.NEXT_PUBLIC_VEXA_PUBLIC_API_URL || "https://api.kioku.chat";
 
 export const metadata: Metadata = {
-  title: "Transcripts API | Vexa API Documentation",
+  title: "Transcripts API | Kioku API Documentation",
   description: "API reference for fetching and sharing meeting transcripts",
 };
 

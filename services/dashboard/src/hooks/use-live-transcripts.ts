@@ -185,7 +185,7 @@ export function useLiveTranscripts(
     }
 
     // Append auth token as query parameter if available
-    // Vexa uses X-API-Key header for REST, but browsers can't set WS headers
+    // Kioku uses X-API-Key header for REST, but browsers can't set WS headers
     // So we pass it as api_key query parameter
     if (authToken) {
       const separator = wsUrl.includes("?") ? "&" : "?";

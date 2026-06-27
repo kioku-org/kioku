@@ -48,9 +48,9 @@ export function JoinModal() {
   const [transcribeEnabled, setTranscribeEnabled] = useState(true);
   const [botName, setBotName] = useState(() => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("vexa-join-bot-name") || "Vexa";
+      return localStorage.getItem("kioku-join-bot-name") || "Kioku";
     }
-    return "Vexa";
+    return "Kioku";
   });
   const [passcode, setPasscode] = useState("");
   const [authenticated, setAuthenticated] = useState(false);
@@ -58,7 +58,7 @@ export function JoinModal() {
   // Persist bot name and language to localStorage
   useEffect(() => {
     if (typeof window !== "undefined") {
-      localStorage.setItem("vexa-join-bot-name", botName);
+      localStorage.setItem("kioku-join-bot-name", botName);
     }
   }, [botName]);
   useEffect(() => {
@@ -147,7 +147,7 @@ export function JoinModal() {
       request.meeting_url = parsedInput.originalUrl;
     }
 
-    request.bot_name = botName.trim() || config?.defaultBotName || "Vexa";
+    request.bot_name = botName.trim() || config?.defaultBotName || "Kioku";
 
     if (language && language !== "auto") {
       request.language = language;
@@ -195,7 +195,7 @@ export function JoinModal() {
         try {
           toast.info("Zoom authentication required", {
             description:
-              "Redirecting to Zoom. Sign in with the Zoom account that owns or is allowed to use the Vexa app to avoid \"Application not found\".",
+              "Redirecting to Zoom. Sign in with the Zoom account that owns or is allowed to use the Kioku app to avoid \"Application not found\".",
           });
           await startZoomOAuth({
             userEmail: user.email,
@@ -222,7 +222,7 @@ export function JoinModal() {
     try {
       const body: Record<string, string> = { mode: "browser_session" };
       try {
-        const git = JSON.parse(localStorage.getItem("vexa-browser-git") || "{}");
+        const git = JSON.parse(localStorage.getItem("kioku-browser-git") || "{}");
         if (git.repo && git.token) {
           body.workspaceGitRepo = git.repo;
           body.workspaceGitToken = git.token;
@@ -480,7 +480,7 @@ export function JoinModal() {
             </Label>
             <Input
               id="botName"
-              placeholder="Vexa"
+              placeholder="Kioku"
               value={botName}
               onChange={(e) => setBotName(e.target.value)}
               className="h-10"

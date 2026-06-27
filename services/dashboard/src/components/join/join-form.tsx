@@ -37,9 +37,9 @@ export function JoinForm({ onSuccess }: JoinFormProps) {
   const [passcode, setPasscode] = useState("");
   const [botName, setBotName] = useState(() => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("vexa-join-bot-name") || "Vexa";
+      return localStorage.getItem("kioku-join-bot-name") || "Kioku";
     }
-    return "Vexa";
+    return "Kioku";
   });
   const [language, setLanguage] = useState("auto");
   const [transcribeEnabled, setTranscribeEnabled] = useState(true);
@@ -104,11 +104,11 @@ export function JoinForm({ onSuccess }: JoinFormProps) {
     }
 
     // Set bot name - use custom name or configured default
-    request.bot_name = botName.trim() || config?.defaultBotName || "Vexa";
+    request.bot_name = botName.trim() || config?.defaultBotName || "Kioku";
 
     // Persist to localStorage
     if (typeof window !== "undefined") {
-      localStorage.setItem("vexa-join-bot-name", request.bot_name);
+      localStorage.setItem("kioku-join-bot-name", request.bot_name);
     }
 
     if (language && language !== "auto") {
@@ -144,7 +144,7 @@ export function JoinForm({ onSuccess }: JoinFormProps) {
         try {
           toast.info("Zoom authentication required", {
             description:
-              "Redirecting to Zoom. Sign in with the Zoom account that owns or is allowed to use the Vexa app to avoid \"Application not found\".",
+              "Redirecting to Zoom. Sign in with the Zoom account that owns or is allowed to use the Kioku app to avoid \"Application not found\".",
           });
           await startZoomOAuth({
             userEmail: user.email,
@@ -184,7 +184,7 @@ export function JoinForm({ onSuccess }: JoinFormProps) {
             </p>
             <p className="text-xs text-amber-400/60 mt-1">
               <a
-                href={`${config?.webappUrl || "https://vexa.ai"}/account`}
+                href={`${config?.webappUrl || "https://kioku.chat"}/account`}
                 className="underline hover:text-amber-300"
               >
                 Add funds

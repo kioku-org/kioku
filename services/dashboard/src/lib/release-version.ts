@@ -1,5 +1,5 @@
 /**
- * Single source of truth for "what version of Vexa OSS is this dashboard
+ * Single source of truth for "what version of Kioku is this dashboard
  * build pairs with". Surfaced via <VersionChip /> in the header + sidebar.
  *
  * NEVER hardcoded. Values are derived at build time by
@@ -31,5 +31,5 @@ export const RELEASE = {
 /** GitHub release URL for the current version. */
 export function releaseUrl(version: string = RELEASE.version): string {
   const tag = version.startsWith("v") ? version : `v${version}`;
-  return `https://github.com/Vexa-ai/vexa/releases/tag/${tag}`;
+  return `https://github.com/kioku-org/kioku/releases/tag/${tag}`;
 }

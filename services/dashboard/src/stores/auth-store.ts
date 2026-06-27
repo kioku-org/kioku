@@ -190,7 +190,7 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     {
-      name: "vexa-auth",
+      name: "kioku-auth",
       partialize: (state) => ({
         user: state.user,
         token: state.token,

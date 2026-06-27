@@ -1,4 +1,4 @@
-// Vexa API Types
+// Kioku API Types
 
 export type Platform = "google_meet" | "teams" | "zoom" | "browser_session";
 
@@ -25,7 +25,7 @@ export interface Meeting {
   updated_at?: string;
 }
 
-// Status transition record from Vexa API
+// Status transition record from Kioku API
 export interface StatusTransition {
   from: MeetingStatus | string;
   to: MeetingStatus | string;
@@ -43,7 +43,7 @@ export interface MeetingData {
   notes?: string;
   participants?: string[];
   languages?: string[];
-  // Bot status details (may be populated by Vexa API)
+  // Bot status details (may be populated by Kioku API)
   error?: string;
   error_code?: string;
   status_message?: string;

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Rename Meeting | Vexa API Cookbook",
+  title: "Rename Meeting | Kioku API Cookbook",
   description: "Learn how to update meeting name and metadata using the REST API",
 };
 

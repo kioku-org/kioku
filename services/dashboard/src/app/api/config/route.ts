@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
 
   // Hosted mode flags (read at runtime, not build time)
   const hostedMode = process.env.NEXT_PUBLIC_HOSTED_MODE === "true";
-  const webappUrl = process.env.NEXT_PUBLIC_WEBAPP_URL || "https://vexa.ai";
+  const webappUrl = process.env.NEXT_PUBLIC_WEBAPP_URL || "https://kioku.chat";
 
   return NextResponse.json({
     wsUrl,

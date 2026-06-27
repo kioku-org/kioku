@@ -4,7 +4,7 @@ import { ArrowRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = {
-  title: "Stop Bot | Vexa API Cookbook",
+  title: "Stop Bot | Kioku API Cookbook",
   description: "How to stop an active transcription bot",
 };
 

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Get Status History | Vexa API Cookbook",
+  title: "Get Status History | Kioku API Cookbook",
   description: "Learn how to retrieve meeting status transition history",
 };
 

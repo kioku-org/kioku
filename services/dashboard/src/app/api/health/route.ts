@@ -131,7 +131,7 @@ export async function GET() {
         } else if (response.status === 404) {
           // Admin endpoints not found - likely only Bot Manager is deployed
           status.checks.adminApi.reachable = false;
-          status.checks.adminApi.error = "Admin API endpoints not found. Ensure Vexa admin service is running.";
+          status.checks.adminApi.error = "Admin API endpoints not found. Ensure Kioku admin service is running.";
         } else if (response.status >= 500) {
           status.checks.adminApi.reachable = false;
           status.checks.adminApi.error = `Server error: ${response.status}`;
@@ -152,13 +152,13 @@ export async function GET() {
     status.missingConfig.push("VEXA_ADMIN_API_KEY");
   }
 
-  // Check Vexa API configuration
+  // Check Kioku API configuration
   const vexaApiUrl = process.env.VEXA_API_URL;
 
   if (vexaApiUrl) {
     status.checks.vexaApi.configured = true;
 
-    // Test Vexa API reachability - check root endpoint
+    // Test Kioku API reachability - check root endpoint
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -183,7 +183,7 @@ export async function GET() {
       }
     }
   } else {
-    status.checks.vexaApi.error = "Vexa API URL not configured";
+    status.checks.vexaApi.error = "Kioku API URL not configured";
     status.missingConfig.push("VEXA_API_URL");
   }
 
@@ -196,7 +196,7 @@ export async function GET() {
     // Admin API is required for authentication
     status.status = "error";
   } else if (!hasVexaApi || !status.checks.vexaApi.reachable) {
-    // Vexa API is needed for full functionality but not login
+    // Kioku API is needed for full functionality but not login
     status.status = "degraded";
   }
 

@@ -127,7 +127,7 @@ export default function LoginPage() {
 
       if (result.success) {
         if (result.mode === "direct") {
-          toast.success(result.isNewUser ? "Account created! Welcome to Vexa." : "Welcome back!");
+          toast.success(result.isNewUser ? "Account created! Welcome to Kioku." : "Welcome back!");
           router.push("/");
           return; // Keep submitting state during redirect
         } else {
@@ -197,10 +197,9 @@ export default function LoginPage() {
   if (state === "onboarding") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4">
-        {/* Large Vexa wordmark */}
         <div className="mb-12 flex flex-col items-center gap-3">
           <Logo size="lg" showText={false} />
-          <span className="text-lg font-semibold tracking-[-0.02em] text-foreground">vexa</span>
+          <span className="text-lg font-semibold tracking-[-0.02em] text-foreground">kioku</span>
         </div>
 
         {/* Hero heading */}
@@ -325,7 +324,7 @@ export default function LoginPage() {
       {/* Logo */}
       <div className="mb-10 flex flex-col items-center gap-3">
         <Logo size="lg" showText={false} />
-        <span className="text-lg font-semibold tracking-[-0.02em] text-foreground">vexa</span>
+        <span className="text-lg font-semibold tracking-[-0.02em] text-foreground">kioku</span>
       </div>
 
       {/* Configuration Error Banner */}

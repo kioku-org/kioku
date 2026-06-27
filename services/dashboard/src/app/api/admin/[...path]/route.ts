@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-const ADMIN_COOKIE_NAME = "vexa-admin-session";
+const ADMIN_COOKIE_NAME = "kioku-admin-session";
 const COOKIE_MAX_AGE = 60 * 60 * 24; // 24 hours
 
 /**
@@ -34,7 +34,7 @@ async function verifyAdminSession(): Promise<boolean> {
 
 /**
  * Admin API Proxy
- * Forwards requests to Vexa Admin API with X-Admin-API-Key header
+ * Forwards requests to Kioku Admin API with X-Admin-API-Key header
  * SECURITY: Requires valid admin session cookie
  */
 async function proxyRequest(

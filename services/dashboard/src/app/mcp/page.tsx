@@ -40,7 +40,7 @@ export default function MCPPage() {
   const getMCPUrl = () => {
     const base = config?.apiUrl;
     if (!base) {
-      return "https://api.cloud.vexa.ai/mcp";
+      return "https://mcp.kioku.chat";
     }
     return `${base.replace(/\/$/, "")}/mcp`;
   };
@@ -57,7 +57,7 @@ export default function MCPPage() {
 
     return JSON.stringify({
       mcpServers: {
-        Vexa: {
+        Kioku: {
           command: "npx",
           args: [
             "-y",
@@ -103,14 +103,14 @@ export default function MCPPage() {
       env: { VEXA_API_KEY: apiKey },
     };
 
-    const fullMCPConfig = { mcpServers: { Vexa: mcpServerConfig } };
+    const fullMCPConfig = { mcpServers: { Kioku: mcpServerConfig } };
     const configJson = JSON.stringify(fullMCPConfig, null, 2);
     copyToClipboard(configJson);
 
     try {
       const configBase64 = btoa(JSON.stringify(mcpServerConfig));
       const configEncoded = encodeURIComponent(configBase64);
-      const deepLink = `cursor://anysphere.cursor-deeplink/mcp/install?name=Vexa&config=${configEncoded}`;
+      const deepLink = `cursor://anysphere.cursor-deeplink/mcp/install?name=Kioku&config=${configEncoded}`;
 
       const link = document.createElement("a");
       link.href = deepLink;
@@ -182,7 +182,7 @@ export default function MCPPage() {
           MCP Setup
         </h1>
         <p className="text-sm text-muted-foreground">
-          Connect your AI coding assistant to Vexa via the Model Context Protocol
+          Connect your AI coding assistant to Kioku via the Model Context Protocol
         </p>
       </div>
 
@@ -258,7 +258,7 @@ export default function MCPPage() {
               <code className="bg-background px-1.5 py-0.5 rounded text-xs">~/.claude/mcp.json</code>
             </p>
             <p className="text-xs pt-2">
-              If you already have an mcp.json file, merge the Vexa entry into the existing{" "}
+              If you already have an mcp.json file, merge the Kioku entry into the existing{" "}
               <code className="bg-background px-1.5 py-0.5 rounded text-xs">mcpServers</code> object.
             </p>
           </div>

@@ -3,7 +3,7 @@
  * Used for "Account & Billing" links etc.
  */
 export function getWebappUrl(): string {
-  return process.env.NEXT_PUBLIC_WEBAPP_URL || "https://vexa.ai";
+  return process.env.NEXT_PUBLIC_WEBAPP_URL || "https://kioku.chat";
 }
 
 /**
@@ -13,7 +13,7 @@ export function getWebappUrl(): string {
  * webapp.vexa.ai which is not a docs site.
  */
 export function getDocsUrl(path: string): string {
-  const docsUrl = process.env.NEXT_PUBLIC_DOCS_URL || "https://docs.vexa.ai";
+  const docsUrl = process.env.NEXT_PUBLIC_DOCS_URL || "https://docs.kioku.chat";
   // Remove leading slash if present to avoid double slashes
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
   return `${docsUrl}${cleanPath}`;
