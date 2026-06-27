@@ -88,11 +88,8 @@ services:
       - REMOTE_TRANSCRIBER_URL=http://vexa-transcription-service:80/v1/audio/transcriptions
       - REMOTE_TRANSCRIBER_API_KEY=${VEXA_TRANSCRIBER_API_KEY:-}
       - TTS_SERVICE_URL=http://vexa-tts-service:8002
-      - RUNTIME_API_URL=http://vexa-meeting-api:8080
+      - RUNTIME_API_URL=http://vexa-runtime-api:8090
       - MEETING_API_URL=http://vexa-meeting-api:8080
-      - BOT_IMAGE_NAME=${VEXA_BOT_IMAGE:-vexa-bot:dev}
-      - DOCKER_NETWORK=kioku-network
-      - DOCKER_HOST=unix://var/run/docker.sock
       - ADMIN_TOKEN=${VEXA_ADMIN_API_TOKEN}
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
@@ -109,7 +106,6 @@ services:
       - CAPTURE_MODES=audio
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - vexa-recordings-data:/data/recordings
     init: true
     depends_on:
@@ -118,6 +114,40 @@ services:
       vexa-tts-service:
         condition: service_started
       vexa-transcription-service:
+        condition: service_started
+      vexa-runtime-api:
+        condition: service_started
+    networks:
+      - kioku-network
+    restart: unless-stopped
+
+  vexa-runtime-api:
+    build:
+      context: ${KIOKU_VEXA_PATH:-../../services/vexa}
+      dockerfile: services/runtime-api/Dockerfile
+    container_name: kioku-vexa-runtime-api
+    environment:
+      - ORCHESTRATOR_BACKEND=${RUNTIME_ORCHESTRATOR:-docker}
+      - REDIS_URL=redis://vexa-redis:6379/0
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - DOCKER_NETWORK=kioku-network
+      - BROWSER_IMAGE=${VEXA_BOT_IMAGE:-kyomoto/kioku-stateless:latest}
+      - REDIS_URL=redis://vexa-redis:6379/0
+      - TRANSCRIPTION_SERVICE_URL=http://vexa-transcription-service:80
+      - TRANSCRIPTION_SERVICE_TOKEN=${VEXA_TRANSCRIBER_API_KEY:-}
+      - TTS_SERVICE_URL=http://vexa-tts-service:8002
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
+      - PROFILES_PATH=/app/profiles.yaml
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # RunPod backend (used when RUNTIME_ORCHESTRATOR=runpod)
+      - RUNPOD_ACCOUNT_API_KEY=${RUNPOD_API_KEY:-}
+      - RUNPOD_GPU_TYPES=${RUNPOD_GPU_TYPES:-NVIDIA GeForce RTX 3090,NVIDIA RTX A5000,NVIDIA RTX A4000}
+      - RUNPOD_CLOUD_TYPE=${RUNPOD_CLOUD_TYPE:-COMMUNITY}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./configs/runtime-profiles.yaml:/app/profiles.yaml:ro
+    depends_on:
+      vexa-redis:
         condition: service_started
     networks:
       - kioku-network

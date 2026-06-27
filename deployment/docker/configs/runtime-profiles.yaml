@@ -1,0 +1,49 @@
+# Runtime-api container profiles for the kioku deployment server.
+# Mounted into vexa-runtime-api at /app/profiles.yaml.
+# Env vars here are substituted at runtime by the runtime-api process.
+
+profiles:
+  meeting:
+    image: "${BROWSER_IMAGE}"
+    command: ["/app/vexa-bot/entrypoint.sh"]
+    working_dir: "/app/vexa-bot"
+    gpu: false
+    resources:
+      cpu_request: "1000m"
+      cpu_limit: "1500m"
+      memory_request: "1100Mi"
+      memory_limit: "2560Mi"
+      shm_size: 2147483648
+    idle_timeout: 0
+    auto_remove: false
+    env:
+      DISPLAY: "${DISPLAY:-:99}"
+      NODE_ENV: "production"
+      REDIS_URL: "${REDIS_URL}"
+      TRANSCRIPTION_SERVICE_URL: "${TRANSCRIPTION_SERVICE_URL}"
+      TRANSCRIPTION_SERVICE_TOKEN: "${TRANSCRIPTION_SERVICE_TOKEN:-}"
+      TTS_SERVICE_URL: "${TTS_SERVICE_URL}"
+      INTERNAL_API_SECRET: "${INTERNAL_API_SECRET:-}"
+    ports:
+      "9222/tcp": {}
+
+  browser-session:
+    image: "${BROWSER_IMAGE}"
+    command: ["/app/vexa-bot/entrypoint.sh"]
+    working_dir: "/app/vexa-bot"
+    resources:
+      cpu_request: "1000m"
+      cpu_limit: "1500m"
+      memory_request: "1100Mi"
+      memory_limit: "1536Mi"
+      shm_size: 2147483648
+    idle_timeout: 3600
+    auto_remove: false
+    env:
+      DISPLAY: "${DISPLAY:-:99}"
+      NODE_ENV: "production"
+      REDIS_URL: "${REDIS_URL}"
+      TTS_SERVICE_URL: "${TTS_SERVICE_URL}"
+      INTERNAL_API_SECRET: "${INTERNAL_API_SECRET:-}"
+    ports:
+      "9222/tcp": {}
