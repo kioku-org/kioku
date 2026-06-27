@@ -123,8 +123,8 @@ services:
 
   vexa-runtime-api-local:
     build:
-      context: ${KIOKU_VEXA_PATH:-../../services/vexa}
-      dockerfile: services/runtime-api/Dockerfile
+      context: ${KIOKU_VEXA_PATH:-../../services/vexa}/services/runtime-api
+      dockerfile: Dockerfile
     container_name: kioku-vexa-runtime-api-local
     environment:
       - ORCHESTRATOR_BACKEND=docker
@@ -150,8 +150,8 @@ services:
 
   vexa-runtime-api-runpod:
     build:
-      context: ${KIOKU_VEXA_PATH:-../../services/vexa}
-      dockerfile: services/runtime-api/Dockerfile
+      context: ${KIOKU_VEXA_PATH:-../../services/vexa}/services/runtime-api
+      dockerfile: Dockerfile
     container_name: kioku-vexa-runtime-api-runpod
     environment:
       - ORCHESTRATOR_BACKEND=runpod
