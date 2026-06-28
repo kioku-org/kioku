@@ -39,7 +39,7 @@ if grep -q "change-me-to-a-random-64-char-hex-string" .env 2>/dev/null; then
 fi
 
 # Detect Docker GID and inject into .env if not set or empty
-CURRENT_DOCKER_GID=$(grep "^DOCKER_GID=" .env 2>/dev/null | cut -d= -f2-)
+CURRENT_DOCKER_GID=$(grep "^DOCKER_GID=" .env 2>/dev/null | cut -d= -f2- || true)
 if [[ -z "$CURRENT_DOCKER_GID" ]]; then
     DETECTED_GID=$(getent group docker | cut -d: -f3 2>/dev/null || stat -c '%g' /var/run/docker.sock 2>/dev/null || echo "")
     if [[ -n "$DETECTED_GID" ]]; then
@@ -65,7 +65,7 @@ docker compose -f docker-compose.stateless.yml pull --quiet --ignore-buildable 2
 BOT_IMAGE=$(grep "^VEXA_BOT_IMAGE=" .env 2>/dev/null | cut -d= -f2- || echo "ghcr.io/kioku-org/kioku-stateless:latest")
 BOT_IMAGE="${BOT_IMAGE:-ghcr.io/kioku-org/kioku-stateless:latest}"
 info "Pulling browser-bot image ($BOT_IMAGE)..."
-docker pull "$BOT_IMAGE" 2>/dev/null \
+docker pull "$BOT_IMAGE" \
     || warn "Could not pull $BOT_IMAGE — bot deployment will fail until this image is available"
 
 info ""
