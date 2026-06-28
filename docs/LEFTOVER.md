@@ -35,17 +35,19 @@ Server-side bot deployment failing — see "Bot Deployment Blocker" below.
 
 ## Pending / Blockers
 
-### 1. RunPod venv symlink bug (JUST FIXED, needs CI)
+### 1. RunPod venv / stdlib path mismatch (FIXED — `aa413b8`, needs CI)
 
-**Root cause**: Stage 2 builds venv on `python:3.11-slim-bookworm` where Python is at
-`/usr/local/bin/python3.11`. Stage 3 (Ubuntu 22.04 + deadsnakes) puts Python at
-`/usr/bin/python3.11`. The copied venv has a broken `/opt/venv/bin/python3.11 →
-/usr/local/bin/python3.11` symlink — all Vexa Python services fail to import.
+**Root cause**: Stage 2 used `python:3.11-slim-bookworm` — Python binary at
+`/usr/local/bin/python3.11`, stdlib at `/usr/local/lib/python3.11/`. Stage 3 uses
+Ubuntu 22.04 + deadsnakes — Python at `/usr/bin/python3.11`, stdlib at `/usr/lib/python3.11/`.
+The copied venv's `pyvenv.cfg` recorded `home = /usr/local/bin` so Python looked for
+stdlib at `/usr/local/lib/python3.11/` which does NOT exist on Stage 3.
+The earlier binary-symlink fix (`c7d08d2`) let Python start but it couldn't find its stdlib,
+so every `import` failed and all services crashed → 502 forever.
 
-**Fix** (committed, CI building): Added `ln -sf /usr/bin/python3.11 /usr/local/bin/python3.11`
-in Stage 3 after the deadsnakes install. This satisfies the venv's expected path.
-
-**Impact**: All Vexa Meeting API, API Gateway, Runtime API were returning HTTP 502 on RunPod.
+**Fix** (committed `aa413b8`): Changed Stage 2 to `ubuntu:22.04 AS vexa-builder` with the same
+deadsnakes Python 3.11 install as Stage 3. Now venv `pyvenv.cfg` records `home = /usr/bin`
+and stdlib is at `/usr/lib/python3.11/` in both stages — no path workarounds needed.
 
 ### 2. Server bot deployment failing
 
