@@ -8,10 +8,6 @@ profiles:
     command: ["/app/vexa-bot/entrypoint.sh"]
     working_dir: "/app/vexa-bot"
     gpu: false
-    mounts:
-      - type: bind
-        source: /tmp/kioku-bot-screenshots
-        target: /app/storage/screenshots
     resources:
       cpu_request: "1000m"
       cpu_limit: "1500m"
