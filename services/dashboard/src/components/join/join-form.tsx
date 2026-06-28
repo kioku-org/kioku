@@ -431,18 +431,17 @@ export function JoinForm({ onSuccess }: JoinFormProps) {
             )}
           </div>
 
-          {/* Authenticated Toggle — coming soon */}
+          {/* Authenticated Toggle */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between opacity-50">
-              <Label htmlFor="authenticated" className="flex items-center gap-2 cursor-not-allowed">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="authenticated" className="flex items-center gap-2 cursor-pointer">
                 <UserCheck className="h-3.5 w-3.5" />
                 Authenticated
-                <span className="text-[10px] font-medium bg-muted px-1.5 py-0.5 rounded">Soon</span>
               </Label>
               <Switch
                 id="authenticated"
-                checked={false}
-                disabled
+                checked={authenticated}
+                onCheckedChange={setAuthenticated}
               />
             </div>
           </div>
