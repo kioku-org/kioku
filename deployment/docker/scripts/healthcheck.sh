@@ -52,6 +52,7 @@ check_container "kioku-ollama"
 check_container "kioku-hivemind"
 check_container "kioku-dashboard"
 check_container "kioku-runtime-router"
+check_container "kioku-vexa-runtime-api-local"
 check_container "kioku-mcp"
 check_container "kioku-vexa-api-gateway"
 check_container "kioku-vexa-admin-api"
@@ -61,6 +62,16 @@ check_container "kioku-vexa-transcription-service"
 check_container "kioku-vexa-tts-service"
 check_container "kioku-vexa-redis"
 check_container "kioku-vexa-minio"
+
+
+echo ""
+echo "Bot image:"
+BOT_IMAGE="${VEXA_BOT_IMAGE:-ghcr.io/kioku-org/kioku-stateless:latest}"
+if docker image inspect "$BOT_IMAGE" >/dev/null 2>&1; then
+    echo -e "  ${GREEN}✓${NC} $BOT_IMAGE — present"
+else
+    echo -e "  ${RED}✗${NC} $BOT_IMAGE — NOT FOUND (run: docker pull $BOT_IMAGE)"
+fi
 
 echo ""
 echo "HTTP Endpoints:"

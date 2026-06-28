@@ -84,8 +84,8 @@ echo ""
 echo "--- Checking containers ---"
 
 STATEFUL_CONTAINERS=(
-    "kioku-postgres"
-    "kioku-qdrant"
+    "postgres"
+    "qdrant"
 )
 
 STATELESS_CONTAINERS=(
@@ -96,7 +96,9 @@ STATELESS_CONTAINERS=(
     "kioku-vexa-meeting-api"
     "kioku-vexa-agent-api"
     "kioku-vexa-transcription-service"
-    "kioku-vexa-mcp"
+    "kioku-vexa-runtime-api-local"
+    "kioku-runtime-router"
+    "kioku-mcp"
     "kioku-vexa-tts-service"
     "kioku-vexa-redis"
     "kioku-vexa-minio"
@@ -145,13 +147,13 @@ check_http "Vexa API Gateway" "http://localhost:8056/" "200" \
 echo ""
 echo "--- Checking internal services ---"
 
-if docker exec kioku-postgres pg_isready -U kioku -d kioku >/dev/null 2>&1; then
+if docker exec postgres pg_isready -U kioku -d kioku >/dev/null 2>&1; then
     log "Postgres: accepting connections"
 else
     fail "Postgres: not accepting connections"
 fi
 
-if docker exec kioku-vexa-redis redis-cli ping 2>/dev/null | grep -q PONG; then
+if docker exec kioku-vexa-redis redis-cli ping 2>/dev/null | grep -qF PONG; then
     log "Redis: PONG"
 else
     fail "Redis: no PONG"
@@ -281,7 +283,7 @@ fi
 echo ""
 echo "--- Checking database schemas ---"
 
-SCHEMAS=$(docker exec kioku-postgres psql -U kioku -d kioku -t -c \
+SCHEMAS=$(docker exec postgres psql -U kioku -d kioku -t -c \
     "SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('public','hivemind','vexa') ORDER BY schema_name;" 2>/dev/null || echo "")
 
 for schema in public hivemind vexa; do
@@ -292,7 +294,7 @@ for schema in public hivemind vexa; do
     fi
 done
 
-TABLE_COUNT=$(docker exec kioku-postgres psql -U kioku -d kioku -t -c \
+TABLE_COUNT=$(docker exec postgres psql -U kioku -d kioku -t -c \
     "SELECT count(*) FROM pg_tables WHERE schemaname IN ('public','hivemind','vexa');" 2>/dev/null | tr -d ' ')
 log "Total tables across hivemind/public/vexa schemas: $TABLE_COUNT"
 

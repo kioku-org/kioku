@@ -25,6 +25,10 @@ docs/.vitepress/dist
 docs/.vitepress/cache
 docs/export.zip
 
+# Leftover local dev directories (not part of the Kioku service tree)
+services/deployment/
+services/voice/
+
 # Dashboard build artifacts
 services/dashboard/.next/
 services/dashboard/next-env.d.ts

@@ -1,6 +1,6 @@
 # LEFTOVER
 
-Last updated: 2026-06-28
+Last updated: 2026-06-28 (rev 2)
 
 ## Current Status
 
@@ -52,22 +52,28 @@ in Stage 3 after the deadsnakes install. This satisfies the venv's expected path
 Dashboard → API Gateway → Meeting API → Runtime Router → local runtime-api-local → spawns
 `ghcr.io/kioku-org/kioku-stateless:latest` container via Docker socket.
 
-Check on server:
+**Three root causes fixed in scripts** (committed):
+- `setup.sh` now explicitly pulls `ghcr.io/kioku-org/kioku-stateless:latest` (it was never pulled
+  because it's spawned at runtime, not listed as a compose service)
+- `setup.sh` now auto-fills empty `DOCKER_GID=` (from .env.example copy) by detecting the host GID
+- `smoke-test.sh` had wrong container names (`kioku-postgres`/`kioku-qdrant` → `postgres`/`qdrant`,
+  `kioku-vexa-mcp` → `kioku-mcp`); missing `kioku-vexa-runtime-api-local` and `kioku-runtime-router`
+- `healthcheck.sh` now checks `kioku-vexa-runtime-api-local` and the bot image availability
+
+**Still needs on server** — re-run setup to apply the fixes:
+```bash
+cd /home/growit/ws/kioku/deployment/docker
+./scripts/setup.sh          # pulls bot image + fixes DOCKER_GID
+./scripts/manage.sh restart # pick up new env
+./scripts/healthcheck.sh    # verify bot image is present
+```
+
+If services are still failing after setup:
 ```bash
 docker compose -f docker-compose.stateless.yml ps       # are all services running?
 docker logs kioku-vexa-runtime-api-local --tail 50      # runtime-api errors?
 docker logs kioku-runtime-router --tail 50              # router logs?
-
-# Is the stateless image available?
-docker image ls ghcr.io/kioku-org/kioku-stateless:latest
-# If missing, pull it:
-docker pull ghcr.io/kioku-org/kioku-stateless:latest
 ```
-
-Common causes:
-- `kioku-stateless` image not pulled on server
-- `kioku-vexa-runtime-api-local` or `kioku-runtime-router` not running
-- Docker GID wrong in `.env` (check `DOCKER_GID` matches `getent group docker | cut -d: -f3`)
 
 ### 3. Google OAuth setup (not yet configured)
 

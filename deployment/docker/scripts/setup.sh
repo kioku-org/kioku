@@ -38,12 +38,18 @@ if grep -q "change-me-to-a-random-64-char-hex-string" .env 2>/dev/null; then
     info "Secrets generated"
 fi
 
-# Detect Docker GID and inject into .env if not set
-if ! grep -q "^DOCKER_GID=" .env 2>/dev/null; then
-    DOCKER_GID=$(getent group docker | cut -d: -f3 2>/dev/null || stat -c '%g' /var/run/docker.sock 2>/dev/null || echo "")
-    if [[ -n "$DOCKER_GID" ]]; then
-        echo "DOCKER_GID=$DOCKER_GID" >> .env
-        info "Detected Docker GID: $DOCKER_GID"
+# Detect Docker GID and inject into .env if not set or empty
+CURRENT_DOCKER_GID=$(grep "^DOCKER_GID=" .env 2>/dev/null | cut -d= -f2-)
+if [[ -z "$CURRENT_DOCKER_GID" ]]; then
+    DETECTED_GID=$(getent group docker | cut -d: -f3 2>/dev/null || stat -c '%g' /var/run/docker.sock 2>/dev/null || echo "")
+    if [[ -n "$DETECTED_GID" ]]; then
+        # Replace empty/missing value in-place; append if key doesn't exist yet
+        if grep -q "^DOCKER_GID=" .env 2>/dev/null; then
+            sed -i "s|^DOCKER_GID=.*|DOCKER_GID=$DETECTED_GID|" .env
+        else
+            echo "DOCKER_GID=$DETECTED_GID" >> .env
+        fi
+        info "Detected Docker GID: $DETECTED_GID"
     else
         warn "Could not detect Docker GID — set DOCKER_GID manually in .env if bot spawning fails"
     fi
@@ -53,6 +59,14 @@ fi
 info "Pulling pre-built images..."
 docker compose -f docker-compose.stateless.yml pull --quiet --ignore-buildable 2>/dev/null \
     || warn "Some images could not be pulled (will be built on first start)"
+
+# Pull the browser-bot image explicitly — it's spawned at runtime by runtime-api-local,
+# not listed as a compose service, so the pull above won't fetch it.
+BOT_IMAGE=$(grep "^VEXA_BOT_IMAGE=" .env 2>/dev/null | cut -d= -f2- || echo "ghcr.io/kioku-org/kioku-stateless:latest")
+BOT_IMAGE="${BOT_IMAGE:-ghcr.io/kioku-org/kioku-stateless:latest}"
+info "Pulling browser-bot image ($BOT_IMAGE)..."
+docker pull "$BOT_IMAGE" 2>/dev/null \
+    || warn "Could not pull $BOT_IMAGE — bot deployment will fail until this image is available"
 
 info ""
 info "Setup complete!"
