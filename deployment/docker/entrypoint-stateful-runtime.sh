@@ -243,7 +243,7 @@ stderr_logfile=/var/log/tts.err
 [program:runtime-api-local]
 command=/opt/venv/bin/uvicorn runtime_api.main:app --host 0.0.0.0 --port 8091
 directory=/opt/vexa/services/runtime-api
-environment=ORCHESTRATOR_BACKEND="docker",REDIS_URL="${REDIS_LOCAL_URL}",DOCKER_HOST="unix:///var/run/docker.sock",DOCKER_NETWORK="kioku-network",BROWSER_IMAGE="${BOT_IMAGE}",TRANSCRIPTION_SERVICE_URL="http://localhost:8000",TTS_SERVICE_URL="${BOT_TTS_URL}",INTERNAL_API_SECRET="${INTERNAL_API_SECRET:-}",PROFILES_PATH="/app/profiles.yaml",LOG_LEVEL="${LOG_LEVEL:-INFO}",VEXA_ENV="${VEXA_ENV:-production}",HOST="0.0.0.0",PORT="8091",BOT_MODEL_CACHE_DIR="${BOT_MODEL_CACHE_DIR:-}",BOT_WHISPER_MODEL="${BOT_WHISPER_MODEL:-}"
+environment=ORCHESTRATOR_BACKEND="docker",REDIS_URL="${REDIS_LOCAL_URL}",DOCKER_HOST="unix:///var/run/docker.sock",DOCKER_NETWORK="kioku-network",BROWSER_IMAGE="${BOT_IMAGE}",TRANSCRIPTION_SERVICE_URL="http://localhost:8000",TTS_SERVICE_URL="${BOT_TTS_URL}",INTERNAL_API_SECRET="${INTERNAL_API_SECRET:-}",PROFILES_PATH="/app/profiles.yaml",LOG_LEVEL="${LOG_LEVEL:-INFO}",VEXA_ENV="${VEXA_ENV:-production}",HOST="0.0.0.0",PORT="8091",BOT_MODEL_CACHE_DIR="${BOT_MODEL_CACHE_DIR:-}",BOT_WHISPER_MODEL="${BOT_WHISPER_MODEL:-}",ALLOW_PRIVATE_CALLBACKS="true"
 autostart=true
 autorestart=true
 stdout_logfile=/var/log/runtime-api-local.log
