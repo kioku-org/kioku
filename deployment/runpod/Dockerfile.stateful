@@ -14,22 +14,19 @@ COPY services/hivemind/ .
 RUN cargo build --release
 
 # ─── Stage 2: Install vexa Python services into venv ──────────────────────────
-# Must match Stage 3's OS + Python version exactly so the venv's pyvenv.cfg
-# home path (/usr/bin) and stdlib path (/usr/lib/python3.11) are identical at
-# runtime. Using python:3.11-slim-bookworm here puts Python at /usr/local/…
-# which breaks the venv when it's copied into the Ubuntu 22.04 Stage 3.
-FROM ubuntu:22.04 AS vexa-builder
+# python:3.11-slim-bookworm puts Python at /usr/local/bin and stdlib at
+# /usr/local/lib/python3.11. Stage 3 (Ubuntu 22.04 + deadsnakes) puts Python
+# at /usr/bin and stdlib at /usr/lib/python3.11. The venv's pyvenv.cfg records
+# the build-time home path, so we patch it after venv creation to point at
+# /usr/bin — matching where Stage 3's Python lives at runtime.
+FROM python:3.11-slim-bookworm AS vexa-builder
 
-ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends software-properties-common \
-    && add-apt-repository ppa:deadsnakes/ppa \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-        python3.11 python3.11-venv python3.11-dev gcc \
+    && apt-get install -y --no-install-recommends gcc \
     && rm -rf /var/lib/apt/lists/*
 
-RUN python3.11 -m venv /opt/venv
+RUN python -m venv /opt/venv \
+    && sed -i 's|home = /usr/local/bin|home = /usr/bin|' /opt/venv/pyvenv.cfg
 ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /build
