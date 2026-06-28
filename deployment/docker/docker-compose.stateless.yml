@@ -110,6 +110,9 @@ services:
       - CAPTURE_MODES=audio
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - BOT_IMAGE_NAME=${VEXA_BOT_IMAGE:-ghcr.io/kioku-org/kioku-stateless:latest}
+      - COOKIE_STORAGE_BACKEND=http
+      - COOKIE_SERVICE_URL=http://kioku-cookie-service:8099
+      - COOKIE_SERVICE_TOKEN=${COOKIE_SERVICE_TOKEN:-}
     volumes:
       - vexa-recordings-data:/data/recordings
     init: true
@@ -252,6 +255,19 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
+  kioku-cookie-service:
+    build:
+      context: ../../services/cookie-service
+      dockerfile: Dockerfile
+    container_name: kioku-cookie-service
+    environment:
+      - COOKIE_SERVICE_TOKEN=${COOKIE_SERVICE_TOKEN:-}
+    volumes:
+      - kioku-cookie-data:/data
+    networks:
+      - kioku-network
+    restart: unless-stopped
 
   kioku-mcp:
     image: ghcr.io/kioku-org/kioku-mcp:latest
@@ -489,6 +505,8 @@ volumes:
     name: kioku-vexa-recordings-data
   ollama-data:
     name: kioku-ollama-data
+  kioku-cookie-data:
+    name: kioku-cookie-data
 
 
 networks:
