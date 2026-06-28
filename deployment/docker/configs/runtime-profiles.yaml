@@ -26,6 +26,7 @@ profiles:
       INTERNAL_API_SECRET: "${INTERNAL_API_SECRET:-}"
     ports:
       "9222/tcp": {}
+      "6080/tcp": {}
 
   browser-session:
     image: "${BROWSER_IMAGE}"
