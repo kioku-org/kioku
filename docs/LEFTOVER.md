@@ -1,12 +1,13 @@
 # LEFTOVER
 
-Last updated: 2026-06-28 (rev 2)
+Last updated: 2026-06-28 (rev 3)
 
 ## Current Status
 
-Dashboard is fully rebranded (commit `8d899b0`, CI building now).
-RunPod test failure fixed (commit pending — venv symlink bug).
-Server-side bot deployment failing — see "Bot Deployment Blocker" below.
+Bot deployment working end-to-end on dev server: Chrome launches, bot navigates to Google Meet,
+enters name, clicks "Ask to join", waits for admission. Transcription connects to external service.
+Remaining: CI rebuild of `kioku-stateless:latest` with Chromium fix so `:chrome-fix` workaround
+can be dropped. Google OAuth still needs Google Cloud Console credentials.
 
 ## What Is Done
 
@@ -32,52 +33,48 @@ Server-side bot deployment failing — see "Bot Deployment Blocker" below.
 - **Dashboard rebrand**: all user-visible Vexa→Kioku across 71 files; new Kioku logo SVGs created
 - **Dashboard auth**: NextAuth with Google OAuth fully wired (auto-registers new users); direct email mode for dev
 - **Stateful Dockerfile**: base changed to `nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04` for GPU-optional Ollama
+- **Chrome revision fix** (commit `13830b7`): `Dockerfile.stateless` Stage 3 now copies chromium-1194 from
+  `ts-builder` instead of running unversioned `npx playwright install` (which downloaded chromium-1228,
+  mismatching `playwright-core 1.56.0` which expects revision 1194)
+- **Transcription port fix** (commit `ce7c407`): all `TRANSCRIPTION_SERVICE_URL` references corrected
+  from port 80 → 8000 (the FastAPI transcription service listens on 8000, not 80)
+- **Bot joins meetings end-to-end**: bot successfully enters name, clicks Ask to Join, waits in
+  waiting room, gets admitted, and transcription flows via external `kioku-vexa-transcription-service`
+
+## Server-Side Workarounds (temporary)
+
+On the dev server, bot image is pinned to a locally-built workaround image:
+```
+VEXA_BOT_IMAGE=ghcr.io/kioku-org/kioku-stateless:chrome-fix
+```
+The `:chrome-fix` image was built on the server with:
+```bash
+docker build --platform linux/amd64 \
+  -t ghcr.io/kioku-org/kioku-stateless:chrome-fix \
+  -f deployment/runpod/Dockerfile.stateless .
+```
+Once CI rebuilds `kioku-stateless:latest` from the Dockerfile fix (commit `13830b7`), revert:
+```bash
+# In deployment/docker/.env on server:
+VEXA_BOT_IMAGE=ghcr.io/kioku-org/kioku-stateless:latest
+# Then restart:
+docker compose -f docker-compose.stateless.yml up -d --no-deps vexa-runtime-api-local vexa-meeting-api
+```
 
 ## Pending / Blockers
 
-### 1. RunPod venv / stdlib path mismatch (FIXED — `aa413b8`, needs CI)
+### 1. Internal Whisper in bot container crashes (harmless)
 
-**Root cause**: Stage 2 used `python:3.11-slim-bookworm` — Python binary at
-`/usr/local/bin/python3.11`, stdlib at `/usr/local/lib/python3.11/`. Stage 3 uses
-Ubuntu 22.04 + deadsnakes — Python at `/usr/bin/python3.11`, stdlib at `/usr/lib/python3.11/`.
-The copied venv's `pyvenv.cfg` recorded `home = /usr/local/bin` so Python looked for
-stdlib at `/usr/local/lib/python3.11/` which does NOT exist on Stage 3.
-The earlier binary-symlink fix (`c7d08d2`) let Python start but it couldn't find its stdlib,
-so every `import` failed and all services crashed → 502 forever.
-
-**Fix** (committed `aa413b8`): Changed Stage 2 to `ubuntu:22.04 AS vexa-builder` with the same
-deadsnakes Python 3.11 install as Stage 3. Now venv `pyvenv.cfg` records `home = /usr/bin`
-and stdlib is at `/usr/lib/python3.11/` in both stages — no path workarounds needed.
-
-### 2. Server bot deployment failing
-
-Dashboard → API Gateway → Meeting API → Runtime Router → local runtime-api-local → spawns
-`ghcr.io/kioku-org/kioku-stateless:latest` container via Docker socket.
-
-**Three root causes fixed in scripts** (committed):
-- `setup.sh` now explicitly pulls `ghcr.io/kioku-org/kioku-stateless:latest` (it was never pulled
-  because it's spawned at runtime, not listed as a compose service)
-- `setup.sh` now auto-fills empty `DOCKER_GID=` (from .env.example copy) by detecting the host GID
-- `smoke-test.sh` had wrong container names (`kioku-postgres`/`kioku-qdrant` → `postgres`/`qdrant`,
-  `kioku-vexa-mcp` → `kioku-mcp`); missing `kioku-vexa-runtime-api-local` and `kioku-runtime-router`
-- `healthcheck.sh` now checks `kioku-vexa-runtime-api-local` and the bot image availability
-
-**Still needs on server** — re-run setup to apply the fixes:
-```bash
-cd /home/growit/ws/kioku/deployment/docker
-./scripts/setup.sh          # pulls bot image + fixes DOCKER_GID
-./scripts/manage.sh restart # pick up new env
-./scripts/healthcheck.sh    # verify bot image is present
+The outer entrypoint (`entrypoint-bot-runtime.sh`) starts an internal Whisper GPU service.
+On the local server (no GPU / CUDA driver mismatch), it crashes with:
 ```
-
-If services are still failing after setup:
-```bash
-docker compose -f docker-compose.stateless.yml ps       # are all services running?
-docker logs kioku-vexa-runtime-api-local --tail 50      # runtime-api errors?
-docker logs kioku-runtime-router --tail 50              # router logs?
+CUDA failed with error CUDA driver version is insufficient for CUDA runtime version
 ```
+This is **harmless** — the bot falls back to the external `vexa-transcription-service` container
+which runs fine. But it pollutes logs and could be fixed by skipping the internal service when
+`TRANSCRIPTION_SERVICE_URL` is already set externally.
 
-### 3. Google OAuth setup (not yet configured)
+### 2. Google OAuth setup (not yet configured) — issue #34
 
 The code is fully implemented (NextAuth in `services/dashboard/src/app/api/auth/[...nextauth]/route.ts`).
 When `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set, the "Continue with Google" button
@@ -110,6 +107,8 @@ docker compose -f docker-compose.stateless.yml up -d --no-deps kioku-dashboard
 
 # Also pull stateless bot image (used by runtime-api-local to spawn Chrome bots)
 docker pull ghcr.io/kioku-org/kioku-stateless:latest
+# Then update VEXA_BOT_IMAGE=ghcr.io/kioku-org/kioku-stateless:latest in .env
+# and restart meeting-api + runtime-api-local
 ```
 
 ## Bot Concurrency Cap
@@ -152,5 +151,7 @@ Expected: `"status": "ok"` with `googleOAuth.configured: true` if OAuth is set u
 - `#27` closed: RunPod stateful path
 - `#28` closed: stateless GPU path
 - `#30` open → ready to close: dashboard + MCP moved and deployed
-- `#31` open → partially done: dashboard.kioku.chat live but bot deployment broken + no Google OAuth yet
+- `#31` open → partially done: dashboard.kioku.chat live, bot works, Google OAuth pending
 - `#32` open → ready to close: runtime router implemented and deployed
+- `#33` open → **FIXED**: bot now joins meetings; Chrome revision + transcription port fixed
+- `#34` open: Google OAuth — needs Google Cloud Console credentials
