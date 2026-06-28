@@ -109,6 +109,7 @@ services:
       - RECORDING_ENABLED=${RECORDING_ENABLED:-false}
       - CAPTURE_MODES=audio
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - BOT_IMAGE_NAME=${VEXA_BOT_IMAGE:-ghcr.io/kioku-org/kioku-stateless:latest}
     volumes:
       - vexa-recordings-data:/data/recordings
     init: true
