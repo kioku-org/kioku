@@ -64,11 +64,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /run/sshd
 
-RUN npx --yes playwright install-deps \
-    && npx --yes playwright install --with-deps \
-    && arch=$(uname -m) && if [ "$arch" = "x86_64" ] || [ "$arch" = "amd64" ]; then \
-        npx --yes playwright install msedge; \
-    else echo "Skipping msedge on $arch"; fi
+# Install OS-level browser dependencies only (no download — browsers come from ts-builder below).
+# Stage 3's unversioned "npx playwright install" downloads a *newer* Playwright's chromium
+# (e.g. chromium-1228) while the project's playwright-core (1.56.0) expects chromium-1194.
+# Using playwright@1.56.0 here pins the dependency install to the matching revision.
+RUN npx --yes playwright@1.56.0 install-deps chromium
+
+# Copy the correctly-versioned browsers from ts-builder (playwright:v1.56.0-jammy pre-installs
+# chromium-1194, matching playwright-core 1.56.0 in node_modules — no revision mismatch).
+COPY --from=ts-builder /root/.cache/ms-playwright /root/.cache/ms-playwright
 
 RUN mkdir -p /root/ms-playwright && chmod -R 777 /root/ms-playwright
 RUN mkdir -p /app/vexa-bot/storage/screenshots /app/vexa-bot/storage/logs /app/vexa-bot/storage/temp \

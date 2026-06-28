@@ -24,6 +24,7 @@ profiles:
       TRANSCRIPTION_SERVICE_TOKEN: "${TRANSCRIPTION_SERVICE_TOKEN:-}"
       TTS_SERVICE_URL: "${TTS_SERVICE_URL}"
       INTERNAL_API_SECRET: "${INTERNAL_API_SECRET:-}"
+      PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: "/root/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome"
     ports:
       "9222/tcp": {}
 
@@ -45,5 +46,6 @@ profiles:
       REDIS_URL: "${REDIS_URL}"
       TTS_SERVICE_URL: "${TTS_SERVICE_URL}"
       INTERNAL_API_SECRET: "${INTERNAL_API_SECRET:-}"
+      PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: "/root/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome"
     ports:
       "9222/tcp": {}
