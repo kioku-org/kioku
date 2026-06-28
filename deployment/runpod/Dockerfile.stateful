@@ -14,12 +14,22 @@ COPY services/hivemind/ .
 RUN cargo build --release
 
 # ─── Stage 2: Install vexa Python services into venv ──────────────────────────
-FROM python:3.11-slim-bookworm AS vexa-builder
+# Must match Stage 3's OS + Python version exactly so the venv's pyvenv.cfg
+# home path (/usr/bin) and stdlib path (/usr/lib/python3.11) are identical at
+# runtime. Using python:3.11-slim-bookworm here puts Python at /usr/local/…
+# which breaks the venv when it's copied into the Ubuntu 22.04 Stage 3.
+FROM ubuntu:22.04 AS vexa-builder
 
-RUN apt-get update && apt-get install -y --no-install-recommends gcc ffmpeg \
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3.11 python3.11-venv python3.11-distutils gcc ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-RUN python -m venv /opt/venv
+RUN python3.11 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /build
@@ -73,7 +83,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     OLLAMA_MODELS=/data/ollama/models \
     PATH="/opt/venv/bin:$PATH"
 
-# Python 3.11 (not default on Ubuntu 22.04)
+# Python 3.11 (not default on Ubuntu 22.04) — same version + PPA as Stage 2
+# so the venv pyvenv.cfg paths match at runtime without any symlink workarounds.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends software-properties-common \
     && add-apt-repository ppa:deadsnakes/ppa \
@@ -82,7 +93,6 @@ RUN apt-get update \
         python3.11 python3.11-venv python3.11-distutils \
     && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
     && ln -sf /usr/bin/python3.11 /usr/bin/python \
-    && ln -sf /usr/bin/python3.11 /usr/local/bin/python3.11 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update \
