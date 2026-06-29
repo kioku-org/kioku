@@ -12,7 +12,6 @@ Deploy Kioku locally or on a VPS with Docker Compose.
 ## Setup
 
 ```bash
-git submodule update --init --recursive
 cd deployment/docker
 
 # 1. Bootstrap .env (copies template, generates secure secrets, pulls images)
@@ -33,9 +32,6 @@ cp cloudflared.yml.example cloudflared.yml
 ./scripts/healthcheck.sh
 ```
 
-`services/vexa` is a Git submodule. If you cloned Kioku without
-`--recurse-submodules`, run the update command above first so the Docker build
-contexts resolve correctly.
 
 ## Architecture
 

@@ -1,5 +1,6 @@
 # ==============================================================================
 # Kioku Stateless Pod — GPU bot + Whisper transcription (ephemeral, per meeting)
+# Build: docker build -f deployment/docker/Dockerfile.stateless -t ghcr.io/kioku-org/kioku-stateless .
 # ==============================================================================
 
 # ─── Stage 1: Build Zoom SDK native addon ─────────────────────────────────────
@@ -11,9 +12,9 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app/vexa-bot
 
-COPY services/vexa/services/vexa-bot/package*.json ./
-COPY services/vexa/services/vexa-bot/binding.gyp ./
-COPY services/vexa/services/vexa-bot/core/src/platforms/zoom/native/ ./core/src/platforms/zoom/native/
+COPY services/vexa-bot/package*.json ./
+COPY services/vexa-bot/binding.gyp ./
+COPY services/vexa-bot/core/src/platforms/zoom/native/ ./core/src/platforms/zoom/native/
 
 RUN npm install --ignore-scripts
 RUN npm run build:native || echo "[Build] Native addon build skipped (SDK not available)"
@@ -30,10 +31,10 @@ RUN apt-get update && apt-get install -y \
 # Copy modules + core manifests together so that any module change invalidates
 # the npm install layer. Modules are built in dependency order before npm install
 # so file: references resolve to compiled packages.
-COPY services/vexa/modules/ /modules/
-COPY services/vexa/services/vexa-bot/core/package*.json ./core/
-COPY services/vexa/services/vexa-bot/core/tsconfig.json ./core/
-COPY services/vexa/services/vexa-bot/core/build-browser-utils.js ./core/
+COPY services/modules/ /modules/
+COPY services/vexa-bot/core/package*.json ./core/
+COPY services/vexa-bot/core/tsconfig.json ./core/
+COPY services/vexa-bot/core/build-browser-utils.js ./core/
 
 WORKDIR /app/vexa-bot/core
 # shared/* have no @vexa deps; pipeline modules depend on shared; rest are independent
@@ -50,7 +51,7 @@ RUN cd /modules/shared/whisper       && npm install --ignore-scripts && npm run 
     cd /modules/recorder             && npm install --ignore-scripts && npm run build && \
     cd /app/vexa-bot/core            && npm install && npm install -g typescript
 
-COPY services/vexa/services/vexa-bot/core/src/ ./src/
+COPY services/vexa-bot/core/src/ ./src/
 
 RUN npm run build
 RUN npx playwright install-deps && npx playwright install --with-deps
@@ -108,16 +109,16 @@ COPY --from=ts-builder /app/vexa-bot/core/dist /app/vexa-bot/core/dist
 # Copy the built modules so the symlinks resolve at runtime.
 COPY --from=ts-builder /modules /modules
 
-COPY services/vexa/services/vexa-bot/core/entrypoint.sh /app/vexa-bot/entrypoint.sh
+COPY services/vexa-bot/core/entrypoint.sh /app/vexa-bot/entrypoint.sh
 RUN chmod +x /app/vexa-bot/entrypoint.sh
 
 # Install Whisper transcription service (GPU)
-COPY services/vexa/services/transcription-service/requirements.txt /opt/transcription/
+COPY services/transcription-service/requirements.txt /opt/transcription/
 RUN pip3 install --no-cache-dir -r /opt/transcription/requirements.txt
-COPY services/vexa/services/transcription-service/main.py /opt/transcription/
+COPY services/transcription-service/main.py /opt/transcription/
 
 # Copy entrypoint
-COPY deployment/runpod/entrypoint-bot-runtime.sh /entrypoint.sh
+COPY deployment/docker/entrypoint-stateless-runtime.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 WORKDIR /app/vexa-bot/core
