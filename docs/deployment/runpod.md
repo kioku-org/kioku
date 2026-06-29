@@ -1,107 +1,126 @@
 ---
 title: "RunPod"
+description: "Deploy Kioku on RunPod with ephemeral GPU bot pods."
 ---
-Deploy Kioku on RunPod with a two-pod architecture: always-on CPU stateful pod + ephemeral GPU bot pods.
+
+Kioku supports two RunPod deployment modes:
+
+1. **Full stack on RunPod** — run stateful services on a persistent CPU pod; bot pods on GPU
+2. **RunPod overflow** — run stateful services on your own server; overflow bot containers to RunPod GPU pods when local capacity is exhausted
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────┐
-│         kioku-stateful pod (CPU, always-on)            │
-│  supervisord                                           │
-│  ├── postgres    ├── qdrant    ├── redis              │
-│  ├── ollama      ├── minio     ├── hivemind           │
-│  ├── vexa api-gateway  ├── vexa-meeting-api            │
-│  ├── vexa-admin-api   ├── vexa-agent-api              │
-│  ├── vexa-mcp          ├── vexa-tts-service            │
-│  └── runtime-api (ORCHESTRATOR_BACKEND=runpod)        │
-│  Exposed: 22, 6379, 8080, 8090, 9100, 8056, 11434     │
-└────────────┬──────────────────────────────────────────┘
-             │ RunPod REST API (create/stop pod)
-             ▼
-┌──────────────────────────────────┐
-│   kioku-stateless pod (GPU)       │
-│  ├── Whisper transcription (GPU)  │
-│  └── Vexa bot (Playwright)        │
-│  Lives ~1 meeting, then exits     │
-└──────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph stateful["kioku-stateful pod (CPU, always-on)"]
+        PG[(PostgreSQL)] & RD[(Redis)] & QD[(Qdrant)]
+        OL[Ollama] & MN[MinIO]
+        HM[Hivemind :9100] & MA[meeting-api :8080]
+        RA[runtime-api\nORCHESTRATOR_BACKEND=runpod]
+    end
+
+    subgraph stateless["kioku-stateless pod (GPU, per-meeting)"]
+        BOT[Playwright bot]
+        WH[faster-whisper]
+    end
+
+    RA -->|RunPod REST API| stateless
+    stateless -->|Redis stream| RD
+    stateless -->|callback| MA
 ```
 
 ## Images
 
 | Image | Registry | Pod Type |
 |---|---|---|
-| `kyomoto/kioku-stateful:latest` | Docker Hub | CPU, always-on |
-| `kyomoto/kioku-stateless:latest` | Docker Hub | GPU, ephemeral |
+| `ghcr.io/kioku-org/kioku-stateful:latest` | GHCR | CPU, always-on |
+| `ghcr.io/kioku-org/kioku-stateless:latest` | GHCR | GPU, ephemeral |
 
-Images are built automatically by GitHub Actions on push to master.
-The RunPod validation workflow can also be dispatched manually for a specific
-published image SHA when you want to re-run the end-to-end pod test without
-waiting on a new push.
+Images are built by GitHub Actions on every push to master.
 
-## Deploy
+## Mode 1: Full Stack on RunPod
+
+1. In RunPod console, create a **Persistent Pod** (CPU type):
+   - Image: `ghcr.io/kioku-org/kioku-stateful:latest`
+   - Volume: attach a network volume at `/data`
+   - Ports: 9100, 8056, 3001, 18888
+
+2. Set env vars via RunPod's **Environment Variables** panel — see `.env.example` for the full list
+
+3. Set bot callback URLs so ephemeral GPU pods can reach the stateful pod:
+   ```
+   VEXA_PUBLIC_URL=https://<pod-id>-8056.proxy.runpod.net
+   BOT_MEETING_API_URL=http://<pod-id>-8080.proxy.runpod.net
+   BOT_REDIS_URL=redis://:<REDIS_PASSWORD>@<pod-id>-6379.proxy.runpod.net:6379/0
+   ```
+
+4. Set RunPod bot orchestration:
+   ```
+   USE_LOCAL_RESOURCE=false
+   RUNPOD_API_KEY=your_key
+   RUNPOD_GPU_TYPES=NVIDIA GeForce RTX 3090,NVIDIA RTX A5000,NVIDIA RTX A4000
+   RUNPOD_CLOUD_TYPE=COMMUNITY
+   ```
+
+## Mode 2: RunPod Bot Overflow (Recommended for Self-Hosted)
+
+Run stateful services on your own server; overflow to RunPod when local Docker capacity is exceeded.
 
 ```bash
-cd deployment/runpod
-cp .env.example .env
-# Fill in RUNPOD_API_KEY, secrets, domain
-$EDITOR .env
-
-./deploy.sh
+# .env
+USE_LOCAL_RESOURCE=true
+LOCAL_BOT_THRESHOLD=3         # up to 3 bots via Docker socket
+RUNPOD_API_KEY=your_key       # overflow beyond 3 goes to RunPod
+RUNPOD_GPU_TYPES=NVIDIA GeForce RTX 3090,NVIDIA RTX A5000
+RUNPOD_CLOUD_TYPE=COMMUNITY
 ```
 
+```mermaid
+flowchart TD
+    A[POST /bots] --> B{Local bots\n< threshold?}
+    B -- yes --> C[Docker socket\nspawn on host]
+    B -- no --> D[RunPod REST API\nGPU pod]
+    C & D --> E[Bot joins meeting]
+    E --> F[Transcript streams to\nstateful via Redis]
+```
 
-The script creates a CPU pod with all stateful services via `runpodctl pod create --compute-type cpu`.
-
-The deployed stateful pod should receive:
-
-- `STATEFUL_RUNPOD_CLOUD_TYPE=COMMUNITY` so the CPU pod gets a public IP when using `runpodctl pod create`
-- `RUNPOD_ACCOUNT_API_KEY` for runtime-api orchestration
-- `BROWSER_IMAGE` / `BOT_IMAGE` pointing at `kyomoto/kioku-stateless:latest`
-- `RUNPOD_GPU_TYPES` as an ordered fallback list for stateless GPU allocation
-
-## Security
-
-- **Redis** — AUTH password required (`REDIS_PASSWORD`), port 6379 exposed publicly
-- **Postgres** — NOT exposed publicly (internal only)
-- **MinIO/Qdrant** — NOT exposed publicly (internal only)
-- **meeting-api** — Uses `INTERNAL_API_SECRET` for internal callbacks
-- **Cloudflared** — Optional, tunnels public traffic to hivemind/vexa-gateway
-
-## Cost
-
-| Resource | Rate | Monthly (24/7) |
-|---|---|---|
-| Stateful CPU pod | ~$0.10-0.20/hr | ~$72-144 |
-| Bot GPU pod (per meeting) | ~$0.27-0.46/hr | per-meeting |
-| Container disk (20GB) | $0.10/GB/mo | ~$2 |
-
-Bot pods only cost money while a meeting is in progress. A 1-hour meeting costs ~$0.27-0.46 in GPU compute.
+<Warning>
+  When using RunPod overflow, Redis (:6379) and meeting-api (:8080) on your host must be reachable from the public internet. Open these ports in your firewall and set `BOT_REDIS_URL` and `BOT_MEETING_API_URL` to your server's public IP.
+</Warning>
 
 ## Bot Pod Lifecycle
 
-1. **Spawn**: `POST /vexa/bots` → runtime-api calls RunPod REST API → GPU pod created
-2. **Boot**: Pod pulls image (~30-60s), starts Whisper + bot
-3. **Meeting**: Bot joins Google Meet/Zoom/Teams, transcribes
-4. **Exit**: Bot exits → reaper detects (15s poll) → pod deleted
+1. **Spawn** — runtime-api calls RunPod REST API → GPU pod created
+2. **Boot** — pod pulls image (~30–60s), starts faster-whisper + bot
+3. **Meeting** — bot joins, transcribes, streams to Redis
+4. **Exit** — bot exits → reaper detects (15s poll) → pod deleted
 
 <Note>
-  Bot pod startup latency is ~30-60s vs ~2s for Docker Compose. Plan accordingly for time-sensitive meetings.
+  Bot pod startup takes 30–60s on RunPod vs ~2s for Docker. Join meetings at least 1 minute before they start if using RunPod.
 </Note>
 
-## CI Validation
+## GPU Sizing
 
-The GitHub Actions `RunPod Integration Test` workflow validates the published
-RunPod images by:
+| GPU | VRAM | Concurrent bots (large-v3-turbo, int8) |
+|---|---|---|
+| RTX 3070 | 8 GB | 4–5 |
+| RTX 3090 | 24 GB | 14–15 |
+| A5000 | 24 GB | 14–15 |
+| A100 (40 GB) | 40 GB | 25+ |
 
-1. Waiting for the stateful and stateless Docker Hub images for a target SHA
-2. Starting a stateful CPU pod on RunPod
-3. Verifying service health, including the Ollama embedding endpoint on `11434`
-4. Running the Hivemind and CLI integration suites against the live pod
-5. Spawning and deleting a stateless bot pod via `runtime-api`
+## Cost
 
-To run that workflow manually for a specific published SHA:
+| Resource | Rate | Note |
+|---|---|---|
+| Stateful CPU pod | ~$0.10–0.20/hr | Always-on if hosted on RunPod |
+| Bot GPU pod | ~$0.27–0.46/hr | Only costs while meeting is in progress |
+| Network volume (20 GB) | ~$0.10/GB/mo | ~$2/mo |
 
-```bash
-gh workflow run "RunPod Integration Test" -f image_sha=<short-or-full-git-sha>
-```
+A 1-hour meeting costs ~$0.27–0.46 in GPU compute.
+
+## Security
+
+- **Redis** — requires `REDIS_PASSWORD`; port 6379 must be exposed for RunPod bots
+- **PostgreSQL** — internal only, never exposed
+- **MinIO / Qdrant** — internal only
+- **meeting-api** — uses `INTERNAL_API_SECRET` for bot callbacks
