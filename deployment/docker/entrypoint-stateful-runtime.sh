@@ -234,7 +234,7 @@ stderr_logfile=/var/log/agent-api.err
 [program:tts]
 command=/opt/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8002
 directory=/opt/vexa/services/tts-service
-environment=TTS_API_TOKEN="${TTS_API_TOKEN:-}",OPENAI_API_KEY="${OPENAI_API_KEY:-}",OPENAI_BASE_URL="${OPENAI_BASE_URL:-https://api.openai.com}",VEXA_ENV="${VEXA_ENV:-production}",LOG_LEVEL="${LOG_LEVEL:-INFO}",PIPER_VOICES_DIR="/app/voices"
+environment=TTS_API_TOKEN="${TTS_API_TOKEN:-}",OPENAI_API_KEY="${OPENAI_API_KEY:-}",OPENAI_BASE_URL="${OPENAI_BASE_URL:-https://api.openai.com}",VEXA_ENV="${VEXA_ENV:-production}",LOG_LEVEL="${LOG_LEVEL:-INFO}",PIPER_VOICES_DIR="/data/tts-voices"
 autostart=true
 autorestart=true
 stdout_logfile=/var/log/tts.log
