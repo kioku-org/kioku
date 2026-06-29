@@ -20,10 +20,11 @@ PUBLIC_IP=$(curl -s --max-time 5 http://ifconfig.me 2>/dev/null || echo localhos
 echo "[KIOKU] Public IP: $PUBLIC_IP"
 
 REDIS_LOCAL_URL="redis://:${REDIS_PASSWORD}@localhost:6379/0"
-REDIS_BOT_URL="redis://:${REDIS_PASSWORD}@${PUBLIC_IP}:6379/0"
-BOT_MEETING_API_URL="http://${PUBLIC_IP}:8080"
-BOT_TTS_URL="http://${PUBLIC_IP}:8002"
-BOT_COOKIE_URL="http://${PUBLIC_IP}:8099"
+# Bot containers run on kioku-network and reach stateful services by container name
+REDIS_BOT_URL="redis://:${REDIS_PASSWORD}@kioku-stateful:6379/0"
+BOT_MEETING_API_URL="http://kioku-stateful:8080"
+BOT_TTS_URL="http://kioku-stateful:8002"
+BOT_COOKIE_URL="http://kioku-stateful:8099"
 
 # ─── Prepare directories ──────────────────────────────────────────────────────
 mkdir -p \
