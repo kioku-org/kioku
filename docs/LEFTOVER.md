@@ -82,10 +82,12 @@ pre-registered bot accounts for Google Meet, Zoom, Teams to avoid waiting-room f
 
 ### Authenticated bot self-leaves immediately (issue #43)
 
-When the **Authenticated** toggle is ON in the dashboard Join form, the bot enters the meeting then
-immediately self-leaves. Unauthenticated mode is unaffected. Root cause unknown — likely the cookie
-service (`kioku-stateful:8099`) has no valid session cookies for the bot identity, triggering an
-auth failure that causes an early exit. Check `docker logs meeting-<id>` for the exit reason.
+When the **Authenticated** toggle is ON in the dashboard Join form, the bot exits with
+`self_initiated_leave` (exit code 1). Root cause confirmed: the cookie service
+(`kioku-stateful:8099`) has no stored Google session cookies. Authenticated mode requires real
+browser session cookies captured from an actual Google account login. Blocked by issue #38.
+
+**Workaround:** use unauthenticated mode (toggle OFF) — bot joins via Ask to Join waiting room.
 
 ### Bot cleanup when left alone (issue #41)
 
