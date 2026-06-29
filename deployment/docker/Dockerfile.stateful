@@ -93,6 +93,10 @@ COPY services/dashboard/next.config.ts \
 # Server-side rewrites point at the api-gateway inside the same container.
 ARG KIOKU_API_URL=http://localhost:8056
 ENV KIOKU_API_URL=$KIOKU_API_URL
+
+ARG NEXT_PUBLIC_VEXA_OSS_VERSION=0.1.0
+ENV NEXT_PUBLIC_VEXA_OSS_VERSION=$NEXT_PUBLIC_VEXA_OSS_VERSION
+
 RUN npm run build
 
 # ─── Stage 4: Runtime ─────────────────────────────────────────────────────────
