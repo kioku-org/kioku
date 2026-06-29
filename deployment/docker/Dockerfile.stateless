@@ -1,6 +1,5 @@
 # ==============================================================================
 # Kioku Stateless Pod — GPU bot + Whisper transcription (ephemeral, per meeting)
-# Build: docker build -f deployment/runpod/Dockerfile.stateless -t kyomoto/kioku-stateless .
 # ==============================================================================
 
 # ─── Stage 1: Build Zoom SDK native addon ─────────────────────────────────────

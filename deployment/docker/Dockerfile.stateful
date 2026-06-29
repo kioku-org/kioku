@@ -1,7 +1,7 @@
 # ==============================================================================
 # Kioku Stateful Pod — all always-on services (GPU-optional, persistent)
 # Uses CUDA runtime so Ollama auto-detects GPU when available, falls back to CPU.
-# Build: docker build -f deployment/runpod/Dockerfile.stateful -t ghcr.io/kioku-org/kioku-stateful .
+# Build: docker build -f deployment/docker/Dockerfile.stateful -t ghcr.io/kioku-org/kioku-stateful .
 # ==============================================================================
 
 # ─── Stage 1: Build hivemind (Rust) ───────────────────────────────────────────
@@ -135,7 +135,7 @@ COPY --from=vexa-builder /opt/venv /opt/venv
 COPY --from=vexa-builder /opt/vexa /opt/vexa
 
 # Copy entrypoint
-COPY deployment/runpod/entrypoint-stateful-runtime.sh /entrypoint.sh
+COPY deployment/docker/entrypoint-stateful-runtime.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 22 5432 6379 6334 8001 8056 8080 8090 8100 9000 9001 9100 11434 18888
