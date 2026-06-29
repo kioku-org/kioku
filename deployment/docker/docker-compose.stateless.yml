@@ -89,6 +89,7 @@ services:
       - REDIS_STREAM_BLOCK_MS=2000
       - TRANSCRIPTION_COLLECTOR_URL=http://vexa-meeting-api:8080
       - TRANSCRIPTION_SERVICE_URL=http://vexa-transcription-service:8000
+      - BOT_TRANSCRIPTION_SERVICE_URL=http://localhost:8000
       - REMOTE_TRANSCRIBER_URL=http://vexa-transcription-service:8000/v1/audio/transcriptions
       - REMOTE_TRANSCRIBER_API_KEY=${VEXA_TRANSCRIBER_API_KEY:-}
       - TTS_SERVICE_URL=http://vexa-tts-service:8002
@@ -149,6 +150,8 @@ services:
       - PROFILES_PATH=/app/profiles.yaml
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - ALLOW_PRIVATE_CALLBACKS=1
+      - BOT_MODEL_CACHE_DIR=${BOT_MODEL_CACHE_DIR:-}
+      - BOT_WHISPER_MODEL=${BOT_WHISPER_MODEL:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./configs/runtime-profiles.yaml:/app/profiles.yaml:ro
@@ -231,6 +234,20 @@ services:
     networks:
       - kioku-network
     restart: unless-stopped
+
+  model-warmup:
+    build:
+      context: ${KIOKU_VEXA_PATH:-../../services/vexa}/services/transcription-service
+      dockerfile: Dockerfile
+    container_name: kioku-model-warmup
+    entrypoint: ["python3", "-c", "from faster_whisper import WhisperModel; import os; m=os.getenv('MODEL_SIZE','large-v3-turbo'); print('Downloading model:',m); WhisperModel(m, download_root='/app/models', device='cpu', compute_type='int8'); print('Model ready.')"]
+    environment:
+      - MODEL_SIZE=${BOT_WHISPER_MODEL:-large-v3-turbo}
+    volumes:
+      - ${BOT_MODEL_CACHE_DIR:-/tmp/kioku-model-cache}:/app/models
+    networks:
+      - kioku-network
+    restart: "no"
 
   vexa-transcription-service:
     build:

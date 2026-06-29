@@ -7,7 +7,7 @@ profiles:
     image: "${BROWSER_IMAGE}"
     command: ["/app/vexa-bot/entrypoint.sh"]
     working_dir: "/app/vexa-bot"
-    gpu: false
+    gpu: true
     resources:
       cpu_request: "1000m"
       cpu_limit: "1500m"
@@ -20,10 +20,9 @@ profiles:
       DISPLAY: "${DISPLAY:-:99}"
       NODE_ENV: "production"
       REDIS_URL: "${REDIS_URL}"
-      TRANSCRIPTION_SERVICE_URL: "${TRANSCRIPTION_SERVICE_URL}"
-      TRANSCRIPTION_SERVICE_TOKEN: "${TRANSCRIPTION_SERVICE_TOKEN:-}"
       TTS_SERVICE_URL: "${TTS_SERVICE_URL}"
       INTERNAL_API_SECRET: "${INTERNAL_API_SECRET:-}"
+      TRANSCRIPTION_SERVICE_URL: "http://localhost:8000"
     ports:
       "9222/tcp": {}
       "6080/tcp": {}

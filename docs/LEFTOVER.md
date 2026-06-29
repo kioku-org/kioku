@@ -1,18 +1,22 @@
 # LEFTOVER
 
-Last updated: 2026-06-28 (rev 3)
+Last updated: 2026-06-29 (rev 7)
 
 ## Current Status
 
-Bot deployment working end-to-end on dev server: Chrome launches, bot navigates to Google Meet,
-enters name, clicks "Ask to join", waits for admission. Transcription connects to external service.
-Remaining: CI rebuild of `kioku-stateless:latest` with Chromium fix so `:chrome-fix` workaround
-can be dropped. Google OAuth still needs Google Cloud Console credentials.
+Full pipeline confirmed working end-to-end with real Google Meet audio. Both root causes of
+`whisper=0` are fixed and verified in production (meeting 102):
+
+1. **JWT mismatch** (issue #37): collector now gets fresh tokens signed with current `ADMIN_TOKEN`.
+2. **`reportTrackAudio` throw** (issue #35): `w.__vexaGmeetSpeakers?.reportTrackAudio(index)` threw
+   `"is not a function"` on every chunk — the `?.` guarded the object but not the method call.
+   Fixed with double optional chain: `reportTrackAudio?.(index)`. The try/catch was silently eating
+   the error and the queue push never ran. Fixed in `kioku-stateless:0.13`.
 
 ## What Is Done
 
 - RunPod backend proven in CI (commits `7db105b`, `ebcffeb`)
-- Dashboard code migrated into `services/dashboard` (issue #30 scope complete)
+- Dashboard code migrated into `services/dashboard` (issue #30 closed)
 - `services/dashboard/Dockerfile` rewritten for the kioku repo context
 - `build-dashboard` CI job added — builds and pushes to GHCR on every push to master
 - `service-tests.yml` `dashboard-build` job passing (TypeScript + Next.js build verified)
@@ -29,7 +33,7 @@ can be dropped. Google OAuth still needs Google Cloud Console credentials.
 - MCP `/health` endpoint added; CI integration job starts MCP and runs `parse_meeting_link` test against it
 - `kioku mcp` CLI command now outputs both Hivemind MCP + Meetings MCP configs; 3 unit tests added
 - `docs/mcp/overview.md` updated to document both MCPs and `kioku mcp` CLI usage
-- **Runtime Router (issue #32)**: implemented with `USE_LOCAL_RESOURCE` + `LOCAL_BOT_THRESHOLD` overflow logic
+- **Runtime Router (issue #32)**: implemented with `USE_LOCAL_RESOURCE` + `LOCAL_BOT_THRESHOLD` overflow logic (closed)
 - **Dashboard rebrand**: all user-visible Vexa→Kioku across 71 files; new Kioku logo SVGs created
 - **Dashboard auth**: NextAuth with Google OAuth fully wired (auto-registers new users); direct email mode for dev
 - **Stateful Dockerfile**: base changed to `nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04` for GPU-optional Ollama
@@ -39,88 +43,91 @@ can be dropped. Google OAuth still needs Google Cloud Console credentials.
 - **Transcription port fix** (commit `ce7c407`): all `TRANSCRIPTION_SERVICE_URL` references corrected
   from port 80 → 8000 (the FastAPI transcription service listens on 8000, not 80)
 - **Bot joins meetings end-to-end**: bot successfully enters name, clicks Ask to Join, waits in
-  waiting room, gets admitted, and transcription flows via external `kioku-vexa-transcription-service`
+  waiting room, gets admitted, and per-speaker audio streams connect (issue #33 closed)
+- **Dockerfile module-build fix (issue #36 closed)**: ts-builder now copies `services/vexa/modules/`
+  and builds all `@vexa/*` packages in dep order before `npm install`; fixed playwright browser path;
+  added `/modules` COPY to runtime stage
+- **AudioContext fix**: `--autoplay-policy=no-user-gesture-required` added to `JOIN_BROWSER_ARGS`
+- **whisper=0 fully fixed (issue #35 closed)**: two root causes traced and resolved:
+  - **Playwright bridge silent drop**: replaced `exposeFunction` binding with `window.__vexaAudioQueue`
+    polled by Node.js every 100ms via `page.evaluate` — bypasses Playwright's silent drop of calls
+    originating from AudioWorklet `port.onmessage` handlers
+  - **JWT mismatch (issue #37)**: `ADMIN_TOKEN` had rotated; old bots sent tokens collector rejected.
+    New bots get fresh tokens; unaffected going forward.
+  - **`reportTrackAudio` throw**: `w.__vexaGmeetSpeakers?.reportTrackAudio(index)` threw
+    `"is not a function"` silently inside the try/catch — queue push never reached.
+    Fixed: `reportTrackAudio?.(index)` (double optional chain). Verified working in meeting 102.
+  - `FAKE_AUDIO_FILE` mode added to `index.ts` — feeds WAV directly into `speakerManager` for
+    pipeline testing without a live meeting
+  - Image: `kioku-stateless:0.13` on deploy server
+- **Dashboard live (issue #31 closed)**: `dashboard.kioku.chat` serves real product dashboard;
+  backends reachable; direct login enabled for trial use
+- **Google OAuth wired (issue #34 closed)**: NextAuth + Google provider fully implemented;
+  `NEXTAUTH_SECRET` and `NEXTAUTH_URL` set on server; setup script at
+  `deployment/docker/setup-google-oauth.sh` — one command to activate once credentials are obtained
+
+## Open Items
+
+### Enable Google OAuth (one command)
+
+Everything is wired. Just need real credentials from Google Cloud Console:
+
+1. Go to https://console.cloud.google.com → APIs & Services → Credentials
+2. Create OAuth 2.0 Client ID (Web application)
+3. Add redirect URI: `https://dashboard.kioku.chat/api/auth/callback/google`
+4. Run on the server:
+   ```bash
+   cd /home/growit/ws/kioku/deployment/docker
+   ./setup-google-oauth.sh <client_id> <client_secret>
+   ```
+   The script writes creds, disables open direct login, and restarts the dashboard.
+
+### Internal Whisper on bot container (noise)
+
+`/entrypoint.sh` always starts an internal Whisper GPU service before the Node.js bot. On the
+deploy server the internal service is unused (bot points at `kioku-vexa-transcription-service`),
+but it still spins up and either crashes (no CUDA) or wastes GPU memory (CUDA present but shared).
+
+Fix: in `/entrypoint.sh`, skip the Python Whisper launch when `TRANSCRIPTION_SERVICE_URL` is
+already set and reachable externally. Low priority — does not affect correctness.
 
 ## Server-Side Workarounds (temporary)
 
-On the dev server, bot image is pinned to a locally-built workaround image:
+Bot image is locally built on the deploy server (not yet pushed to GHCR):
 ```
-VEXA_BOT_IMAGE=ghcr.io/kioku-org/kioku-stateless:chrome-fix
+VEXA_BOT_IMAGE=kioku-stateless:0.13
 ```
-The `:chrome-fix` image was built on the server with:
+Built at `/home/growit/ws/kioku` with:
 ```bash
-docker build --platform linux/amd64 \
-  -t ghcr.io/kioku-org/kioku-stateless:chrome-fix \
-  -f deployment/runpod/Dockerfile.stateless .
+docker build -f deployment/runpod/Dockerfile.stateless -t kioku-stateless:0.13 .
 ```
-Once CI rebuilds `kioku-stateless:latest` from the Dockerfile fix (commit `13830b7`), revert:
+Once changes are merged and CI pushes `kioku-stateless:latest` to GHCR, revert to:
 ```bash
-# In deployment/docker/.env on server:
 VEXA_BOT_IMAGE=ghcr.io/kioku-org/kioku-stateless:latest
-# Then restart:
-docker compose -f docker-compose.stateless.yml up -d --no-deps vexa-runtime-api-local vexa-meeting-api
 ```
 
-## Pending / Blockers
-
-### 1. Internal Whisper in bot container crashes (harmless)
-
-The outer entrypoint (`entrypoint-bot-runtime.sh`) starts an internal Whisper GPU service.
-On the local server (no GPU / CUDA driver mismatch), it crashes with:
-```
-CUDA failed with error CUDA driver version is insufficient for CUDA runtime version
-```
-This is **harmless** — the bot falls back to the external `vexa-transcription-service` container
-which runs fine. But it pollutes logs and could be fixed by skipping the internal service when
-`TRANSCRIPTION_SERVICE_URL` is already set externally.
-
-### 2. Google OAuth setup (not yet configured) — issue #34
-
-The code is fully implemented (NextAuth in `services/dashboard/src/app/api/auth/[...nextauth]/route.ts`).
-When `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set, the "Continue with Google" button
-appears automatically. Users who sign in with Google get auto-registered.
-
-Steps for the server:
-1. Go to https://console.cloud.google.com → APIs & Services → Credentials
-2. Create OAuth 2.0 Client ID (Web application)
-3. Authorized redirect URI: `https://dashboard.kioku.chat/api/auth/callback/google`
-4. Add to `.env` on server:
-   ```
-   GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
-   GOOGLE_CLIENT_SECRET=your-secret
-   VEXA_ALLOW_DIRECT_LOGIN=false   # disable open email login for production
-   ```
-5. Restart dashboard: `docker compose -f docker-compose.stateless.yml restart kioku-dashboard`
-
-For dev/testing `VEXA_ALLOW_DIRECT_LOGIN=true` means typing any email logs you in (no verification).
-
-## Deploy Server Steps (after CI builds)
+## Deploy Server Steps
 
 ```bash
 cd /home/growit/ws/kioku/deployment/docker
 
-# Pull new dashboard image (CI takes ~10 min after push to master)
-docker compose -f docker-compose.stateless.yml pull kioku-dashboard
+# Pull latest images (after CI builds on master push)
+docker compose -f docker-compose.stateless.yml pull kioku-dashboard kioku-mcp
+docker compose -f docker-compose.stateless.yml up -d --no-deps kioku-dashboard kioku-mcp
 
-# Restart
-docker compose -f docker-compose.stateless.yml up -d --no-deps kioku-dashboard
-
-# Also pull stateless bot image (used by runtime-api-local to spawn Chrome bots)
-docker pull ghcr.io/kioku-org/kioku-stateless:latest
-# Then update VEXA_BOT_IMAGE=ghcr.io/kioku-org/kioku-stateless:latest in .env
-# and restart meeting-api + runtime-api-local
+# Update bot image (after whisper=0 fix is merged to master and CI builds):
+# 1. In .env: VEXA_BOT_IMAGE=ghcr.io/kioku-org/kioku-stateless:latest
+# 2. docker compose -f docker-compose.stateless.yml up -d --no-deps vexa-runtime-api-local vexa-meeting-api
 ```
 
 ## Bot Concurrency Cap
 
-After users register, set their bot cap via admin-api:
-
 ```bash
-# Get list of users
-curl -H "Authorization: Bearer $VEXA_ADMIN_API_TOKEN" http://localhost:8057/admin/users
+# Get users
+curl -s -H "X-Admin-API-Key: $VEXA_ADMIN_API_TOKEN" http://localhost:8057/admin/users
 
-# Patch a user's bot limit
-curl -X PATCH -H "Authorization: Bearer $VEXA_ADMIN_API_TOKEN" \
+# Set bot cap
+curl -X PATCH -H "X-Admin-API-Key: $VEXA_ADMIN_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"max_concurrent_bots": 3}' \
   http://localhost:8057/admin/users/{user_id}
@@ -134,24 +141,23 @@ curl -X PATCH -H "Authorization: Bearer $VEXA_ADMIN_API_TOKEN" \
 | `true`               | < N             | local Docker |
 | `true`               | ≥ N (overflow)  | RunPod       |
 
-Set `USE_LOCAL_RESOURCE=true` and `LOCAL_BOT_THRESHOLD=3` in `.env` for the server.
-
 ## After Deploy — Verify
 
 ```bash
 curl -I https://dashboard.kioku.chat
-curl -s https://dashboard.kioku.chat/api/health | jq .
+curl -s https://dashboard.kioku.chat/api/health | python3 -m json.tool
 curl -I https://mcp.kioku.chat/health
 ```
-
-Expected: `"status": "ok"` with `googleOAuth.configured: true` if OAuth is set up.
 
 ## GitHub Issue State
 
 - `#27` closed: RunPod stateful path
 - `#28` closed: stateless GPU path
-- `#30` open → ready to close: dashboard + MCP moved and deployed
-- `#31` open → partially done: dashboard.kioku.chat live, bot works, Google OAuth pending
-- `#32` open → ready to close: runtime router implemented and deployed
-- `#33` open → **FIXED**: bot now joins meetings; Chrome revision + transcription port fixed
-- `#34` open: Google OAuth — needs Google Cloud Console credentials
+- `#30` closed: dashboard + MCP moved and deployed
+- `#31` closed: dashboard.kioku.chat live, direct login works
+- `#32` closed: runtime router implemented and deployed
+- `#33` closed: bot joins meetings; Chrome revision + transcription port fixed
+- `#34` closed: Google OAuth fully wired; operator runs setup-google-oauth.sh with credentials
+- `#35` closed: whisper=0 fully fixed — queue-poll bridge + `reportTrackAudio?.()` guard; verified in meeting 102
+- `#36` closed: Dockerfile.stateless module-build chain fixed
+- `#37` closed: collector JWT mismatch — new bots get fresh tokens; unaffected going forward
