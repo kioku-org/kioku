@@ -1,46 +1,118 @@
 name: kioku-stateful
 
 services:
-  postgres:
-    image: pgvector/pgvector:pg16
-    container_name: postgres
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+  kioku-stateful:
+    image: ghcr.io/kioku-org/kioku-stateful:latest
+    build:
+      context: ../../
+      dockerfile: deployment/docker/Dockerfile.stateful
+    container_name: kioku-stateful
+    group_add:
+      - "${DOCKER_GID:-983}"
+    ports:
+      - "${VEXA_API_PORT:-8056}:8056"
+      - "${HIVEMIND_PORT:-9100}:9100"
+      - "3001:3001"
+      - "18888:18888"
+      - "22:22"
     environment:
-      POSTGRES_USER: ${DB_USER:-kioku}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-kioku}
-      POSTGRES_DB: ${DB_NAME:-kioku}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-kioku} -d ${DB_NAME:-kioku}"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
-    networks:
-      - kioku-network
-    restart: unless-stopped
-
-  qdrant:
-    image: qdrant/qdrant:v1.10.1
-    container_name: qdrant
+      # ── Database ──────────────────────────────────────────────────────────────
+      - DB_USER=${DB_USER:-kioku}
+      - DB_PASSWORD=${DB_PASSWORD:-kioku}
+      - DB_NAME=${DB_NAME:-kioku}
+      # ── Redis ─────────────────────────────────────────────────────────────────
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-kioku-redis}
+      # ── Storage ───────────────────────────────────────────────────────────────
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-vexa-access-key}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-vexa-secret-key}
+      - MINIO_BUCKET=${MINIO_BUCKET:-vexa-recordings}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-minio}
+      - RECORDING_ENABLED=${RECORDING_ENABLED:-false}
+      # ── Hivemind ──────────────────────────────────────────────────────────────
+      - HIVEMIND_JWT_SECRET=${HIVEMIND_JWT_SECRET}
+      - HIVEMIND_ENCRYPTION_SECRET=${HIVEMIND_ENCRYPTION_SECRET}
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      # ── API + auth ────────────────────────────────────────────────────────────
+      - VEXA_API_PORT=${VEXA_API_PORT:-8056}
+      - VEXA_PUBLIC_URL=${VEXA_PUBLIC_URL:-http://localhost:8056}
+      - VEXA_ADMIN_API_TOKEN=${VEXA_ADMIN_API_TOKEN}
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - VEXA_ENV=${VEXA_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # ── Bot runtime ───────────────────────────────────────────────────────────
+      - BOT_IMAGE=${VEXA_BOT_IMAGE:-ghcr.io/kioku-org/kioku-stateless:latest}
+      - USE_LOCAL_RESOURCE=${USE_LOCAL_RESOURCE:-true}
+      - LOCAL_BOT_THRESHOLD=${LOCAL_BOT_THRESHOLD:-3}
+      - DOCKER_GID=${DOCKER_GID:-983}
+      - BOT_MODEL_CACHE_DIR=${BOT_MODEL_CACHE_DIR:-}
+      - BOT_WHISPER_MODEL=${BOT_WHISPER_MODEL:-}
+      # ── RunPod ────────────────────────────────────────────────────────────────
+      - RUNPOD_API_KEY=${RUNPOD_API_KEY:-}
+      - RUNPOD_GPU_TYPES=${RUNPOD_GPU_TYPES:-NVIDIA GeForce RTX 3090,NVIDIA RTX A5000,NVIDIA RTX A4000}
+      - RUNPOD_CLOUD_TYPE=${RUNPOD_CLOUD_TYPE:-COMMUNITY}
+      # ── Cookie service ────────────────────────────────────────────────────────
+      - COOKIE_SERVICE_TOKEN=${COOKIE_SERVICE_TOKEN:-}
+      # ── Integrations ──────────────────────────────────────────────────────────
+      - VEXA_TRANSCRIBER_API_KEY=${VEXA_TRANSCRIBER_API_KEY:-}
+      - ZOOM_CLIENT_ID=${ZOOM_CLIENT_ID:-}
+      - ZOOM_CLIENT_SECRET=${ZOOM_CLIENT_SECRET:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - TTS_API_TOKEN=${TTS_API_TOKEN:-}
+      # ── Dashboard ─────────────────────────────────────────────────────────────
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://dashboard.kioku.chat}
+      - VEXA_ALLOW_DIRECT_LOGIN=${VEXA_ALLOW_DIRECT_LOGIN:-true}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - AZURE_AD_CLIENT_ID=${AZURE_AD_CLIENT_ID:-}
+      - AZURE_AD_CLIENT_SECRET=${AZURE_AD_CLIENT_SECRET:-}
+      - AZURE_AD_TENANT_ID=${AZURE_AD_TENANT_ID:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - NEXT_PUBLIC_DOCS_URL=${NEXT_PUBLIC_DOCS_URL:-https://docs.kioku.chat}
+      # ── SSH (optional, for RunPod terminal access) ────────────────────────────
+      - PUBLIC_KEY=${PUBLIC_KEY:-}
     volumes:
-      - qdrant-data:/qdrant/storage
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
+      - /var/run/docker.sock:/var/run/docker.sock
+      - postgres-data:/data/postgresql
+      - qdrant-data:/data/qdrant
+      - redis-data:/data/redis
+      - minio-data:/data/minio
+      - ollama-data:/data/ollama/models
+      - cookie-data:/data/cookie
+      - recordings-data:/data/recordings
+      - ./configs/runtime-profiles.yaml:/app/profiles.yaml:ro
+      - ./cloudflared.yml:/etc/cloudflared/config.yml:ro
+      - ${CLOUDFLARED_CREDENTIALS_DIR:-~/.cloudflared}:/etc/cloudflared/creds:ro
     networks:
       - kioku-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8056/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
 
 volumes:
   postgres-data:
     name: kioku-postgres-data
   qdrant-data:
     name: kioku-qdrant-data
+  redis-data:
+    name: kioku-redis-data
+  minio-data:
+    name: kioku-minio-data
+  ollama-data:
+    name: kioku-ollama-data
+  cookie-data:
+    name: kioku-cookie-data
+  recordings-data:
+    name: kioku-recordings-data
 
 networks:
   kioku-network:
