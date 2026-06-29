@@ -1,0 +1,126 @@
+# ==============================================================================
+# Kioku Stateless Pod — GPU bot + Whisper transcription (ephemeral, per meeting)
+# Build: docker build -f deployment/docker/Dockerfile.stateless -t ghcr.io/kioku-org/kioku-stateless .
+# ==============================================================================
+
+# ─── Stage 1: Build Zoom SDK native addon ─────────────────────────────────────
+FROM node:20-bullseye AS native-builder
+
+RUN apt-get update && apt-get install -y \
+    build-essential cmake python3 libssl-dev qtbase5-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app/vexa-bot
+
+COPY services/vexa-bot/package*.json ./
+COPY services/vexa-bot/binding.gyp ./
+COPY services/vexa-bot/core/src/platforms/zoom/native/ ./core/src/platforms/zoom/native/
+
+RUN npm install --ignore-scripts
+RUN npm run build:native || echo "[Build] Native addon build skipped (SDK not available)"
+
+# ─── Stage 2: Build TypeScript + Playwright ───────────────────────────────────
+FROM mcr.microsoft.com/playwright:v1.56.0-jammy AS ts-builder
+
+WORKDIR /app/vexa-bot
+
+RUN apt-get update && apt-get install -y \
+    xvfb ffmpeg x11-utils pulseaudio x11-xserver-utils fluxbox \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy modules + core manifests together so that any module change invalidates
+# the npm install layer. Modules are built in dependency order before npm install
+# so file: references resolve to compiled packages.
+COPY services/modules/ /modules/
+COPY services/vexa-bot/core/package*.json ./core/
+COPY services/vexa-bot/core/tsconfig.json ./core/
+COPY services/vexa-bot/core/build-browser-utils.js ./core/
+
+WORKDIR /app/vexa-bot/core
+# shared/* have no @vexa deps; pipeline modules depend on shared; rest are independent
+RUN cd /modules/shared/whisper       && npm install --ignore-scripts && npm run build && \
+    cd /modules/shared/buffer        && npm install --ignore-scripts && npm run build && \
+    cd /modules/gmeet/capture        && npm install --ignore-scripts && npm run build && \
+    cd /modules/gmeet/pipeline       && npm install --ignore-scripts && npm run build && \
+    cd /modules/mixed/capture/zoom   && npm install --ignore-scripts && npm run build && \
+    cd /modules/mixed/capture/teams  && npm install --ignore-scripts && npm run build && \
+    cd /modules/mixed/pipeline       && npm install --ignore-scripts && npm run build && \
+    cd /modules/recording            && npm install --ignore-scripts && npm run build && \
+    cd /modules/join                 && npm install --ignore-scripts && npm run build && \
+    cd /modules/remote-browser       && npm install --ignore-scripts && npm run build && \
+    cd /modules/recorder             && npm install --ignore-scripts && npm run build && \
+    cd /app/vexa-bot/core            && npm install && npm install -g typescript
+
+COPY services/vexa-bot/core/src/ ./src/
+
+RUN npm run build
+RUN npx playwright install-deps && npx playwright install --with-deps
+RUN arch=$(uname -m) && if [ "$arch" = "x86_64" ] || [ "$arch" = "amd64" ]; then \
+    npx playwright install msedge; \
+    else echo "Skipping msedge on $arch"; fi
+
+# ─── Stage 3: Runtime (CUDA + Playwright + Whisper) ───────────────────────────
+FROM nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    DISPLAY=:99 \
+    OLLAMA_HOST=0.0.0.0:11434
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl gnupg \
+    python3 python3-pip \
+    ffmpeg libsndfile1 \
+    xvfb pulseaudio xserver-xephyr \
+    libssl3 libxcb-xtest0 \
+    fluxbox x11vnc xdotool xclip \
+    novnc python3-websockify \
+    socat openssh-server \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /run/sshd
+
+# Install OS-level browser dependencies only (no download — browsers come from ts-builder below).
+# Stage 3's unversioned "npx playwright install" downloads a *newer* Playwright's chromium
+# (e.g. chromium-1228) while the project's playwright-core (1.56.0) expects chromium-1194.
+# Using playwright@1.56.0 here pins the dependency install to the matching revision.
+RUN npx --yes playwright@1.56.0 install-deps chromium
+
+# Copy the correctly-versioned browsers from ts-builder.
+# playwright:v1.56.0-jammy sets PLAYWRIGHT_BROWSERS_PATH=/ms-playwright, so all
+# browser binaries (pre-installed chromium + msedge from npx playwright install)
+# live at /ms-playwright — not /root/.cache. Map them to the runtime default.
+COPY --from=ts-builder /ms-playwright /root/.cache/ms-playwright
+
+RUN mkdir -p /root/ms-playwright && chmod -R 777 /root/ms-playwright
+RUN mkdir -p /app/vexa-bot/storage/screenshots /app/vexa-bot/storage/logs /app/vexa-bot/storage/temp \
+    && chmod -R 777 /app/vexa-bot/storage
+
+# Copy bot artifacts from builders
+COPY --from=native-builder /app/vexa-bot/package*.json /app/vexa-bot/
+COPY --from=native-builder /app/vexa-bot/node_modules /app/vexa-bot/node_modules
+COPY --from=native-builder /app/vexa-bot/build /app/vexa-bot/build
+COPY --from=native-builder /app/vexa-bot/core/src/platforms/zoom/native/zoom_meeting_sdk /app/vexa-bot/core/src/platforms/zoom/native/zoom_meeting_sdk
+
+COPY --from=ts-builder /app/vexa-bot/core/package*.json /app/vexa-bot/core/
+COPY --from=ts-builder /app/vexa-bot/core/node_modules /app/vexa-bot/core/node_modules
+COPY --from=ts-builder /app/vexa-bot/core/dist /app/vexa-bot/core/dist
+# @vexa/* entries in node_modules are symlinks into /modules/ (file: deps).
+# Copy the built modules so the symlinks resolve at runtime.
+COPY --from=ts-builder /modules /modules
+
+COPY services/vexa-bot/core/entrypoint.sh /app/vexa-bot/entrypoint.sh
+RUN chmod +x /app/vexa-bot/entrypoint.sh
+
+# Install Whisper transcription service (GPU)
+COPY services/transcription-service/requirements.txt /opt/transcription/
+RUN pip3 install --no-cache-dir -r /opt/transcription/requirements.txt
+COPY services/transcription-service/main.py /opt/transcription/
+
+# Copy entrypoint
+COPY deployment/docker/entrypoint-stateless-runtime.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+WORKDIR /app/vexa-bot/core
+
+ENTRYPOINT ["/entrypoint.sh"]
