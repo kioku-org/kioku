@@ -23,6 +23,9 @@ profiles:
       TTS_SERVICE_URL: "${TTS_SERVICE_URL}"
       INTERNAL_API_SECRET: "${INTERNAL_API_SECRET:-}"
       TRANSCRIPTION_SERVICE_URL: "http://localhost:8000"
+      MODEL_SIZE: "${BOT_WHISPER_MODEL:-large-v3-turbo}"
+      COMPUTE_TYPE: "int8"
+      MODEL_PATH: "${BOT_MODEL_CACHE_DIR:-/opt/kioku/models}"
     ports:
       "9222/tcp": {}
       "6080/tcp": {}
