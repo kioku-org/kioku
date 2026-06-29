@@ -253,7 +253,7 @@ stderr_logfile=/var/log/runtime-api-local.err
 command=/opt/venv/bin/uvicorn runtime_api.main:app --host 0.0.0.0 --port 8092
 directory=/opt/vexa/services/runtime-api
 environment=ORCHESTRATOR_BACKEND="runpod",REDIS_URL="${REDIS_LOCAL_URL}",RUNPOD_ACCOUNT_API_KEY="${RUNPOD_API_KEY:-}",RUNPOD_GPU_TYPES="${RUNPOD_GPU_TYPES:-NVIDIA GeForce RTX 3090,NVIDIA RTX A5000,NVIDIA RTX A4000}",RUNPOD_CLOUD_TYPE="${RUNPOD_CLOUD_TYPE:-COMMUNITY}",TRANSCRIPTION_SERVICE_URL="http://localhost:8000",TTS_SERVICE_URL="${BOT_TTS_URL}",INTERNAL_API_SECRET="${INTERNAL_API_SECRET:-}",PROFILES_PATH="/app/profiles.yaml",LOG_LEVEL="${LOG_LEVEL:-INFO}",VEXA_ENV="${VEXA_ENV:-production}",HOST="0.0.0.0",PORT="8092"
-autostart=true
+autostart=$([ -n "${RUNPOD_API_KEY:-}" ] && echo true || echo false)
 autorestart=true
 stdout_logfile=/var/log/runtime-api-runpod.log
 stderr_logfile=/var/log/runtime-api-runpod.err
