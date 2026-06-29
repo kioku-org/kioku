@@ -80,6 +80,13 @@ Everything is wired. Just need real credentials from Google Cloud Console:
 Bots currently join meetings as a generic identity. Issue #38 tracks adding a pool of
 pre-registered bot accounts for Google Meet, Zoom, Teams to avoid waiting-room friction.
 
+### Authenticated bot self-leaves immediately (issue #43)
+
+When the **Authenticated** toggle is ON in the dashboard Join form, the bot enters the meeting then
+immediately self-leaves. Unauthenticated mode is unaffected. Root cause unknown — likely the cookie
+service (`kioku-stateful:8099`) has no valid session cookies for the bot identity, triggering an
+auth failure that causes an early exit. Check `docker logs meeting-<id>` for the exit reason.
+
 ### Bot cleanup when left alone (issue #41)
 
 When the last human leaves a meeting, the bot should auto-exit rather than linger.
@@ -160,3 +167,4 @@ curl https://api.kioku.chat/health          # {"status":"ok"}
 - `#38` open: bot pool for meeting identity
 - `#41` open: bot cleanup when left alone
 - `#42` open: Makefile for fresh install
+- `#43` open: authenticated mode causes bot to self-leave immediately
