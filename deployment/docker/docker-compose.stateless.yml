@@ -1,20 +1,20 @@
 name: kioku-stateless
 
 services:
-  vexa-api-gateway:
+  api-gateway:
     build:
-      context: ${KIOKU_VEXA_PATH:-../../services/vexa}
-      dockerfile: services/api-gateway/Dockerfile
-    container_name: kioku-vexa-api-gateway
+      context: ${KIOKU_VEXA_PATH:-../../services}
+      dockerfile: api-gateway/Dockerfile
+    container_name: api-gateway
     ports:
       - "${VEXA_API_PORT:-8056}:8000"
     environment:
-      - ADMIN_API_URL=http://vexa-admin-api:8001
-      - MEETING_API_URL=http://vexa-meeting-api:8080
-      - TRANSCRIPTION_COLLECTOR_URL=http://vexa-meeting-api:8080
-      - MCP_URL=http://kioku-mcp:18888
-      - AGENT_API_URL=http://vexa-agent-api:8100
-      - REDIS_URL=redis://vexa-redis:6379/0
+      - ADMIN_API_URL=http://admin-api:8001
+      - MEETING_API_URL=http://meeting-api:8080
+      - TRANSCRIPTION_COLLECTOR_URL=http://meeting-api:8080
+      - MCP_URL=http://mcp:18888
+      - AGENT_API_URL=http://agent-api:8100
+      - REDIS_URL=redis://redis:6379/0
       - PUBLIC_BASE_URL=${VEXA_PUBLIC_URL:-http://localhost:8056}
       - TRANSCRIPT_SHARE_TTL_SECONDS=900
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
@@ -30,19 +30,19 @@ services:
       - DB_SSL_MODE=disable
     init: true
     depends_on:
-      vexa-admin-api:
+      admin-api:
         condition: service_started
-      vexa-meeting-api:
+      meeting-api:
         condition: service_started
     networks:
       - kioku-network
     restart: unless-stopped
 
-  vexa-admin-api:
+  admin-api:
     build:
-      context: ${KIOKU_VEXA_PATH:-../../services/vexa}
-      dockerfile: services/admin-api/Dockerfile
-    container_name: kioku-vexa-admin-api
+      context: ${KIOKU_VEXA_PATH:-../../services}
+      dockerfile: admin-api/Dockerfile
+    container_name: admin-api
     ports:
       - "${VEXA_ADMIN_PORT:-8057}:8001"
     environment:
@@ -65,11 +65,11 @@ services:
       - kioku-network
     restart: unless-stopped
 
-  vexa-meeting-api:
+  meeting-api:
     build:
-      context: ${KIOKU_VEXA_PATH:-../../services/vexa}
-      dockerfile: services/meeting-api/Dockerfile
-    container_name: kioku-vexa-meeting-api
+      context: ${KIOKU_VEXA_PATH:-../../services}
+      dockerfile: meeting-api/Dockerfile
+    container_name: meeting-api
     environment:
       - DB_HOST=${DB_HOST:-postgres}
       - DB_PORT=5432
@@ -80,21 +80,21 @@ services:
       - DB_POOL_SIZE=20
       - DB_MAX_OVERFLOW=20
       - DB_POOL_TIMEOUT=10
-      - REDIS_URL=redis://vexa-redis:6379/0
-      - REDIS_HOST=vexa-redis
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_STREAM_NAME=transcription_segments
       - REDIS_CONSUMER_GROUP=collector_group
       - REDIS_STREAM_READ_COUNT=10
       - REDIS_STREAM_BLOCK_MS=2000
-      - TRANSCRIPTION_COLLECTOR_URL=http://vexa-meeting-api:8080
-      - TRANSCRIPTION_SERVICE_URL=http://vexa-transcription-service:8000
+      - TRANSCRIPTION_COLLECTOR_URL=http://meeting-api:8080
+      - TRANSCRIPTION_SERVICE_URL=http://transcription:8000
       - BOT_TRANSCRIPTION_SERVICE_URL=http://localhost:8000
-      - REMOTE_TRANSCRIBER_URL=http://vexa-transcription-service:8000/v1/audio/transcriptions
+      - REMOTE_TRANSCRIBER_URL=http://transcription:8000/v1/audio/transcriptions
       - REMOTE_TRANSCRIBER_API_KEY=${VEXA_TRANSCRIBER_API_KEY:-}
-      - TTS_SERVICE_URL=http://vexa-tts-service:8002
-      - RUNTIME_API_URL=http://kioku-runtime-router:8090
-      - MEETING_API_URL=http://vexa-meeting-api:8080
+      - TTS_SERVICE_URL=http://tts:8002
+      - RUNTIME_API_URL=http://runtime-router:8090
+      - MEETING_API_URL=http://meeting-api:8080
       - ADMIN_TOKEN=${VEXA_ADMIN_API_TOKEN}
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
@@ -102,7 +102,7 @@ services:
       - ZOOM_CLIENT_ID=${ZOOM_CLIENT_ID:-}
       - ZOOM_CLIENT_SECRET=${ZOOM_CLIENT_SECRET:-}
       - STORAGE_BACKEND=${STORAGE_BACKEND:-minio}
-      - MINIO_ENDPOINT=vexa-minio:9000
+      - MINIO_ENDPOINT=minio:9000
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-vexa-access-key}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-vexa-secret-key}
       - MINIO_BUCKET=${MINIO_BUCKET:-vexa-recordings}
@@ -112,40 +112,40 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - BOT_IMAGE_NAME=${VEXA_BOT_IMAGE:-ghcr.io/kioku-org/kioku-stateless:latest}
       - COOKIE_STORAGE_BACKEND=http
-      - COOKIE_SERVICE_URL=http://kioku-cookie-service:8099
+      - COOKIE_SERVICE_URL=http://cookie:8099
       - COOKIE_SERVICE_TOKEN=${COOKIE_SERVICE_TOKEN:-}
     volumes:
-      - vexa-recordings-data:/data/recordings
+      - recordings-data:/data/recordings
     init: true
     depends_on:
-      vexa-redis:
+      redis:
         condition: service_started
-      vexa-tts-service:
+      tts:
         condition: service_started
-      vexa-transcription-service:
+      transcription:
         condition: service_started
-      kioku-runtime-router:
+      runtime-router:
         condition: service_started
     networks:
       - kioku-network
     restart: unless-stopped
 
-  vexa-runtime-api-local:
+  runtime-api-local:
     build:
-      context: ${KIOKU_VEXA_PATH:-../../services/vexa}/services/runtime-api
+      context: ${KIOKU_VEXA_PATH:-../../services}/runtime-api
       dockerfile: Dockerfile
-    container_name: kioku-vexa-runtime-api-local
+    container_name: runtime-api-local
     group_add:
       - "${DOCKER_GID:-983}"
     environment:
       - ORCHESTRATOR_BACKEND=docker
-      - REDIS_URL=redis://vexa-redis:6379/0
+      - REDIS_URL=redis://redis:6379/0
       - DOCKER_HOST=unix:///var/run/docker.sock
       - DOCKER_NETWORK=kioku-network
       - BROWSER_IMAGE=${VEXA_BOT_IMAGE:-ghcr.io/kioku-org/kioku-stateless:latest}
-      - TRANSCRIPTION_SERVICE_URL=http://vexa-transcription-service:8000
+      - TRANSCRIPTION_SERVICE_URL=http://transcription:8000
       - TRANSCRIPTION_SERVICE_TOKEN=${VEXA_TRANSCRIBER_API_KEY:-}
-      - TTS_SERVICE_URL=http://vexa-tts-service:8002
+      - TTS_SERVICE_URL=http://tts:8002
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
       - PROFILES_PATH=/app/profiles.yaml
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -156,23 +156,23 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./configs/runtime-profiles.yaml:/app/profiles.yaml:ro
     depends_on:
-      vexa-redis:
+      redis:
         condition: service_started
     networks:
       - kioku-network
     restart: unless-stopped
 
-  vexa-runtime-api-runpod:
+  runtime-api-runpod:
     build:
-      context: ${KIOKU_VEXA_PATH:-../../services/vexa}/services/runtime-api
+      context: ${KIOKU_VEXA_PATH:-../../services}/runtime-api
       dockerfile: Dockerfile
-    container_name: kioku-vexa-runtime-api-runpod
+    container_name: runtime-api-runpod
     environment:
       - ORCHESTRATOR_BACKEND=runpod
-      - REDIS_URL=redis://vexa-redis:6379/0
-      - TRANSCRIPTION_SERVICE_URL=http://vexa-transcription-service:8000
+      - REDIS_URL=redis://redis:6379/0
+      - TRANSCRIPTION_SERVICE_URL=http://transcription:8000
       - TRANSCRIPTION_SERVICE_TOKEN=${VEXA_TRANSCRIBER_API_KEY:-}
-      - TTS_SERVICE_URL=http://vexa-tts-service:8002
+      - TTS_SERVICE_URL=http://tts:8002
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
       - PROFILES_PATH=/app/profiles.yaml
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -182,26 +182,26 @@ services:
     volumes:
       - ./configs/runtime-profiles.yaml:/app/profiles.yaml:ro
     depends_on:
-      vexa-redis:
+      redis:
         condition: service_started
     networks:
       - kioku-network
     restart: unless-stopped
 
-  kioku-runtime-router:
+  runtime-router:
     image: ghcr.io/kioku-org/kioku-runtime-router:latest
-    container_name: kioku-runtime-router
+    container_name: runtime-router
     environment:
       - USE_LOCAL_RESOURCE=${USE_LOCAL_RESOURCE:-true}
       - LOCAL_BOT_THRESHOLD=${LOCAL_BOT_THRESHOLD:-3}
-      - LOCAL_BACKEND_URL=http://vexa-runtime-api-local:8090
-      - RUNPOD_BACKEND_URL=http://vexa-runtime-api-runpod:8090
+      - LOCAL_BACKEND_URL=http://runtime-api-local:8090
+      - RUNPOD_BACKEND_URL=http://runtime-api-runpod:8090
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     init: true
     depends_on:
-      vexa-runtime-api-local:
+      runtime-api-local:
         condition: service_started
-      vexa-runtime-api-runpod:
+      runtime-api-runpod:
         condition: service_started
     networks:
       - kioku-network
@@ -213,17 +213,17 @@ services:
       retries: 3
       start_period: 15s
 
-  vexa-agent-api:
+  agent-api:
     build:
-      context: ${KIOKU_VEXA_PATH:-../../services/vexa}
-      dockerfile: services/agent-api/Dockerfile
-    container_name: kioku-vexa-agent-api
+      context: ${KIOKU_VEXA_PATH:-../../services}
+      dockerfile: agent-api/Dockerfile
+    container_name: agent-api
     environment:
-      - REDIS_URL=redis://vexa-redis:6379/0
-      - RUNTIME_API_URL=http://vexa-meeting-api:8080
-      - ADMIN_API_URL=http://vexa-admin-api:8001
+      - REDIS_URL=redis://redis:6379/0
+      - RUNTIME_API_URL=http://meeting-api:8080
+      - ADMIN_API_URL=http://admin-api:8001
       - ADMIN_API_TOKEN=${VEXA_ADMIN_API_TOKEN:-}
-      - AGENT_API_INTERNAL_URL=http://vexa-agent-api:8100
+      - AGENT_API_INTERNAL_URL=http://agent-api:8100
       - DOCKER_NETWORK=kioku-network
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
       - VEXA_ENV=${VEXA_ENV:-production}
@@ -237,9 +237,9 @@ services:
 
   model-warmup:
     build:
-      context: ${KIOKU_VEXA_PATH:-../../services/vexa}/services/transcription-service
+      context: ${KIOKU_VEXA_PATH:-../../services}/transcription-service
       dockerfile: Dockerfile
-    container_name: kioku-model-warmup
+    container_name: model-warmup
     entrypoint: ["python3", "-c", "from faster_whisper import WhisperModel; import os; m=os.getenv('MODEL_SIZE','large-v3-turbo'); print('Downloading model:',m); WhisperModel(m, download_root='/app/models', device='cpu', compute_type='int8'); print('Model ready.')"]
     environment:
       - MODEL_SIZE=${BOT_WHISPER_MODEL:-large-v3-turbo}
@@ -249,11 +249,11 @@ services:
       - kioku-network
     restart: "no"
 
-  vexa-transcription-service:
+  transcription:
     build:
-      context: ${KIOKU_VEXA_PATH:-../../services/vexa}/services/transcription-service
+      context: ${KIOKU_VEXA_PATH:-../../services}/transcription-service
       dockerfile: Dockerfile
-    container_name: kioku-vexa-transcription-service
+    container_name: transcription
     environment:
       - API_TOKEN=${VEXA_TRANSCRIBER_API_KEY:-}
       - MODEL_SIZE=large-v3-turbo
@@ -273,31 +273,31 @@ services:
               count: 1
               capabilities: [gpu]
 
-  kioku-cookie-service:
+  cookie:
     build:
-      context: ../../services/cookie-service
+      context: ../../services/cookie
       dockerfile: Dockerfile
-    container_name: kioku-cookie-service
+    container_name: cookie
     environment:
       - COOKIE_SERVICE_TOKEN=${COOKIE_SERVICE_TOKEN:-}
     volumes:
-      - kioku-cookie-data:/data
+      - cookie-data:/data
     networks:
       - kioku-network
     restart: unless-stopped
 
-  kioku-mcp:
+  mcp:
     image: ghcr.io/kioku-org/kioku-mcp:latest
-    container_name: kioku-mcp
+    container_name: mcp
     ports:
       - "18888:18888"
     environment:
-      - KIOKU_API_URL=http://vexa-api-gateway:8000
+      - KIOKU_API_URL=http://api-gateway:8000
       - KIOKU_ENV=${KIOKU_ENV:-production}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     init: true
     depends_on:
-      vexa-api-gateway:
+      api-gateway:
         condition: service_started
     networks:
       - kioku-network
@@ -309,11 +309,11 @@ services:
       retries: 3
       start_period: 15s
 
-  vexa-tts-service:
+  tts:
     build:
-      context: ${KIOKU_VEXA_PATH:-../../services/vexa}
-      dockerfile: services/tts-service/Dockerfile
-    container_name: kioku-vexa-tts-service
+      context: ${KIOKU_VEXA_PATH:-../../services}
+      dockerfile: tts-service/Dockerfile
+    container_name: tts
     environment:
       - TTS_API_TOKEN=${TTS_API_TOKEN:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -327,20 +327,20 @@ services:
       - kioku-network
     restart: unless-stopped
 
-  vexa-redis:
+  redis:
     image: redis:7.0-alpine
-    container_name: kioku-vexa-redis
+    container_name: redis
     command:
       ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     volumes:
-      - vexa-redis-data:/data
+      - redis-data:/data
     networks:
       - kioku-network
     restart: unless-stopped
 
-  vexa-minio:
+  minio:
     image: minio/minio:latest
-    container_name: kioku-vexa-minio
+    container_name: minio
     command: server /data --console-address ":9001"
     ports:
       - "9000:9000"
@@ -348,24 +348,24 @@ services:
       - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-vexa-access-key}
       - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-vexa-secret-key}
     volumes:
-      - vexa-minio-data:/data
+      - minio-data:/data
     networks:
       - kioku-network
     restart: unless-stopped
 
-  vexa-minio-init:
+  minio-init:
     image: minio/mc:latest
-    container_name: kioku-vexa-minio-init
+    container_name: minio-init
     depends_on:
-      - vexa-minio
+      - minio
     entrypoint:
       - /bin/sh
       - -c
       - |
-        until mc alias set vexa http://vexa-minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}; do
+        until mc alias set minio http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}; do
           echo "Waiting for MinIO..."; sleep 3
         done
-        mc mb --ignore-existing vexa/$${MINIO_BUCKET:-vexa-recordings}
+        mc mb --ignore-existing minio/$${MINIO_BUCKET:-vexa-recordings}
         exit 0
     environment:
       - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-vexa-access-key}
@@ -375,7 +375,7 @@ services:
 
   ollama:
     image: ollama/ollama:latest
-    container_name: kioku-ollama
+    container_name: ollama
     volumes:
       - ollama-data:/root/.ollama
     networks:
@@ -394,7 +394,7 @@ services:
 
   ollama-pull:
     image: ollama/ollama:latest
-    container_name: kioku-ollama-pull
+    container_name: ollama-pull
     depends_on:
       - ollama
     entrypoint:
@@ -413,10 +413,10 @@ services:
       - kioku-network
     restart: "no"
 
-  kioku-hivemind:
+  hivemind:
     build:
       context: ${HIVEMIND_PATH:-../../services/hivemind}
-    container_name: kioku-hivemind
+    container_name: hivemind
     ports:
       - "${HIVEMIND_PORT:-9100}:9100"
     environment:
@@ -430,8 +430,8 @@ services:
       - JWT_SECRET=${HIVEMIND_JWT_SECRET}
       - JWT_TTL_SECONDS=2592000
       - ENCRYPTION_SECRET=${HIVEMIND_ENCRYPTION_SECRET}
-      - VEXA_API_URL=http://vexa-api-gateway:8000
-      - VEXA_ADMIN_API_URL=http://vexa-admin-api:8001
+      - VEXA_API_URL=http://api-gateway:8000
+      - VEXA_ADMIN_API_URL=http://admin-api:8001
       - VEXA_ADMIN_TOKEN=${VEXA_ADMIN_API_TOKEN}
       - HOST=0.0.0.0
       - PORT=9100
@@ -454,18 +454,18 @@ services:
       retries: 3
       start_period: 30s
 
-  kioku-dashboard:
+  dashboard:
     image: ghcr.io/kioku-org/kioku-dashboard:latest
-    container_name: kioku-dashboard
+    container_name: dashboard
     ports:
       - "3001:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001
       - HOSTNAME=0.0.0.0
-      - VEXA_API_URL=http://vexa-api-gateway:8000
+      - VEXA_API_URL=http://api-gateway:8000
       - VEXA_ADMIN_API_KEY=${VEXA_ADMIN_API_TOKEN}
-      - VEXA_ADMIN_API_URL=http://vexa-admin-api:8001
+      - VEXA_ADMIN_API_URL=http://admin-api:8001
       - VEXA_ALLOW_DIRECT_LOGIN=${VEXA_ALLOW_DIRECT_LOGIN:-true}
       - NEXTAUTH_URL=${NEXTAUTH_URL:-https://dashboard.kioku.chat}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
@@ -479,9 +479,9 @@ services:
       - SMTP_PASS=${SMTP_PASS:-}
       - NEXT_PUBLIC_DOCS_URL=${NEXT_PUBLIC_DOCS_URL:-https://docs.kioku.chat}
     depends_on:
-      vexa-api-gateway:
+      api-gateway:
         condition: service_started
-      vexa-admin-api:
+      admin-api:
         condition: service_started
     networks:
       - kioku-network
@@ -495,36 +495,35 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    container_name: kioku-cloudflared
+    container_name: cloudflared
     command: tunnel --config /etc/cloudflared/config.yml run
     volumes:
       - ./cloudflared.yml:/etc/cloudflared/config.yml:ro
       - ${CLOUDFLARED_CREDENTIALS_DIR:-~/.cloudflared}:/etc/cloudflared/creds:ro
     depends_on:
-      kioku-hivemind:
+      hivemind:
         condition: service_healthy
-      vexa-api-gateway:
+      api-gateway:
         condition: service_started
-      kioku-dashboard:
+      dashboard:
         condition: service_started
-      kioku-mcp:
+      mcp:
         condition: service_started
     networks:
       - kioku-network
     restart: unless-stopped
 
 volumes:
-  vexa-redis-data:
-    name: kioku-vexa-redis-data
-  vexa-minio-data:
-    name: kioku-vexa-minio-data
-  vexa-recordings-data:
-    name: kioku-vexa-recordings-data
+  redis-data:
+    name: kioku-redis-data
+  minio-data:
+    name: kioku-minio-data
+  recordings-data:
+    name: kioku-recordings-data
   ollama-data:
     name: kioku-ollama-data
-  kioku-cookie-data:
+  cookie-data:
     name: kioku-cookie-data
-
 
 networks:
   kioku-network:

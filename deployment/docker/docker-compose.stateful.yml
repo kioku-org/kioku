@@ -1,10 +1,6 @@
 name: kioku-stateful
 
 services:
-  # ─────────────────────────────────────────────────────────────────────────────
-  # POSTGRES
-  # ─────────────────────────────────────────────────────────────────────────────
-
   postgres:
     image: pgvector/pgvector:pg16
     container_name: postgres
@@ -24,10 +20,6 @@ services:
     networks:
       - kioku-network
     restart: unless-stopped
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # QDRANT
-  # ─────────────────────────────────────────────────────────────────────────────
 
   qdrant:
     image: qdrant/qdrant:v1.10.1
