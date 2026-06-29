@@ -1,14 +1,17 @@
 # LEFTOVER
 
-Last updated: 2026-06-29 (rev 6)
+Last updated: 2026-06-29 (rev 7)
 
 ## Current Status
 
-Pipeline fully verified end-to-end via FAKE_AUDIO test: audio → speakerManager → whisper → Redis →
-collector → Postgres → dashboard all confirmed working. Root cause of `whisper=0` was a JWT signing
-key mismatch (ADMIN_TOKEN changed, so collector silently dropped all segments from older bots).
-New bots automatically get freshly-minted tokens and are unaffected. Real-meeting audio capture
-(AudioWorklet → onAudio → queue) still needs one live test to confirm.
+Full pipeline confirmed working end-to-end with real Google Meet audio. Both root causes of
+`whisper=0` are fixed and verified in production (meeting 102):
+
+1. **JWT mismatch** (issue #37): collector now gets fresh tokens signed with current `ADMIN_TOKEN`.
+2. **`reportTrackAudio` throw** (issue #35): `w.__vexaGmeetSpeakers?.reportTrackAudio(index)` threw
+   `"is not a function"` on every chunk — the `?.` guarded the object but not the method call.
+   Fixed with double optional chain: `reportTrackAudio?.(index)`. The try/catch was silently eating
+   the error and the queue push never ran. Fixed in `kioku-stateless:0.13`.
 
 ## What Is Done
 
@@ -45,16 +48,18 @@ New bots automatically get freshly-minted tokens and are unaffected. Real-meetin
   and builds all `@vexa/*` packages in dep order before `npm install`; fixed playwright browser path;
   added `/modules` COPY to runtime stage
 - **AudioContext fix**: `--autoplay-policy=no-user-gesture-required` added to `JOIN_BROWSER_ARGS`
-- **whisper=0 investigation (issue #35)**: queue-poll pattern implemented and pipeline verified:
-  - Browser: AudioWorklet pushes `{i, d}` chunks to `window.__vexaAudioQueue`
-  - Node.js: 100ms poller drains queue via `page.evaluate`, calls `handlePerSpeakerAudioData` directly
-  - **Root cause of no-transcription**: `ADMIN_TOKEN` changed between when meeting-100 was created
-    and when collector verified its JWT — all segments were silently dropped with
-    `"failed MeetingToken verification"`. New bots get fresh tokens; unaffected going forward.
-  - **Pipeline verified**: `FAKE_AUDIO_FILE` mode added to `index.ts` — feeds a WAV file directly
-    into `speakerManager` (bypassing browser), confirmed full path to dashboard works end-to-end
-  - **Still needed**: one live meeting test to confirm AudioWorklet → onAudio → queue in real Chrome
-  - Image: `kioku-stateless:0.11` on deploy server
+- **whisper=0 fully fixed (issue #35 closed)**: two root causes traced and resolved:
+  - **Playwright bridge silent drop**: replaced `exposeFunction` binding with `window.__vexaAudioQueue`
+    polled by Node.js every 100ms via `page.evaluate` — bypasses Playwright's silent drop of calls
+    originating from AudioWorklet `port.onmessage` handlers
+  - **JWT mismatch (issue #37)**: `ADMIN_TOKEN` had rotated; old bots sent tokens collector rejected.
+    New bots get fresh tokens; unaffected going forward.
+  - **`reportTrackAudio` throw**: `w.__vexaGmeetSpeakers?.reportTrackAudio(index)` threw
+    `"is not a function"` silently inside the try/catch — queue push never reached.
+    Fixed: `reportTrackAudio?.(index)` (double optional chain). Verified working in meeting 102.
+  - `FAKE_AUDIO_FILE` mode added to `index.ts` — feeds WAV directly into `speakerManager` for
+    pipeline testing without a live meeting
+  - Image: `kioku-stateless:0.13` on deploy server
 - **Dashboard live (issue #31 closed)**: `dashboard.kioku.chat` serves real product dashboard;
   backends reachable; direct login enabled for trial use
 - **Google OAuth wired (issue #34 closed)**: NextAuth + Google provider fully implemented;
@@ -62,22 +67,6 @@ New bots automatically get freshly-minted tokens and are unaffected. Real-meetin
   `deployment/docker/setup-google-oauth.sh` — one command to activate once credentials are obtained
 
 ## Open Items
-
-### Verify real-meeting audio capture
-
-The full pipeline (speakerManager → whisper → dashboard) is confirmed. The remaining unknown is
-whether real Google Meet audio flows through the AudioWorklet → onAudio → `__vexaAudioQueue` chain.
-
-Start a fresh meeting, admit the bot, then stream its logs:
-```bash
-# Find the bot container name
-ssh machine "docker ps --format '{{.Names}}' | grep meeting-"
-
-# Watch for transcription activity
-ssh machine "docker logs -f <container> 2>&1 | grep -E 'DRAFT|PUBLISH|LANGUAGE|onAudio|ERROR'"
-```
-If `[📝 DRAFT]` lines appear → audio capture works, issue #35 fully resolved.
-If not → AudioWorklet onAudio chain is broken and needs further investigation.
 
 ### Enable Google OAuth (one command)
 
@@ -106,11 +95,11 @@ already set and reachable externally. Low priority — does not affect correctne
 
 Bot image is locally built on the deploy server (not yet pushed to GHCR):
 ```
-VEXA_BOT_IMAGE=kioku-stateless:0.11
+VEXA_BOT_IMAGE=kioku-stateless:0.13
 ```
 Built at `/home/growit/ws/kioku` with:
 ```bash
-docker build -f deployment/runpod/Dockerfile.stateless -t kioku-stateless:0.11 .
+docker build -f deployment/runpod/Dockerfile.stateless -t kioku-stateless:0.13 .
 ```
 Once changes are merged and CI pushes `kioku-stateless:latest` to GHCR, revert to:
 ```bash
@@ -169,6 +158,6 @@ curl -I https://mcp.kioku.chat/health
 - `#32` closed: runtime router implemented and deployed
 - `#33` closed: bot joins meetings; Chrome revision + transcription port fixed
 - `#34` closed: Google OAuth fully wired; operator runs setup-google-oauth.sh with credentials
-- `#35` open: whisper=0 — pipeline confirmed via FAKE_AUDIO; real-meeting audio capture still needs live test
+- `#35` closed: whisper=0 fully fixed — queue-poll bridge + `reportTrackAudio?.()` guard; verified in meeting 102
 - `#36` closed: Dockerfile.stateless module-build chain fixed
-- `#37` open: collector silently drops segments when ADMIN_TOKEN rotated (MeetingToken verification fails)
+- `#37` closed: collector JWT mismatch — new bots get fresh tokens; unaffected going forward
