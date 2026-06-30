@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod company;
 pub mod company_api_key;
+pub mod internal;
 pub mod invite;
 pub mod knowledge;
 pub mod meeting;

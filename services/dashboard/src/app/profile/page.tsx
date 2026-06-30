@@ -10,6 +10,7 @@ import {
   Check,
   GitBranch,
   RefreshCw,
+  Terminal,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -335,6 +336,9 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
+        {/* CLI Keys */}
+        <CliKeysCard />
+
       </div>
 
       {/* Create Key Dialog */}
@@ -503,6 +507,164 @@ export default function ProfilePage() {
       {/* Git Workspace */}
       <GitWorkspaceCard />
     </div>
+  );
+}
+
+// ==========================================
+// CLI Keys Card
+// ==========================================
+
+interface CliKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  created_at: number;
+  last_used_at: number | null;
+}
+
+function CliKeysCard() {
+  const [keys, setKeys] = useState<CliKey[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [notProvisioned, setNotProvisioned] = useState(false);
+
+  useEffect(() => {
+    fetch(withBasePath("/api/hivemind/keys"))
+      .then(async (r) => {
+        if (r.status === 401) { setNotProvisioned(true); return; }
+        const data = await r.json();
+        setKeys(Array.isArray(data) ? data : []);
+      })
+      .catch(() => setNotProvisioned(true))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  async function handleCreate() {
+    if (!newKeyName.trim()) return;
+    setIsCreating(true);
+    try {
+      const r = await fetch(withBasePath("/api/hivemind/keys"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newKeyName.trim() }),
+      });
+      if (!r.ok) throw new Error("Failed");
+      const data = await r.json();
+      setRevealedKey(data.key);
+      setKeys((prev) => [{ id: data.id, name: data.name, key_prefix: data.key_prefix, created_at: data.created_at, last_used_at: null }, ...prev]);
+      setNewKeyName("");
+      setShowCreate(false);
+      toast.success("CLI key created — copy it now");
+    } catch {
+      toast.error("Failed to create CLI key");
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
+  async function handleRevoke(id: string) {
+    try {
+      const r = await fetch(withBasePath(`/api/hivemind/keys/${id}`), { method: "DELETE" });
+      if (!r.ok) throw new Error("Failed");
+      setKeys((prev) => prev.filter((k) => k.id !== id));
+      toast.success("CLI key revoked");
+    } catch {
+      toast.error("Failed to revoke key");
+    }
+  }
+
+  async function handleCopy(id: string, text: string) {
+    await navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+    toast.success("Copied");
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Terminal className="h-5 w-5" />
+            CLI Access Keys
+          </CardTitle>
+          {!notProvisioned && (
+            <Button size="sm" onClick={() => setShowCreate((v) => !v)}>
+              <Plus className="h-4 w-4 mr-1" />
+              Create Key
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Use these keys to sign in with the Kioku CLI:{" "}
+          <code className="text-xs bg-muted px-1 py-0.5 rounded">kioku signin --api-key cmp_…</code>
+        </p>
+
+        {revealedKey && (
+          <div className="rounded-lg bg-emerald-950/30 border border-emerald-800/30 p-4 space-y-2">
+            <p className="text-sm font-medium text-emerald-300">Key created — copy it now. You won&apos;t see it again.</p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 bg-muted rounded px-3 py-2 text-xs font-mono break-all">{revealedKey}</code>
+              <Button size="sm" variant="secondary" onClick={() => handleCopy("revealed", revealedKey)}>
+                {copiedId === "revealed" ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            </div>
+            <Button size="sm" variant="ghost" onClick={() => setRevealedKey(null)}>Dismiss</Button>
+          </div>
+        )}
+
+        {showCreate && (
+          <div className="flex gap-2">
+            <Input
+              placeholder="Key name (e.g. laptop)"
+              value={newKeyName}
+              onChange={(e) => setNewKeyName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            />
+            <Button size="sm" onClick={handleCreate} disabled={isCreating || !newKeyName.trim()}>
+              {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create"}
+            </Button>
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="flex justify-center py-6">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : notProvisioned ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">
+            Sign out and sign back in to activate CLI access.
+          </p>
+        ) : keys.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">No CLI keys yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {keys.map((key) => (
+              <div key={key.id} className="rounded-lg bg-muted/50 px-4 py-3 flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-medium">{key.name}</span>
+                  <p className="text-[11px] font-mono text-muted-foreground mt-0.5">{key.key_prefix}••••••••</p>
+                </div>
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="text-muted-foreground">
+                    {key.last_used_at ? relativeTime(new Date(key.last_used_at).toISOString()) : "Never used"}
+                  </span>
+                  <button onClick={() => handleRevoke(key.id)} className="text-red-400 hover:text-red-300 transition-colors">
+                    Revoke
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

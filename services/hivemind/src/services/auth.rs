@@ -4,8 +4,8 @@ use crate::config::Settings;
 use crate::errors::AppError;
 use crate::repos::auth::{self, AuthRepo};
 use crate::types::{
-    AuthSession, RegisterAdminRequest, RegisterMemberRequest, RegisterPersonalRequest,
-    SignInRequest,
+    AuthSession, ProvisionRequest, RegisterAdminRequest, RegisterMemberRequest,
+    RegisterPersonalRequest, SignInRequest,
 };
 
 #[derive(Clone)]
@@ -164,6 +164,80 @@ impl AuthService {
         let company_name = format!("{}'s Workspace", req.name);
 
         let password_hash = auth::hash_password(&req.password)?;
+
+        repo.create_company(company_id, &company_name, &slug, now)
+            .await?;
+        repo.create_user(user_id, &req.email, &req.name, &password_hash, now)
+            .await?;
+        repo.create_membership(Uuid::new_v4(), company_id, user_id, "admin", now)
+            .await?;
+        repo.create_default_config(company_id, now).await?;
+
+        let token = auth::create_token(
+            &settings.jwt_secret,
+            user_id,
+            company_id,
+            "admin",
+            settings.jwt_ttl_seconds,
+        )?;
+        let expires_at = now + (settings.jwt_ttl_seconds * 1000);
+        repo.create_auth_token(&token, user_id, company_id, now, expires_at)
+            .await?;
+
+        Ok(AuthSession::new(
+            user_id,
+            req.email,
+            req.name,
+            company_id,
+            company_name,
+            slug,
+            "admin".into(),
+            token,
+        ))
+    }
+
+    pub async fn provision(
+        &self,
+        repo: &AuthRepo,
+        settings: &Settings,
+        req: ProvisionRequest,
+    ) -> Result<AuthSession, AppError> {
+        let now = crate::util::now_ms();
+
+        if let Some(user) = repo.find_user_by_email(&req.email).await? {
+            let membership = repo
+                .find_membership(user.id)
+                .await?
+                .ok_or_else(|| AppError::Internal(anyhow::anyhow!("User has no membership")))?;
+            let company = repo.find_company_by_id(membership.company_id).await?;
+            let token = auth::create_token(
+                &settings.jwt_secret,
+                user.id,
+                company.id,
+                &membership.role,
+                settings.jwt_ttl_seconds,
+            )?;
+            let expires_at = now + (settings.jwt_ttl_seconds * 1000);
+            repo.create_auth_token(&token, user.id, company.id, now, expires_at)
+                .await?;
+            return Ok(AuthSession::new(
+                user.id,
+                user.email,
+                user.name,
+                company.id,
+                company.name,
+                company.slug,
+                membership.role,
+                token,
+            ));
+        }
+
+        let company_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let email_local = req.email.split('@').next().unwrap_or("user");
+        let slug = auth::slugify(&format!("{}-personal", email_local));
+        let company_name = format!("{}'s Workspace", req.name);
+        let password_hash = auth::hash_password(&Uuid::new_v4().to_string())?;
 
         repo.create_company(company_id, &company_name, &slug, now)
             .await?;

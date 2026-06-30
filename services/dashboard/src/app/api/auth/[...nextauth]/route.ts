@@ -161,10 +161,36 @@ export const authOptions: NextAuthOptions = {
             path: "/",
           });
 
+          // Step 4: Provision Hivemind user (find-or-create personal workspace)
+          let hivemindToken: string | undefined;
+          const hivemindUrl = process.env.HIVEMIND_INTERNAL_URL || "http://localhost:9100";
+          const hivemindSecret = process.env.HIVEMIND_JWT_SECRET;
+          if (hivemindSecret) {
+            try {
+              const provisionRes = await fetch(`${hivemindUrl}/internal/provision`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Internal-Secret": hivemindSecret,
+                },
+                body: JSON.stringify({ email: user.email, name: user.name || user.email.split("@")[0] }),
+              });
+              if (provisionRes.ok) {
+                const session = await provisionRes.json();
+                hivemindToken = session.token;
+              } else {
+                console.warn(`[NextAuth] Hivemind provision failed: ${provisionRes.status}`);
+              }
+            } catch (e) {
+              console.warn("[NextAuth] Hivemind provision error:", e);
+            }
+          }
+
           // Store Kioku user info in the user object for the JWT callback
           (user as any).vexaUser = vexaUser;
           (user as any).vexaToken = apiToken;
           (user as any).isNewUser = isNewUser;
+          (user as any).hivemindToken = hivemindToken;
 
           return true;
         } catch (error) {
@@ -176,20 +202,20 @@ export const authOptions: NextAuthOptions = {
       return false; // Deny sign-in for other providers
     },
     async jwt({ token, user }) {
-      // Persist the Kioku user data to the token
       if (user && (user as any).vexaUser) {
         token.vexaUser = (user as any).vexaUser;
         token.vexaToken = (user as any).vexaToken;
         token.isNewUser = (user as any).isNewUser;
+        token.hivemindToken = (user as any).hivemindToken;
       }
       return token;
     },
     async session({ session, token }) {
-      // Add Kioku user data to the session
       if (token.vexaUser) {
         (session as any).vexaUser = token.vexaUser;
         (session as any).vexaToken = token.vexaToken;
         (session as any).isNewUser = token.isNewUser;
+        (session as any).hivemindToken = token.hivemindToken;
       }
       return session;
     },
