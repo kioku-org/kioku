@@ -301,6 +301,57 @@ impl KnowledgeService {
     }
 }
 
+/// Paragraph-aware chunking: splits on blank lines first, keeping paragraphs intact.
+/// Paragraphs that exceed `max_words` are word-windowed. Carries the last paragraph
+/// of each chunk forward as overlap context for the next.
+pub fn split_text_paragraphs(text: &str, max_words: usize) -> Vec<String> {
+    let paragraphs: Vec<String> = text
+        .split("\n\n")
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect();
+
+    let mut chunks: Vec<String> = Vec::new();
+    let mut current: Vec<String> = Vec::new();
+    let mut current_words: usize = 0;
+
+    for para in paragraphs {
+        let para_words = para.split_whitespace().count();
+
+        if para_words >= max_words {
+            // Flush accumulator first
+            if !current.is_empty() {
+                chunks.push(current.join("\n\n"));
+                current.clear();
+                current_words = 0;
+            }
+            // Word-window this oversized paragraph with ~20% overlap
+            for c in split_text(&para, max_words, max_words / 5) {
+                chunks.push(c);
+            }
+        } else if current_words + para_words > max_words && !current.is_empty() {
+            chunks.push(current.join("\n\n"));
+            // Carry last paragraph forward as overlap
+            let prev = current.pop().unwrap();
+            let prev_words = prev.split_whitespace().count();
+            current.clear();
+            current.push(prev);
+            current_words = prev_words;
+            current.push(para);
+            current_words += para_words;
+        } else {
+            current.push(para);
+            current_words += para_words;
+        }
+    }
+
+    if !current.is_empty() {
+        chunks.push(current.join("\n\n"));
+    }
+
+    chunks
+}
+
 pub fn split_text(text: &str, size: usize, overlap: usize) -> Vec<String> {
     let words: Vec<&str> = text.split_whitespace().collect();
     let mut chunks = Vec::new();
