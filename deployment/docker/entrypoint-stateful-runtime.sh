@@ -85,6 +85,7 @@ cat > /etc/qdrant/config.yaml <<'QDRANT'
 service:
   host: 0.0.0.0
   http_port: 6334
+  grpc_port: 6335
 storage:
   storage_path: /data/qdrant
 QDRANT
@@ -263,7 +264,7 @@ stderr_logfile=/var/log/runtime-api-runpod.err
 
 [program:hivemind]
 command=/usr/local/bin/kioku-hivemind
-environment=DB_HOST="localhost",DB_PORT="5432",DB_NAME="${DB_NAME}",DB_USER="${DB_USER}",DB_PASSWORD="${DB_PASSWORD}",DB_MAX_CONNECTIONS="10",DB_SCHEMA="hivemind",JWT_SECRET="${HIVEMIND_JWT_SECRET}",JWT_TTL_SECONDS="2592000",ENCRYPTION_SECRET="${HIVEMIND_ENCRYPTION_SECRET}",INTERNAL_SECRET="${INTERNAL_API_SECRET:-}",VEXA_API_URL="http://localhost:8056",VEXA_ADMIN_API_URL="http://localhost:8001",VEXA_ADMIN_TOKEN="${VEXA_ADMIN_API_TOKEN}",HOST="0.0.0.0",PORT="9100",EMBEDDING_API_URL="http://localhost:11434",EMBEDDING_MODEL="nomic-embed-text-v2-moe",QDRANT_URL="http://localhost:6334",QDRANT_API_KEY="${QDRANT_API_KEY:-}"
+environment=DB_HOST="localhost",DB_PORT="5432",DB_NAME="${DB_NAME}",DB_USER="${DB_USER}",DB_PASSWORD="${DB_PASSWORD}",DB_MAX_CONNECTIONS="10",DB_SCHEMA="hivemind",JWT_SECRET="${HIVEMIND_JWT_SECRET}",JWT_TTL_SECONDS="2592000",ENCRYPTION_SECRET="${HIVEMIND_ENCRYPTION_SECRET}",INTERNAL_SECRET="${INTERNAL_API_SECRET:-}",VEXA_API_URL="http://localhost:8056",VEXA_ADMIN_API_URL="http://localhost:8001",VEXA_ADMIN_TOKEN="${VEXA_ADMIN_API_TOKEN}",HOST="0.0.0.0",PORT="9100",EMBEDDING_API_URL="http://localhost:11434",EMBEDDING_MODEL="nomic-embed-text-v2-moe",QDRANT_URL="http://localhost:6335",QDRANT_API_KEY="${QDRANT_API_KEY:-}"
 autostart=true
 autorestart=true
 stdout_logfile=/var/log/hivemind.log
