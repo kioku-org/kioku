@@ -208,9 +208,9 @@ impl ServerHandler for KiokuMcpService {
             let args = request.arguments.as_ref();
 
             match name.as_ref() {
-                "search" => self.handle_search(args).await,
+                "search" => self.handle_search(args, &context).await,
                 "meetings" => self.handle_list_meetings(&context).await,
-                "transcript" => self.handle_get_transcript(args).await,
+                "transcript" => self.handle_get_transcript(args, &context).await,
                 "meeting_get" => self.handle_get_meeting(args, &context).await,
                 "documents" => self.handle_list_documents(&context).await,
                 "document_delete" => self.handle_delete_document(args, &context).await,
@@ -225,9 +225,9 @@ impl ServerHandler for KiokuMcpService {
 }
 
 impl KiokuMcpService {
-    async fn handle_search(&self, args: Option<&JsonObject>) -> Result<CallToolResult, ErrorData> {
+    async fn handle_search(&self, args: Option<&JsonObject>, context: &RequestContext<RoleServer>) -> Result<CallToolResult, ErrorData> {
         let params: SearchParams = parse_args(args)?;
-        let company_id = extract_company_id_from_args(args)?;
+        let company_id = extract_company_id(context, self).await?;
         let limit = params.limit.unwrap_or(6).min(20).max(1);
         let query = params.query.trim().to_string();
         if query.is_empty() {
@@ -267,9 +267,10 @@ impl KiokuMcpService {
     async fn handle_get_transcript(
         &self,
         args: Option<&JsonObject>,
+        context: &RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let params: MeetingIdParams = parse_args(args)?;
-        let company_id = extract_company_id_from_args(args)?;
+        let company_id = extract_company_id(context, self).await?;
         let meeting_id = Uuid::parse_str(&params.meeting_id).map_err(|e| {
             ErrorData::invalid_params(format!("Invalid meeting_id UUID: {}", e), None)
         })?;
