@@ -22,12 +22,14 @@ type McpService = StreamableHttpService<KiokuMcpService, LocalSessionManager>;
 struct McpState {
     service: McpService,
     jwt_secret: String,
+    db: sqlx::PgPool,
 }
 
 pub fn mcp_routes(state: &AppState) -> Router<AppState> {
     let mcp_state = Arc::new(McpState {
         service: create_mcp_service(state),
         jwt_secret: state.settings.jwt_secret.clone(),
+        db: state.db.clone(),
     });
     Router::new()
         .route("/mcp", post(mcp_handler))
@@ -72,22 +74,50 @@ fn create_mcp_service(state: &AppState) -> McpService {
     )
 }
 
-/// Decode JWT from Authorization header, return (company_id, user_id) strings.
-fn decode_jwt(jwt_secret: &str, req: &Request<Body>) -> Option<(String, String)> {
-    use crate::repos::auth::validate_token;
+/// Extract Bearer token from Authorization header.
+fn bearer_token(req: &Request<Body>) -> Option<String> {
     let auth = req.headers().get("authorization")?.to_str().ok()?;
-    let token = auth.strip_prefix("Bearer ")?;
-    let claims = validate_token(jwt_secret, token).ok()?;
-    Some((claims.company_id.to_string(), claims.user_id.to_string()))
+    Some(auth.strip_prefix("Bearer ")?.to_string())
 }
 
-/// For MCP initialize requests, inject company_id + user_id into
-/// clientInfo._meta so handlers can read them via context.peer.peer_info().
+/// Resolve company_id + user_id from a Bearer token.
+/// Tries JWT decode first (fast); falls back to auth_tokens DB lookup for API keys.
+async fn resolve_auth_ids(
+    jwt_secret: &str,
+    db: &sqlx::PgPool,
+    token: &str,
+) -> Option<(String, String)> {
+    use crate::repos::auth::validate_token;
+
+    if let Ok(claims) = validate_token(jwt_secret, token) {
+        return Some((claims.company_id.to_string(), claims.user_id.to_string()));
+    }
+
+    // Non-JWT token (e.g. cmp_xxx API key) — look up in auth_tokens.
+    let row: Option<(uuid::Uuid, uuid::Uuid)> = sqlx::query_as(
+        "SELECT company_id, user_id FROM auth_tokens WHERE token = $1 LIMIT 1",
+    )
+    .bind(token)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten();
+
+    row.map(|(company_id, user_id)| (company_id.to_string(), user_id.to_string()))
+}
+
+/// For MCP initialize requests, inject company_id + user_id into params._meta
+/// so handlers can read them via context.peer.peer_info().meta.
 async fn inject_auth_into_init(
     jwt_secret: &str,
+    db: &sqlx::PgPool,
     req: Request<Body>,
 ) -> Result<Request<Body>, StatusCode> {
-    let auth_ids = decode_jwt(jwt_secret, &req);
+    let token = bearer_token(&req);
+    let auth_ids = match token {
+        Some(ref t) => resolve_auth_ids(jwt_secret, db, t).await,
+        None => None,
+    };
 
     // Only body-rewrite POST requests; GET (SSE) passes through unchanged.
     if req.method() != axum::http::Method::POST {
@@ -147,7 +177,7 @@ async fn mcp_handler(
     State(state): State<Arc<McpState>>,
     req: Request<Body>,
 ) -> Result<Response<Body>, StatusCode> {
-    let req = inject_auth_into_init(&state.jwt_secret, req).await?;
+    let req = inject_auth_into_init(&state.jwt_secret, &state.db, req).await?;
 
     let response = state
         .service
