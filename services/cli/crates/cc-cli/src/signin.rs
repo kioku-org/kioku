@@ -190,7 +190,7 @@ pub async fn wait_for_callback(
     let decode = |key: &str| -> String {
         params
             .get(key)
-            .map(|v| urlencoding::decode(v).unwrap_or_default().into_owned())
+            .map(|v| urlencoding::decode(&v.replace('+', " ")).unwrap_or_default().into_owned())
             .unwrap_or_default()
     };
 
