@@ -43,6 +43,15 @@ struct DocumentIdParams {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+struct IngestSessionParams {
+    title: String,
+    summary: String,
+    decisions: Option<Vec<String>>,
+    tags: Option<Vec<String>>,
+    date: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 struct IngestMeetingParams {
     title: String,
     date: i64,
@@ -121,6 +130,21 @@ fn all_tools() -> Vec<Tool> {
             })),
         ),
         Tool::new(
+            "session",
+            "Store a coding or working session in the knowledge base so it can be recalled later.",
+            json_schema(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "title": { "type": "string", "description": "Short title for the session" },
+                    "summary": { "type": "string", "description": "What was accomplished in this session" },
+                    "decisions": { "type": "array", "items": { "type": "string" }, "description": "Key decisions or conclusions" },
+                    "tags": { "type": "array", "items": { "type": "string" }, "description": "Topics or technologies involved" },
+                    "date": { "type": "integer", "description": "Unix timestamp ms (defaults to now)" }
+                },
+                "required": ["title", "summary"]
+            })),
+        ),
+        Tool::new(
             "meeting",
             "Ingest a meeting transcript into the knowledge base.",
             json_schema(serde_json::json!({
@@ -190,6 +214,7 @@ impl ServerHandler for KiokuMcpService {
                 "meeting_get" => self.handle_get_meeting(args, &context).await,
                 "documents" => self.handle_list_documents(&context).await,
                 "document_delete" => self.handle_delete_document(args, &context).await,
+                "session" => self.handle_ingest_session(args, &context).await,
                 "meeting" => self.handle_ingest_meeting(args, &context).await,
                 _ => Err(ErrorData::method_not_found::<
                     rmcp::model::CallToolRequestMethod,
@@ -385,6 +410,92 @@ impl KiokuMcpService {
             }
             Err(e) => Ok(text_result(format!("Ingestion failed: {}", e))),
         }
+    }
+
+    async fn handle_ingest_session(
+        &self,
+        args: Option<&JsonObject>,
+        context: &RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let params: IngestSessionParams = parse_args(args)?;
+        let company_id = extract_company_id(context, self).await?;
+        let user_id = extract_user_id(context, self).await?;
+
+        let session_id = Uuid::new_v4();
+        let now = crate::util::now_ms();
+        let date = params.date.unwrap_or(now);
+        let decisions = serde_json::to_value(&params.decisions.unwrap_or_default())
+            .unwrap_or(serde_json::json!([]));
+        let tags = serde_json::to_value(&params.tags.unwrap_or_default())
+            .unwrap_or(serde_json::json!([]));
+
+        if let Err(e) = sqlx::query(
+            "INSERT INTO coding_sessions (id, company_id, user_id, title, summary, decisions, tags, date, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        )
+        .bind(session_id)
+        .bind(company_id)
+        .bind(user_id)
+        .bind(&params.title)
+        .bind(&params.summary)
+        .bind(&decisions)
+        .bind(&tags)
+        .bind(date)
+        .bind(now)
+        .execute(&self.db)
+        .await
+        {
+            return Ok(text_result(format!("Failed to store session: {}", e)));
+        }
+
+        // Embed summary + decisions as searchable chunks
+        let text_to_embed = {
+            let mut parts = vec![params.summary.clone()];
+            if let Some(arr) = decisions.as_array() {
+                for d in arr {
+                    if let Some(s) = d.as_str() {
+                        parts.push(format!("Decision: {}", s));
+                    }
+                }
+            }
+            parts.join("\n")
+        };
+
+        let docs = vec![langchain_rust::schemas::Document {
+            page_content: text_to_embed,
+            metadata: {
+                let mut m = std::collections::HashMap::new();
+                m.insert("chunk_type".to_string(), serde_json::json!("session"));
+                m.insert("session_id".to_string(), serde_json::json!(session_id.to_string()));
+                m.insert("timestamp".to_string(), serde_json::json!(date));
+                m
+            },
+            score: 0.0,
+        }];
+
+        let chunk_id = Uuid::new_v4();
+        if let Err(e) = sqlx::query(
+            "INSERT INTO knowledge_chunks (id, session_id, text, chunk_type, metadata, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(chunk_id)
+        .bind(session_id)
+        .bind(&params.summary)
+        .bind("session")
+        .bind(serde_json::json!({"chunk_type": "session", "session_id": session_id.to_string(), "timestamp": date}))
+        .bind(now)
+        .execute(&self.db)
+        .await
+        {
+            return Ok(text_result(format!("Stored session but failed to persist chunk: {}", e)));
+        }
+
+        if let Err(e) = self.vector_store.add_documents_for_company(company_id, &docs).await {
+            return Ok(text_result(format!("Stored session but embedding failed: {}", e)));
+        }
+
+        Ok(text_result(format!(
+            "Session \"{}\" stored (id: {}). Searchable via `search`.",
+            params.title, session_id
+        )))
     }
 }
 
