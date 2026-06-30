@@ -164,7 +164,7 @@ export const authOptions: NextAuthOptions = {
           // Step 4: Provision Hivemind user (find-or-create personal workspace)
           let hivemindToken: string | undefined;
           const hivemindUrl = process.env.HIVEMIND_INTERNAL_URL || "http://localhost:9100";
-          const hivemindSecret = process.env.HIVEMIND_JWT_SECRET;
+          const hivemindSecret = process.env.INTERNAL_API_SECRET;
           if (hivemindSecret) {
             try {
               const provisionRes = await fetch(`${hivemindUrl}/internal/provision`, {
@@ -211,7 +211,7 @@ export const authOptions: NextAuthOptions = {
       // Lazy-provision Hivemind for sessions created before this feature was deployed.
       if (!token.hivemindToken && token.email) {
         const hivemindUrl = process.env.HIVEMIND_INTERNAL_URL || "http://localhost:9100";
-        const hivemindSecret = process.env.HIVEMIND_JWT_SECRET;
+        const hivemindSecret = process.env.INTERNAL_API_SECRET;
         if (hivemindSecret) {
           try {
             const r = await fetch(`${hivemindUrl}/internal/provision`, {
