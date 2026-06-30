@@ -7,7 +7,7 @@ use tracing_subscriber::{fmt, EnvFilter};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const REPO: &str = "kioku-org/kioku";
-const DEFAULT_SERVER_URL: &str = "http://localhost:9100";
+const DEFAULT_SERVER_URL: &str = "https://api.kioku.chat";
 
 #[derive(Parser, Debug)]
 #[command(

@@ -1,6 +1,6 @@
 # LEFTOVER
 
-Last updated: 2026-06-30 (rev 9)
+Last updated: 2026-06-30 (rev 10)
 
 ## Current Status
 
@@ -161,6 +161,26 @@ curl https://mcp.kioku.chat/health          # {"status":"ok"}
 curl https://api.kioku.chat/health          # {"status":"ok"}
 ```
 
+## Hivemind / feat/hivemind branch (issue #47)
+
+All work on `feat/hivemind` branch, not yet merged to main.
+
+**Done:**
+- Vexa → Hivemind transcript pipeline (`push_to_hivemind` in `post_meeting.py`)
+- Qdrant gRPC fix (qdrant-client 1.x is gRPC-only, added `grpc_port: 6335`)
+- MCP lazy provision fix (existing users get Hivemind token on next JWT refresh)
+- MCP tool names simplified — dropped `kioku_` prefix:
+  `search`, `meetings`, `meeting`, `meeting_get`, `transcript`, `documents`, `document_delete`, `session`
+- New `session` MCP tool — dumps raw content (chunked via paragraph-aware splitter) into vector DB
+- `search` + `transcript` tools now resolve `company_id` from JWT (no longer need it as an arg)
+
+**CLI distribution (issue #48) — needs kioku-web:**
+- `install.sh` ready at `docs/install.sh` — copy to `kioku-web/install.sh` when repo is pushed
+- GitHub Actions release workflow needed: `release-cli.yml` triggers on `cli/vX.Y.Z` tag, builds
+  4 targets (linux x86_64/aarch64, macos x86_64/aarch64) and publishes to GitHub Releases
+- `DEFAULT_SERVER_URL` changed from `localhost:9100` → `https://api.kioku.chat` in `main.rs`
+- Script auto-detects OS/arch, downloads from Releases, installs to `/usr/local/bin` or `~/.local/bin`
+
 ## GitHub Issue State
 
 - `#27` closed: RunPod stateful path
@@ -180,3 +200,5 @@ curl https://api.kioku.chat/health          # {"status":"ok"}
 - `#43` open: authenticated mode causes bot to self-leave immediately
 - `#45` open: UI redesign — Figma design phase
 - `#44` open: UI redesign — implement Figma into dashboard (blocked by #45)
+- `#47` open: Hivemind integration (feat/hivemind) — ready for PR to main
+- `#48` open: CLI binary distribution via install.sh — blocked until kioku-web is pushed from Windows
