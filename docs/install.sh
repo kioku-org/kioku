@@ -5,7 +5,14 @@ set -e
 
 REPO="kioku-org/kioku"
 BIN="kioku"
-RELEASES="https://github.com/${REPO}/releases/latest/download"
+
+# Set KIOKU_VERSION to install a specific release (e.g. cli/v0.1.0-dev.1).
+# Leave unset to get the latest stable release.
+if [ -n "${KIOKU_VERSION:-}" ]; then
+  RELEASES="https://github.com/${REPO}/releases/download/${KIOKU_VERSION}"
+else
+  RELEASES="https://github.com/${REPO}/releases/latest/download"
+fi
 
 # ── Colors (only when stdout is a tty) ───────────────────────────────────────
 if [ -t 1 ]; then
