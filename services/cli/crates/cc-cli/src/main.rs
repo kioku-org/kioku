@@ -16,7 +16,7 @@ const DEFAULT_DASHBOARD_URL: &str = "https://dashboard.kioku.chat";
 #[command(
     name = "kioku",
     version,
-    about = "Kioku CLI — context infrastructure client"
+    about = "Kioku — context infrastructure client"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -34,7 +34,7 @@ struct Cli {
 
 #[derive(Subcommand, Debug, PartialEq)]
 enum Commands {
-    #[command(about = "Register the initial admin account for a server")]
+    #[command(about = "Register the initial admin account for a self-hosted server", hide = true)]
     RegisterAdmin {
         #[arg(long)]
         company_name: Option<String>,
@@ -47,7 +47,7 @@ enum Commands {
         #[arg(long)]
         password: Option<String>,
     },
-    #[command(about = "Sign in with email/password or API key")]
+    #[command(about = "Sign in with Google, Github or API key")]
     Signin {
         #[arg(long)]
         api_key: Option<String>,
@@ -248,6 +248,12 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             password,
         } => {
             let base_url = resolve_server_url(server.as_deref());
+            if base_url.contains("api.kioku.chat") {
+                anyhow::bail!(
+                    "register-admin is for self-hosted servers only.\n\
+                     Sign in at https://dashboard.kioku.chat instead, or use `kioku signin`."
+                );
+            }
             let client = KiokuClient::new(&base_url);
             let company_name = prompt_or(company_name, "Company name: ")?;
             let email = prompt_or(email, "Email: ")?;
@@ -340,7 +346,10 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let me = client.whoami().await?;
-            println!("{} ({}) [{}]", me.name, me.email, me.role);
+            println!("name:    {}", me.name);
+            println!("email:   {}", me.email);
+            println!("role:    {}", me.role);
+            println!("server:  {}", auth.server_url);
         }
         Commands::AuthToken => {
             let auth = require_auth()?;
@@ -350,8 +359,11 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let sessions = client.list_sessions().await?;
+            if sessions.is_empty() {
+                println!("No sessions.");
+            }
             for s in &sessions {
-                println!("{}  {}  {:?}", s.id, s.title, s.created_at);
+                println!("{} — {}", s.id, s.title);
             }
         }
         Commands::SessionsCreate { title } => {
@@ -366,10 +378,8 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let session = client.get_session(&session_id).await?;
-            println!(
-                "{}  {}  {:?}",
-                session.id, session.title, session.created_at
-            );
+            println!("id:    {}", session.id);
+            println!("title: {}", session.title);
         }
         Commands::SessionsDelete { session_id } => {
             let auth = require_auth()?;
@@ -395,6 +405,9 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let msgs = client.list_messages(&session_id).await?;
+            if msgs.is_empty() {
+                println!("No messages.");
+            }
             for m in &msgs {
                 let text: String = m
                     .content
@@ -402,25 +415,25 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
                     .filter_map(|p| p.text.clone())
                     .collect::<Vec<_>>()
                     .join(" ");
-                println!(
-                    "[{}] {}: {}",
-                    m.role,
-                    m.id,
-                    text.chars().take(200).collect::<String>()
-                );
+                let preview: String = text.chars().take(200).collect();
+                let ellipsis = if text.len() > 200 { "…" } else { "" };
+                println!("[{}] {}{}", m.role.to_uppercase(), preview, ellipsis);
+                println!();
             }
         }
         Commands::KnowledgeSearch { query } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let results = client.knowledge_search(&query, 5).await?;
-            for r in &results {
+            if results.is_empty() {
+                println!("No results.");
+            }
+            for (i, r) in results.iter().enumerate() {
                 let text = r.chunk.get("text").and_then(|v| v.as_str()).unwrap_or("");
-                println!(
-                    "[score={:.3}]: {}",
-                    r.score,
-                    text.chars().take(200).collect::<String>()
-                );
+                let preview: String = text.chars().take(300).collect();
+                let ellipsis = if text.len() > 300 { "…" } else { "" };
+                println!("{}. [score {:.2}]  {}{}", i + 1, r.score, preview, ellipsis);
+                println!();
             }
         }
         Commands::KnowledgeUpload { file } => {
@@ -434,8 +447,15 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let docs = client.list_documents().await?;
+            if docs.is_empty() {
+                println!("No documents.");
+            }
             for d in &docs {
-                println!("{}", serde_json::to_string_pretty(d)?);
+                let id = d.get("id").and_then(|v| v.as_str()).unwrap_or("?");
+                let name = d.get("name").and_then(|v| v.as_str())
+                    .or_else(|| d.get("filename").and_then(|v| v.as_str()))
+                    .unwrap_or("untitled");
+                println!("{} — {}", id, name);
             }
         }
         Commands::KnowledgeDelete { document_id } => {
@@ -448,22 +468,45 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let meetings = client.list_meetings().await?;
+            if meetings.is_empty() {
+                println!("No meetings.");
+            }
             for m in &meetings {
-                println!("{}  {}  {:?}", m.id, m.title, m.date);
+                let date = chrono::DateTime::from_timestamp(m.date / 1000, 0)
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                    .unwrap_or_else(|| m.date.to_string());
+                println!("{} — {} ({})", m.id, m.title, date);
             }
         }
         Commands::AuthKeyCreate { name } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let key = client.create_auth_key(&name).await?;
-            println!("{}", serde_json::to_string_pretty(&key)?);
+            let raw = key.get("key").and_then(|v| v.as_str())
+                .or_else(|| key.get("raw_key").and_then(|v| v.as_str()));
+            if let Some(raw_key) = raw {
+                println!("API key (save this — it won't be shown again):");
+                println!();
+                println!("  {}", raw_key);
+                println!();
+                println!("Use it with:  kioku signin --api-key <key>");
+            } else {
+                println!("{}", serde_json::to_string_pretty(&key)?);
+            }
         }
         Commands::AuthKeyList => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let keys = client.list_auth_keys().await?;
+            if keys.is_empty() {
+                println!("No API keys.");
+            }
             for k in &keys {
-                println!("{}  {}  {}  {:?}", k.id, k.key_prefix, k.name, k.created_at);
+                let last_used = k.last_used_at
+                    .and_then(|ts| chrono::DateTime::from_timestamp(ts / 1000, 0))
+                    .map(|dt| dt.format("%Y-%m-%d").to_string())
+                    .unwrap_or_else(|| "never".to_string());
+                println!("{} — {} (prefix: {}  last used: {})", k.id, k.name, k.key_prefix, last_used);
             }
         }
         Commands::AuthKeyDelete { key_prefix } => {
