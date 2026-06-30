@@ -10,6 +10,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::services::vector::HivemindVectorStore;
+use crate::repos::auth::validate_token;
 
 fn json_schema(value: serde_json::Value) -> Arc<JsonObject> {
     match value {
@@ -22,6 +23,7 @@ fn json_schema(value: serde_json::Value) -> Arc<JsonObject> {
 pub struct KiokuMcpService {
     pub db: PgPool,
     pub vector_store: Arc<HivemindVectorStore>,
+    pub jwt_secret: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -227,7 +229,7 @@ impl KiokuMcpService {
         &self,
         context: &RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        let company_id = extract_company_id(context)?;
+        let company_id = extract_company_id(context, self).await?;
         let repo = crate::repos::meeting::MeetingRepo::new(self.db.clone());
         match repo.list(company_id).await {
             Ok(meetings) => Ok(text_result(
@@ -262,7 +264,7 @@ impl KiokuMcpService {
         context: &RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let params: MeetingIdParams = parse_args(args)?;
-        let company_id = extract_company_id(context)?;
+        let company_id = extract_company_id(context, self).await?;
         let meeting_id = Uuid::parse_str(&params.meeting_id).map_err(|e| {
             ErrorData::invalid_params(format!("Invalid meeting_id UUID: {}", e), None)
         })?;
@@ -281,7 +283,7 @@ impl KiokuMcpService {
         &self,
         context: &RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        let company_id = extract_company_id(context)?;
+        let company_id = extract_company_id(context, self).await?;
         let repo = crate::repos::knowledge::KnowledgeRepo::new(self.db.clone());
         match repo.list_documents(company_id).await {
             Ok(docs) => Ok(text_result(
@@ -297,7 +299,7 @@ impl KiokuMcpService {
         context: &RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let params: DocumentIdParams = parse_args(args)?;
-        let company_id = extract_company_id(context)?;
+        let company_id = extract_company_id(context, self).await?;
         let document_id = Uuid::parse_str(&params.document_id).map_err(|e| {
             ErrorData::invalid_params(format!("Invalid document_id UUID: {}", e), None)
         })?;
@@ -324,8 +326,8 @@ impl KiokuMcpService {
         context: &RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let params: IngestMeetingParams = parse_args(args)?;
-        let company_id = extract_company_id(context)?;
-        let user_id = extract_user_id(context)?;
+        let company_id = extract_company_id(context, self).await?;
+        let user_id = extract_user_id(context, self).await?;
 
         let meeting_id = Uuid::new_v4();
         let segments: Vec<crate::types::TranscriptSegment> = params
@@ -386,7 +388,43 @@ impl KiokuMcpService {
     }
 }
 
-fn extract_company_id(context: &RequestContext<RoleServer>) -> Result<Uuid, ErrorData> {
+/// Extract Bearer token from the HTTP request parts stored in context extensions.
+fn bearer_token_from_context(context: &RequestContext<RoleServer>) -> Option<String> {
+    let parts = context.extensions.get::<axum::http::request::Parts>()?;
+    let auth = parts.headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
+    Some(auth.strip_prefix("Bearer ")?.to_string())
+}
+
+async fn resolve_claims_from_token(
+    jwt_secret: &str,
+    db: &PgPool,
+    token: &str,
+) -> Option<(Uuid, Uuid)> {
+    use crate::repos::auth::validate_token;
+    if let Ok(claims) = validate_token(jwt_secret, token) {
+        return Some((claims.company_id, claims.user_id));
+    }
+    // API key (cmp_xxx) — look up in company_api_keys by prefix
+    if token.starts_with("cmp_") && token.len() >= 12 {
+        let prefix = &token[..12];
+        let row: Option<(Uuid, Uuid)> = sqlx::query_as(
+            "SELECT company_id, user_id FROM company_api_keys WHERE key_prefix = $1 LIMIT 1",
+        )
+        .bind(prefix)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten();
+        return row;
+    }
+    None
+}
+
+async fn extract_company_id(
+    context: &RequestContext<RoleServer>,
+    service: &KiokuMcpService,
+) -> Result<Uuid, ErrorData> {
+    // 1. Try peer_info meta (set when client sends _meta.company_id in initialize)
     if let Some(info) = context.peer.peer_info() {
         if let Some(meta) = &info.meta {
             if let Some(val) = meta.get("company_id").and_then(|v| v.as_str()) {
@@ -396,13 +434,24 @@ fn extract_company_id(context: &RequestContext<RoleServer>) -> Result<Uuid, Erro
             }
         }
     }
+    // 2. Fall back to JWT/API-key in the HTTP Authorization header
+    if let Some(token) = bearer_token_from_context(context) {
+        if let Some((company_id, _)) =
+            resolve_claims_from_token(&service.jwt_secret, &service.db, &token).await
+        {
+            return Ok(company_id);
+        }
+    }
     Err(ErrorData::invalid_params(
-        "Missing company_id in session metadata. Set _meta.company_id during initialization.",
+        "Cannot determine company_id. Ensure you are authenticated with a valid Bearer token.",
         None,
     ))
 }
 
-fn extract_user_id(context: &RequestContext<RoleServer>) -> Result<Uuid, ErrorData> {
+async fn extract_user_id(
+    context: &RequestContext<RoleServer>,
+    service: &KiokuMcpService,
+) -> Result<Uuid, ErrorData> {
     if let Some(info) = context.peer.peer_info() {
         if let Some(meta) = &info.meta {
             if let Some(val) = meta.get("user_id").and_then(|v| v.as_str()) {
@@ -412,8 +461,15 @@ fn extract_user_id(context: &RequestContext<RoleServer>) -> Result<Uuid, ErrorDa
             }
         }
     }
+    if let Some(token) = bearer_token_from_context(context) {
+        if let Some((_, user_id)) =
+            resolve_claims_from_token(&service.jwt_secret, &service.db, &token).await
+        {
+            return Ok(user_id);
+        }
+    }
     Err(ErrorData::invalid_params(
-        "Missing user_id in session metadata",
+        "Cannot determine user_id. Ensure you are authenticated with a valid Bearer token.",
         None,
     ))
 }

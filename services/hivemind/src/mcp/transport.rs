@@ -62,11 +62,13 @@ fn create_mcp_service(state: &AppState) -> McpService {
             "http://localhost:9100".to_string(),
         ]);
 
+    let jwt_secret_for_factory = state.settings.jwt_secret.clone();
     StreamableHttpService::new(
         move || {
             Ok(KiokuMcpService {
                 db: db.clone(),
                 vector_store: vector_store.clone(),
+                jwt_secret: jwt_secret_for_factory.clone(),
             })
         },
         session_manager,
