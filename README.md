@@ -30,6 +30,16 @@ The documentation is available on [docs.kioku.chat](https://docs.kioku.chat).
 
 See [Contributing Guide](https://docs.kioku.chat/contributing) for development setup, testing, and git workflow.
 
+## Star History
+
+<a href="https://www.star-history.com/?repos=kioku-org%2Fkioku&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=kioku-org/kioku&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=kioku-org/kioku&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=kioku-org/kioku&type=date&legend=top-left" />
+ </picture>
+</a>
+
 ## License
 
 MIT
