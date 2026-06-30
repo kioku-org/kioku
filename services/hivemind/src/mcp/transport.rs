@@ -110,38 +110,27 @@ async fn inject_auth_into_init(
     // Only rewrite initialize requests.
     if json.get("method").and_then(|m| m.as_str()) == Some("initialize") {
         if let Some((company_id, user_id)) = auth_ids {
-            let meta = json
-                .pointer_mut("/params/clientInfo/_meta")
+            // peer_info() returns InitializeRequestParams whose _meta is at params._meta
+            let existing_meta = json
+                .pointer_mut("/params/_meta")
                 .and_then(|v| v.as_object_mut());
 
-            if let Some(meta_obj) = meta {
+            if let Some(meta_obj) = existing_meta {
                 meta_obj
                     .entry("company_id")
                     .or_insert(serde_json::Value::String(company_id.clone()));
                 meta_obj
                     .entry("user_id")
                     .or_insert(serde_json::Value::String(user_id.clone()));
-            } else {
-                // _meta doesn't exist yet — create it.
-                let meta_val = serde_json::json!({
-                    "company_id": company_id,
-                    "user_id": user_id,
-                });
-                if let Some(client_info) = json.pointer_mut("/params/clientInfo") {
-                    if let Some(obj) = client_info.as_object_mut() {
-                        obj.insert("_meta".to_string(), meta_val);
-                    }
-                } else {
-                    // No clientInfo at all — inject at params level as fallback.
-                    if let Some(params) = json.pointer_mut("/params") {
-                        if let Some(obj) = params.as_object_mut() {
-                            obj.entry("clientInfo").or_insert(serde_json::json!({
-                                "name": "kioku-client",
-                                "version": "1.0",
-                                "_meta": { "company_id": company_id, "user_id": user_id }
-                            }));
-                        }
-                    }
+            } else if let Some(params) = json.pointer_mut("/params") {
+                if let Some(obj) = params.as_object_mut() {
+                    obj.insert(
+                        "_meta".to_string(),
+                        serde_json::json!({
+                            "company_id": company_id,
+                            "user_id": user_id,
+                        }),
+                    );
                 }
             }
         }
