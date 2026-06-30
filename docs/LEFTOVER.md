@@ -1,6 +1,6 @@
 # LEFTOVER
 
-Last updated: 2026-06-30 (rev 8)
+Last updated: 2026-06-30 (rev 9)
 
 ## Current Status
 
@@ -98,12 +98,20 @@ Needs an idle-detection heuristic in vexa-bot.
 
 A `deployment/docker/Makefile` exists (untracked) — needs review and commit.
 
+### UI redesign (issues #45 → #44)
+
+Two-phase UI work:
+- **#45** `[design]` — produce the Figma design for the dashboard
+- **#44** `[design => code]` — implement that Figma design into the Next.js dashboard
+
+No Figma link or design assets attached yet. #45 must be done before #44 can start.
+
 ## Deploy Server
 
 ```
-machine: 172.16.1.5
-dir:     ~/ws/kioku/deployment/docker
-stack:   docker compose -f docker-compose.stateful.yml
+ssh:   ssh machine
+dir:   ~/ws/kioku/deployment/docker
+stack: docker compose -f docker-compose.stateful.yml
 ```
 
 ### Useful commands
@@ -170,3 +178,5 @@ curl https://api.kioku.chat/health          # {"status":"ok"}
 - `#41` open: bot cleanup when left alone
 - `#42` open: Makefile for fresh install
 - `#43` open: authenticated mode causes bot to self-leave immediately
+- `#45` open: UI redesign — Figma design phase
+- `#44` open: UI redesign — implement Figma into dashboard (blocked by #45)

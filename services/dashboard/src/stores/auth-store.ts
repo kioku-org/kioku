@@ -22,6 +22,7 @@ interface AuthState {
   // Actions
   sendMagicLink: (email: string) => Promise<LoginResult>;
   setAuth: (user: VexaUser, token: string) => void;
+  clearAuth: () => void;
   logout: () => void;
   setUser: (user: VexaUser | null) => void;
   setToken: (token: string | null) => void;
@@ -93,6 +94,10 @@ export const useAuthStore = create<AuthState>()(
           isLoading: false,
           didLogout: false,
         });
+      },
+
+      clearAuth: () => {
+        set({ user: null, token: null, isAuthenticated: false, isLoading: false, didLogout: false });
       },
 
       logout: () => {

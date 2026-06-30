@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store";
 import { savePendingMeetingUrl } from "@/lib/pending-meeting";
@@ -16,7 +16,7 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, isLoading, checkAuth, didLogout } = useAuthStore();
+  const { isAuthenticated, isLoading, checkAuth, clearAuth, didLogout } = useAuthStore();
   const [shouldRedirect, setShouldRedirect] = useState(false);
   const meetingUrlCaptured = useRef(false);
 
@@ -43,6 +43,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
       checkAuth(); // protected route
     }
   }, [pathname, checkAuth]);
+
+  // Safety timeout — if still loading after 10s, something went wrong; clear state
+  useEffect(() => {
+    if (!isLoading) return;
+    const t = setTimeout(() => {
+      clearAuth();
+    }, 10000);
+    return () => clearTimeout(t);
+  }, [isLoading, clearAuth]);
 
   // Handle redirect in useEffect to avoid React render warning
   useEffect(() => {

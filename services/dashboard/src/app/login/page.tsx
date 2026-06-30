@@ -35,7 +35,7 @@ interface HealthStatus {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { sendMagicLink, isAuthenticated } = useAuthStore();
+  const { sendMagicLink, isAuthenticated, checkAuth, clearAuth } = useAuthStore();
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [state, setState] = useState<LoginState>("onboarding");
@@ -49,11 +49,24 @@ export default function LoginPage() {
   const isSupportedPlatform = parsedInput?.platform === "google_meet" || parsedInput?.platform === "teams";
   const canContinue = isMeetingValid && isSupportedPlatform;
 
+  // Clear stale auth state if NextAuth redirected here with an error
   useEffect(() => {
-    if (isAuthenticated) {
-      router.push("/");
-      return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("error")) {
+      clearAuth();
     }
+  }, [clearAuth]);
+
+  useEffect(() => {
+    // Verify session server-side before trusting persisted isAuthenticated
+    const verify = async () => {
+      if (!isAuthenticated) return;
+      await checkAuth();
+      if (useAuthStore.getState().isAuthenticated) {
+        router.push("/");
+      }
+    };
+    verify();
     // Hosted mode: redirect to external auth (webapp) instead of showing dashboard login
     const checkHostedMode = async () => {
       try {
@@ -66,7 +79,7 @@ export default function LoginPage() {
       } catch {}
     };
     checkHostedMode();
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, checkAuth, router]);
 
   useEffect(() => {
     const checkHealth = async () => {
