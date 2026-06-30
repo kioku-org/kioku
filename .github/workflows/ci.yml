@@ -1,0 +1,180 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'services/**'
+      - 'deployment/docker/Dockerfile.*'
+      - 'deployment/docker/entrypoint-*.sh'
+      - '.github/workflows/ci.yml'
+  release:
+    types: [published]
+
+jobs:
+  build-stateful:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      sha: ${{ steps.meta.outputs.sha }}
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        run: |
+          echo "sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          if [[ "${GITHUB_REF##*/}" =~ ^(master|main)$ ]]; then
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deployment/docker/Dockerfile.stateful
+          push: true
+          tags: |
+            ghcr.io/kioku-org/kioku-stateful:${{ steps.meta.outputs.tag }}
+            ghcr.io/kioku-org/kioku-stateful:${{ steps.meta.outputs.sha }}
+          cache-from: type=gha,scope=stateful
+          cache-to: type=gha,scope=stateful,mode=max,ignore-error=true
+
+  build-stateless:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        run: |
+          echo "sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          if [[ "${GITHUB_REF##*/}" =~ ^(master|main)$ ]]; then
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deployment/docker/Dockerfile.stateless
+          push: true
+          tags: |
+            ghcr.io/kioku-org/kioku-stateless:${{ steps.meta.outputs.tag }}
+            ghcr.io/kioku-org/kioku-stateless:${{ steps.meta.outputs.sha }}
+          cache-from: type=gha,scope=stateless
+          cache-to: type=gha,scope=stateless,mode=max,ignore-error=true
+
+  test:
+    needs: [build-stateful, build-stateless]
+    runs-on: ubuntu-latest
+    env:
+      SHA: ${{ needs.build-stateful.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install runpodctl
+        run: |
+          curl -fsSL https://cli.runpod.io/install.sh | sh
+          echo "$HOME/.runpod/bin" >> $GITHUB_PATH
+
+      - name: Create test pod on RunPod
+        id: pod
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+          CI_HIVEMIND_JWT_SECRET: ${{ secrets.CI_HIVEMIND_JWT_SECRET }}
+          CI_HIVEMIND_ENCRYPTION_SECRET: ${{ secrets.CI_HIVEMIND_ENCRYPTION_SECRET }}
+          CI_VEXA_ADMIN_API_TOKEN: ${{ secrets.CI_VEXA_ADMIN_API_TOKEN }}
+        run: |
+          ENV_JSON=$(python3 -c "
+          import json, os
+          print(json.dumps([
+            {'key': 'HIVEMIND_JWT_SECRET',        'value': os.environ['CI_HIVEMIND_JWT_SECRET']},
+            {'key': 'HIVEMIND_ENCRYPTION_SECRET', 'value': os.environ['CI_HIVEMIND_ENCRYPTION_SECRET']},
+            {'key': 'VEXA_ADMIN_API_TOKEN',       'value': os.environ['CI_VEXA_ADMIN_API_TOKEN']},
+            {'key': 'VEXA_ALLOW_DIRECT_LOGIN',    'value': 'true'},
+          ]))
+          ")
+
+          QUERY=$(python3 -c "
+          import json, os
+          env = $ENV_JSON
+          q = '''mutation {
+            podFindAndDeployOnDemand(input: {
+              name: \"kioku-ci-$SHA\"
+              imageName: \"ghcr.io/kioku-org/kioku-stateful:$SHA\"
+              gpuCount: 0
+              cloudType: COMMUNITY
+              computeType: CPU
+              containerDiskInGb: 20
+              minMemoryInGb: 16
+              minVcpuCount: 4
+              ports: \"9100/http,8056/http\"
+              env: ENV_PLACEHOLDER
+            }) { id }
+          }'''
+          print(q.replace('ENV_PLACEHOLDER', json.dumps(env).replace('\"', '\\\\\"')))
+          ")
+
+          RESP=$(curl -sf -X POST "https://api.runpod.io/graphql?api_key=$RUNPOD_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\": $(echo "$QUERY" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")}")
+
+          POD_ID=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['podFindAndDeployOnDemand']['id'])")
+          echo "pod_id=$POD_ID" >> $GITHUB_OUTPUT
+          echo "hivemind_url=https://$POD_ID-9100.proxy.runpod.net" >> $GITHUB_OUTPUT
+          echo "vexa_url=https://$POD_ID-8056.proxy.runpod.net" >> $GITHUB_OUTPUT
+          echo "Test pod: $POD_ID"
+
+      - name: Wait for Hivemind to be ready
+        run: |
+          URL="${{ steps.pod.outputs.hivemind_url }}/health"
+          echo "Polling $URL ..."
+          for i in $(seq 1 36); do
+            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" --max-time 10 "$URL" 2>/dev/null || echo "000")
+            [ "$STATUS" = "200" ] && echo "Ready after ~$((i * 10))s" && break
+            echo "  attempt $i/36: $STATUS — waiting 10s..."
+            sleep 10
+          done
+          [ "$STATUS" = "200" ] || { echo "Timed out waiting for Hivemind"; exit 1; }
+
+      - name: Run smoke tests
+        env:
+          CI_VEXA_ADMIN_API_TOKEN: ${{ secrets.CI_VEXA_ADMIN_API_TOKEN }}
+        run: |
+          chmod +x deployment/docker/scripts/ci-smoke-test.sh
+          deployment/docker/scripts/ci-smoke-test.sh \
+            "${{ steps.pod.outputs.hivemind_url }}" \
+            "${{ steps.pod.outputs.vexa_url }}" \
+            "$CI_VEXA_ADMIN_API_TOKEN"
+
+      - name: Destroy test pod
+        if: always() && steps.pod.outputs.pod_id != ''
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          POD_ID="${{ steps.pod.outputs.pod_id }}"
+          curl -sf -X POST "https://api.runpod.io/graphql?api_key=$RUNPOD_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\": \"mutation { podTerminate(input: { podId: \\\"$POD_ID\\\" }) }\"}" || true
+          echo "Pod $POD_ID terminated"
