@@ -65,5 +65,5 @@ How Kioku's components fit together.
 ### MCP Integration
 
 1. AI client (Claude, Cursor) connects to Hivemind MCP endpoint
-2. MCP tools available: `kioku_search`, `kioku_list_meetings`, etc.
+2. MCP tools available: `search`, `meetings`, etc.
 3. AI client can search knowledge, list meetings, get transcripts — all through authenticated MCP session

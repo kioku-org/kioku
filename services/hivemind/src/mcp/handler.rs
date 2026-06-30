@@ -72,7 +72,7 @@ fn parse_args<T: serde::de::DeserializeOwned>(args: Option<&JsonObject>) -> Resu
 fn all_tools() -> Vec<Tool> {
     vec![
         Tool::new(
-            "kioku_search",
+            "search",
             "Search the Kioku knowledge base for meeting transcripts and documents.",
             json_schema(serde_json::json!({
                 "type": "object",
@@ -84,12 +84,12 @@ fn all_tools() -> Vec<Tool> {
             })),
         ),
         Tool::new(
-            "kioku_list_meetings",
+            "meetings",
             "List meetings stored in Kioku.",
             json_schema(serde_json::json!({"type": "object", "properties": {}})),
         ),
         Tool::new(
-            "kioku_get_transcript",
+            "transcript",
             "Get the full transcript for a specific meeting by UUID.",
             json_schema(serde_json::json!({
                 "type": "object",
@@ -98,7 +98,7 @@ fn all_tools() -> Vec<Tool> {
             })),
         ),
         Tool::new(
-            "kioku_get_meeting",
+            "meeting_get",
             "Get details of a specific meeting by UUID.",
             json_schema(serde_json::json!({
                 "type": "object",
@@ -107,12 +107,12 @@ fn all_tools() -> Vec<Tool> {
             })),
         ),
         Tool::new(
-            "kioku_list_documents",
+            "documents",
             "List uploaded PDF documents.",
             json_schema(serde_json::json!({"type": "object", "properties": {}})),
         ),
         Tool::new(
-            "kioku_delete_document",
+            "document_delete",
             "Delete a PDF document and its embeddings.",
             json_schema(serde_json::json!({
                 "type": "object",
@@ -121,7 +121,7 @@ fn all_tools() -> Vec<Tool> {
             })),
         ),
         Tool::new(
-            "kioku_ingest_meeting",
+            "meeting",
             "Ingest a meeting transcript into the knowledge base.",
             json_schema(serde_json::json!({
                 "type": "object",
@@ -184,13 +184,13 @@ impl ServerHandler for KiokuMcpService {
             let args = request.arguments.as_ref();
 
             match name.as_ref() {
-                "kioku_search" => self.handle_search(args).await,
-                "kioku_list_meetings" => self.handle_list_meetings(&context).await,
-                "kioku_get_transcript" => self.handle_get_transcript(args).await,
-                "kioku_get_meeting" => self.handle_get_meeting(args, &context).await,
-                "kioku_list_documents" => self.handle_list_documents(&context).await,
-                "kioku_delete_document" => self.handle_delete_document(args, &context).await,
-                "kioku_ingest_meeting" => self.handle_ingest_meeting(args, &context).await,
+                "search" => self.handle_search(args).await,
+                "meetings" => self.handle_list_meetings(&context).await,
+                "transcript" => self.handle_get_transcript(args).await,
+                "meeting_get" => self.handle_get_meeting(args, &context).await,
+                "documents" => self.handle_list_documents(&context).await,
+                "document_delete" => self.handle_delete_document(args, &context).await,
+                "meeting" => self.handle_ingest_meeting(args, &context).await,
                 _ => Err(ErrorData::method_not_found::<
                     rmcp::model::CallToolRequestMethod,
                 >()),

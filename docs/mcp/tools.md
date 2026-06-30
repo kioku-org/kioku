@@ -3,13 +3,13 @@ title: "MCP Tools"
 ---
 The Kioku MCP server exposes these tools to AI clients.
 
-## kioku_search
+## search
 
 Search the knowledge base (documents + meetings) with semantic similarity.
 
 ```json
 {
-    "tool": "kioku_search",
+    "tool": "search",
     "arguments": {
         "query": "deployment strategy",
         "limit": 5
@@ -19,26 +19,26 @@ Search the knowledge base (documents + meetings) with semantic similarity.
 
 Returns ranked results with `chunk` (text, speaker, chunk_type), `meeting` (id, title, date), and `score`.
 
-## kioku_list_meetings
+## meetings
 
 List all meetings in the company.
 
 ```json
 {
-    "tool": "kioku_list_meetings",
+    "tool": "meetings",
     "arguments": {}
 }
 ```
 
 Returns meetings with `id`, `title`, `date`, `duration_seconds`, `participants`.
 
-## kioku_get_transcript
+## transcript
 
 Get the full transcript of a specific meeting.
 
 ```json
 {
-    "tool": "kioku_get_transcript",
+    "tool": "transcript",
     "arguments": {
         "meeting_id": "m-1"
     }
@@ -47,50 +47,50 @@ Get the full transcript of a specific meeting.
 
 Returns transcript segments with `speaker`, `text`, `start_time`, `end_time`.
 
-## kioku_get_meeting
+## meeting_get
 
 Get details of a specific meeting.
 
 ```json
 {
-    "tool": "kioku_get_meeting",
+    "tool": "meeting_get",
     "arguments": {
         "meeting_id": "m-1"
     }
 }
 ```
 
-## kioku_list_documents
+## documents
 
 List all uploaded documents.
 
 ```json
 {
-    "tool": "kioku_list_documents",
+    "tool": "documents",
     "arguments": {}
 }
 ```
 
-## kioku_delete_document
+## document_delete
 
 Delete a document from the knowledge base.
 
 ```json
 {
-    "tool": "kioku_delete_document",
+    "tool": "document_delete",
     "arguments": {
         "document_id": "doc-1"
     }
 }
 ```
 
-## kioku_ingest_meeting
+## meeting
 
 Ingest a meeting transcript into the knowledge base.
 
 ```json
 {
-    "tool": "kioku_ingest_meeting",
+    "tool": "meeting",
     "arguments": {
         "title": "Planning Meeting",
         "date": 1700000000000,
@@ -103,6 +103,22 @@ Ingest a meeting transcript into the knowledge base.
 }
 ```
 
+## session
+
+Ingest a coding or working session into the knowledge base.
+
+```json
+{
+    "tool": "session",
+    "arguments": {
+        "title": "Fix Qdrant gRPC issue",
+        "summary": "Identified that qdrant-client uses gRPC but Qdrant had no grpc_port configured. Added grpc_port: 6335 and pointed Hivemind at it.",
+        "decisions": ["Use gRPC port 6335 for Qdrant", "INTERNAL_API_SECRET is the shared secret for service-to-service calls"],
+        "tags": ["rust", "qdrant", "hivemind", "docker"]
+    }
+}
+```
+
 ## Use Cases
 
 ### "What did we discuss last week?"
@@ -110,18 +126,25 @@ Ingest a meeting transcript into the knowledge base.
 Ask Claude:
 > Search my knowledge base for discussions from last week about the roadmap.
 
-Claude calls `kioku_search` with query "roadmap" and returns relevant meeting excerpts.
+Claude calls `search` with query "roadmap" and returns relevant meeting excerpts.
 
 ### "Summarize the last standup"
 
 Ask Claude:
 > Get the transcript of my last standup and summarize it.
 
-Claude calls `kioku_list_meetings`, finds the latest, then calls `kioku_get_transcript`.
+Claude calls `meetings`, finds the latest, then calls `transcript`.
 
 ### "Upload this meeting"
 
 Ask Claude:
 > Ingest this meeting transcript: [paste transcript]
 
-Claude calls `kioku_ingest_meeting` with the structured data.
+Claude calls `meeting` with the structured data.
+
+### "Store this coding session"
+
+Ask Claude:
+> Save what we just worked on to my knowledge base.
+
+Claude calls `session` with a summary of the session, decisions made, and tags.
