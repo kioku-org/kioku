@@ -16,7 +16,12 @@ pub async fn provision(
         .get("X-Internal-Secret")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    if secret != state.settings.jwt_secret {
+    let expected = if state.settings.internal_secret.is_empty() {
+        &state.settings.jwt_secret
+    } else {
+        &state.settings.internal_secret
+    };
+    if secret != expected {
         return Err(AppError::Unauthorized("Invalid internal secret".into()));
     }
 

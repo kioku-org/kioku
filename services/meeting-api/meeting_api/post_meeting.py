@@ -16,7 +16,7 @@ from .database import async_session_local
 from .outbound_events import claim_outbound_event, event_key, mark_outbound_event
 from .webhook_delivery import deliver_with_result, build_envelope
 
-from .config import TRANSCRIPTION_COLLECTOR_URL, POST_MEETING_HOOKS
+from .config import TRANSCRIPTION_COLLECTOR_URL, POST_MEETING_HOOKS, HIVEMIND_URL
 from .webhooks import send_completion_webhook
 
 logger = logging.getLogger("meeting_api.post_meeting")
@@ -356,6 +356,121 @@ async def finalize_in_progress_recordings(meeting: Meeting, db: AsyncSession) ->
     return finalized_count
 
 
+async def push_to_hivemind(meeting: Meeting, db: AsyncSession) -> None:
+    """Issue #46 — push Vexa transcript into Hivemind vector store after meeting ends."""
+    meeting_id = meeting.id
+    internal_secret = os.getenv("INTERNAL_API_SECRET", "")
+
+    # 1. Resolve user email + name for Hivemind provisioning
+    try:
+        from admin_models.models import User
+        user = (await db.execute(select(User).where(User.id == meeting.user_id))).scalars().first()
+        if not user or not user.email:
+            logger.warning(f"[Hivemind] No email for user {meeting.user_id}, skipping ingest for meeting {meeting_id}")
+            return
+        user_email = user.email
+        user_name = user.name or user_email.split("@")[0]
+    except Exception as e:
+        logger.error(f"[Hivemind] Failed to resolve user for meeting {meeting_id}: {e}")
+        return
+
+    # 2. Provision user in Hivemind → get JWT
+    try:
+        async with httpx.AsyncClient() as client:
+            prov = await client.post(
+                f"{HIVEMIND_URL}/internal/provision",
+                json={"email": user_email, "name": user_name},
+                headers={"X-Internal-Secret": internal_secret},
+                timeout=10.0,
+            )
+        if prov.status_code != 200:
+            logger.error(f"[Hivemind] Provision failed for {user_email}: {prov.status_code} {prov.text}")
+            return
+        token = prov.json().get("token")
+        if not token:
+            logger.error(f"[Hivemind] No token in provision response for {user_email}")
+            return
+    except Exception as e:
+        logger.error(f"[Hivemind] Provision request failed for meeting {meeting_id}: {e}")
+        return
+
+    # 3. Fetch transcript segments from collector
+    try:
+        async with httpx.AsyncClient() as client:
+            segs_resp = await client.get(
+                f"{TRANSCRIPTION_COLLECTOR_URL}/internal/transcripts/{meeting_id}",
+                headers={"X-Internal-Secret": internal_secret},
+                timeout=30.0,
+            )
+        if segs_resp.status_code != 200:
+            logger.warning(f"[Hivemind] Collector returned {segs_resp.status_code} for meeting {meeting_id}")
+            return
+        segments = segs_resp.json()
+    except Exception as e:
+        logger.error(f"[Hivemind] Collector fetch failed for meeting {meeting_id}: {e}")
+        return
+
+    if not segments:
+        logger.info(f"[Hivemind] No segments for meeting {meeting_id}, skipping ingest")
+        return
+
+    # 4. Map Vexa segments → Hivemind TranscriptSegment format
+    hivemind_segments = [
+        {
+            "speaker": seg.get("speaker") or "Unknown",
+            "text": seg.get("text", ""),
+            "start_time": seg.get("start_time") or seg.get("start") or 0.0,
+            "end_time": seg.get("end_time") or seg.get("end") or 0.0,
+        }
+        for seg in segments
+        if seg.get("text", "").strip()
+    ]
+
+    if not hivemind_segments:
+        logger.info(f"[Hivemind] All segments empty for meeting {meeting_id}, skipping ingest")
+        return
+
+    # 5. Build MeetingIngestRequest
+    import time
+    meeting_data = meeting.data or {}
+    duration_seconds = 0
+    if meeting.start_time and meeting.end_time:
+        duration_seconds = int((meeting.end_time - meeting.start_time).total_seconds())
+    date_ms = int(meeting.start_time.timestamp() * 1000) if meeting.start_time else int(time.time() * 1000)
+    title = (
+        meeting_data.get("name")
+        or (meeting.native_meeting_id and f"{meeting.platform}/{meeting.native_meeting_id}")
+        or f"Meeting {meeting_id}"
+    )
+
+    payload = {
+        "title": title,
+        "date": date_ms,
+        "duration_seconds": duration_seconds,
+        "participants": meeting_data.get("participants") or [],
+        "transcript": hivemind_segments,
+        "vexa_meeting_id": meeting_id,
+        "vexa_platform": meeting.platform,
+        "vexa_native_meeting_id": meeting.native_meeting_id,
+    }
+
+    # 6. Ingest into Hivemind
+    try:
+        async with httpx.AsyncClient() as client:
+            ingest = await client.post(
+                f"{HIVEMIND_URL}/meetings",
+                json=payload,
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=30.0,
+            )
+        if ingest.status_code in (200, 201):
+            logger.info(f"[Hivemind] Ingested meeting {meeting_id} ({len(hivemind_segments)} segments) for {user_email}")
+        else:
+            logger.error(f"[Hivemind] Ingest failed for meeting {meeting_id}: {ingest.status_code} {ingest.text}")
+    except Exception as e:
+        logger.error(f"[Hivemind] Ingest request failed for meeting {meeting_id}: {e}")
+
+
 async def run_all_tasks(meeting_id: int):
     """Run all post-meeting tasks for a given meeting_id.
 
@@ -407,6 +522,15 @@ async def run_all_tasks(meeting_id: int):
                 await db.commit()
     except Exception as e:
         logger.error(f"Post-meeting hooks failed for meeting {meeting_id}: {e}", exc_info=True)
+
+    # Task 4: Push transcript to Hivemind vector store (issue #46)
+    try:
+        async with async_session_local() as db:
+            meeting = await db.get(Meeting, meeting_id)
+            if meeting:
+                await push_to_hivemind(meeting, db)
+    except Exception as e:
+        logger.error(f"Hivemind ingest failed for meeting {meeting_id}: {e}", exc_info=True)
 
     logger.info(f"Post-meeting tasks completed for meeting {meeting_id}")
 

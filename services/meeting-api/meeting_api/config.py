@@ -43,6 +43,9 @@ TRANSCRIPTION_COLLECTOR_URL = os.getenv(
     "http://transcription-collector:8000",
 )
 
+# Hivemind — vector store / MCP service
+HIVEMIND_URL = os.getenv("HIVEMIND_URL", "http://localhost:9100")
+
 # Post-meeting hooks (comma-separated URLs)
 POST_MEETING_HOOKS = [
     url.strip()
