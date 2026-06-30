@@ -1,6 +1,6 @@
 # LEFTOVER
 
-Last updated: 2026-06-30 (rev 10)
+Last updated: 2026-07-01 (rev 11)
 
 ## Current Status
 
@@ -8,6 +8,9 @@ True stateful/stateless architecture deployed and running on the deploy server. 
 processes in `kioku-stateful` come up cleanly. Bot containers spawn on-demand via Docker socket.
 `kioku-stateless` image builds from `deployment/docker/Dockerfile.stateless`. CI pushes both images
 to GHCR on every push to master.
+
+`feat/hivemind` branch is active with Hivemind MCP integration, CLI OAuth signin, and GitHub OAuth.
+Not yet merged to main — needs final testing pass before PR.
 
 ## Architecture
 
@@ -33,6 +36,93 @@ Bot containers run on `kioku-network` and reach stateful services by container n
 
 ## What Is Done
 
+### Hivemind MCP integration (feat/hivemind, issue #47)
+
+**MCP tools** — all live at `POST /mcp` (Streamable HTTP, requires `Mcp-Session-Id` header):
+
+| Tool | What it does |
+|---|---|
+| `search` | Semantic search across knowledge base; `company_id` from JWT |
+| `meetings` | List all meetings for company |
+| `meeting_get` | Get meeting details by id |
+| `transcript` | Get meeting transcript; `company_id` from JWT |
+| `documents` | List uploaded documents |
+| `document_delete` | Delete a document by id |
+| `session` | Ingest a coding/work session — chunks content via paragraph-aware splitter into `coding_sessions` + `knowledge_chunks` + Qdrant |
+| `meeting` | Ingest a raw meeting transcript directly |
+
+**Paragraph-aware chunking** (`services/hivemind/src/services/knowledge.rs:307`):
+- `split_text_paragraphs(text, max_words=400)` — splits on `\n\n` first, word-windows only oversized paragraphs, carries last paragraph as overlap context
+
+**DB migration** `005_coding_sessions.sql`:
+- `coding_sessions` table (uuid, company_id, user_id, title, summary, decisions, tags, date)
+- `knowledge_chunks.session_id` FK added
+
+**Other Hivemind fixes done:**
+- Vexa → Hivemind transcript pipeline (`push_to_hivemind` in `post_meeting.py`)
+- Qdrant gRPC fix (qdrant-client 1.x needs `grpc_port: 6335`)
+- MCP lazy provision — existing users without hivemind token get one on next JWT refresh
+- `search` + `transcript` tools resolve `company_id` from JWT (not required as a tool arg)
+- `INTERNAL_API_SECRET` used for service-to-service provision calls (set in `.env`)
+
+### CLI (feat/hivemind, issue #48)
+
+**Binary:** `services/cli/` workspace with crates `cc-cli`, `cc-auth`, `cc-kioku`, `cc-upgrade`
+
+**14 visible commands** (as of dev.5):
+
+```
+signin     signout    whoami     token
+search     upload     docs       doc-delete
+meetings
+keys       key-create key-delete
+mcp        upgrade
+```
+
+Hidden (still functional): `sessions`, `session-create`, `session-get`, `session-delete`, `send`, `messages`, `auth-token`, `register-admin`
+
+**`kioku signin` OAuth flow:**
+1. Animated left/right provider selector (crossterm) — Google / GitHub, navigate with `← →` / `h l`
+2. Opens browser to `https://dashboard.kioku.chat/cli-auth?port=<random>&state=<uuid>&provider=<google|github>`
+3. `/cli-auth` (route handler, no dashboard layout) checks session → provisions Hivemind JWT → 302 to `http://localhost:<port>/callback?token=...`
+4. CLI receives callback, validates CSRF state, saves `AuthFile`
+
+**`kioku upgrade`** — merged check + upgrade: prints "already up to date" if current, otherwise upgrades.
+
+**`register-admin`** — hidden from `--help`; errors with a friendly message if called against `api.kioku.chat`.
+
+**`DEFAULT_SERVER_URL`** = `https://api.kioku.chat`
+**`DEFAULT_DASHBOARD_URL`** = `https://dashboard.kioku.chat`
+
+**Install script** (`docs/install.sh`):
+- Braille spinner animation, ANSI colors, TTY detection
+- Auto-detects OS/arch (linux/macos × x86_64/aarch64)
+- Installs to `/usr/local/bin` or `~/.local/bin`
+- `KIOKU_VERSION=cli/v0.1.0-dev.5 curl -fsSL https://kioku.chat/install.sh | sh` for dev builds
+- Needs to be copied to `kioku-web/install.sh` (blocked — kioku-web not yet pushed from Windows)
+
+**GitHub releases** (all pre-release, linux x86_64 only so far):
+- `cli/v0.1.0` — initial release
+- `cli/v0.1.0-dev.1` through `cli/v0.1.0-dev.5` — iterated during feat/hivemind
+
+**Missing:** multi-platform release workflow — `release-cli.yml` GitHub Actions to build all 4 targets (linux x86_64/aarch64, macos x86_64/aarch64) automatically on `cli/vX.Y.Z` tag push. Currently building and uploading manually.
+
+### Dashboard (feat/hivemind)
+
+- **GitHub OAuth** added to NextAuth (`services/dashboard/src/app/api/auth/[...nextauth]/route.ts`):
+  - `GithubProvider` enabled when `GITHUB_CLIENT_ID` + `GITHUB_CLIENT_SECRET` set
+  - `signIn` callback handles `google`, `azure-ad`, and `github` providers
+  - `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` wired into `docker-compose.stateful.yml`
+  - Credentials stored in server `.env` (set up 2026-06-30)
+- **GitHub button** on login page (`services/dashboard/src/app/login/page.tsx`):
+  - Shows when `healthStatus.checks.githubOAuth.configured === true`
+  - Official GitHub Octocat SVG mark
+- **`/cli-auth` route handler** (`services/dashboard/src/app/cli-auth/route.ts`):
+  - Route handler (not page component) → no dashboard layout/nav
+  - Validates port + CSRF state, gets session, decodes existing `hivemindToken` from JWT or re-provisions
+  - 302 redirect to `http://localhost:<port>/callback?token=...&state=...&user_id=...&email=...&name=...&company_id=...&role=...`
+- **Health API** (`/api/health`) now reports `githubOAuth.configured`
+
 ### Refactor (issue #40 closed)
 - Removed `services/vexa` submodule — all source now lives in `services/`
 - Rewrote `Dockerfile.stateful` as a 4-stage multi-stage build:
@@ -45,7 +135,7 @@ Bot containers run on `kioku-network` and reach stateful services by container n
 - CI updated: builds `kioku-stateful` + `kioku-stateless` from `deployment/docker/`; dropped dead
   `build-mcp`, `build-runtime-router`, `build-dashboard` jobs (all baked into stateful now)
 
-### Fixes applied
+### Fixes applied (historical)
 - Python venv shebang resolution: `python3.11` symlinked into `/usr/local/bin` in runtime stage
 - Cloudflared config: all hostnames updated from old container names to `localhost`
 - `ALLOW_PRIVATE_CALLBACKS=true` on `runtime-api-local` — monolith callbacks are always localhost
@@ -57,23 +147,28 @@ Bot containers run on `kioku-network` and reach stateful services by container n
 - SSH port remapped from 22 to 2222 (host port 22 in use)
 - Stale build-path env vars removed from `.env.example`
 
-### Previously done (issues #27–#37)
-- RunPod backend, dashboard, MCP, runtime router, bot e2e, whisper=0 fixes — see git log
-
 ## Open Items
 
-### Enable Google OAuth (one command when ready)
+### PR feat/hivemind → main (issue #47)
 
-Everything is wired. Just need real credentials from Google Cloud Console:
+All Hivemind work is on `feat/hivemind`. Before merging:
+- [ ] Verify `session` MCP tool end-to-end (ingest + search retrieval)
+- [ ] Verify `kioku signin` → GitHub OAuth flow end-to-end on production
+- [ ] Confirm `005_coding_sessions.sql` migration runs cleanly on existing prod DB
+- [ ] PR review + merge
 
-1. Go to https://console.cloud.google.com → APIs & Services → Credentials
-2. Create OAuth 2.0 Client ID (Web application)
-3. Add redirect URI: `https://dashboard.kioku.chat/api/auth/callback/google`
-4. Run on the server:
-   ```bash
-   cd ~/ws/kioku/deployment/docker
-   ./setup-google-oauth.sh <client_id> <client_secret>
-   ```
+### CLI multi-platform release workflow (issue #48)
+
+Need `.github/workflows/release-cli.yml` triggered on `cli/vX.Y.Z` tag:
+- Build targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`
+- Upload all 4 tarballs to GitHub Release
+- Currently only linux x86_64 is built manually
+
+### CLI distribution via install.sh (issue #48)
+
+`docs/install.sh` is ready. Needs to be copied to `kioku-web/` repo:
+- Blocked until kioku-web repo is pushed from Windows
+- Once done: `https://kioku.chat/install.sh` will serve it
 
 ### Bot pool for meeting identity (issue #38)
 
@@ -83,28 +178,25 @@ pre-registered bot accounts for Google Meet, Zoom, Teams to avoid waiting-room f
 ### Authenticated bot self-leaves immediately (issue #43)
 
 When the **Authenticated** toggle is ON in the dashboard Join form, the bot exits with
-`self_initiated_leave` (exit code 1). Root cause confirmed: the cookie service
-(`kioku-stateful:8099`) has no stored Google session cookies. Authenticated mode requires real
-browser session cookies captured from an actual Google account login. Blocked by issue #38.
+`self_initiated_leave` (exit code 1). Root cause: cookie service (`kioku-stateful:8099`) has no
+stored Google session cookies. Blocked by issue #38.
 
 **Workaround:** use unauthenticated mode (toggle OFF) — bot joins via Ask to Join waiting room.
 
 ### Bot cleanup when left alone (issue #41)
 
-When the last human leaves a meeting, the bot should auto-exit rather than linger.
-Needs an idle-detection heuristic in vexa-bot.
+When the last human leaves a meeting, the bot should auto-exit. Needs idle-detection in vexa-bot.
 
 ### Makefile (issue #42)
 
-A `deployment/docker/Makefile` exists (untracked) — needs review and commit.
+`deployment/docker/Makefile` exists (untracked) — needs review and commit.
 
 ### UI redesign (issues #45 → #44)
 
-Two-phase UI work:
-- **#45** `[design]` — produce the Figma design for the dashboard
-- **#44** `[design => code]` — implement that Figma design into the Next.js dashboard
+- **#45** — produce Figma design for dashboard
+- **#44** — implement Figma design into Next.js dashboard (blocked by #45)
 
-No Figma link or design assets attached yet. #45 must be done before #44 can start.
+No Figma link or design assets yet.
 
 ## Deploy Server
 
@@ -123,11 +215,16 @@ docker logs -f kioku-stateful
 # Check individual service
 docker exec kioku-stateful tail -f /var/log/<service>.err
 
-# Restart after entrypoint/config change (no rebuild needed for entrypoint fixes)
+# Rebuild + redeploy (after code changes)
+cd ~/ws/kioku && git pull && cd deployment/docker
+docker compose -f docker-compose.stateful.yml build kioku-stateful
+docker compose -f docker-compose.stateful.yml up -d
+
+# Restart after entrypoint/config change (no rebuild needed)
 scp deployment/docker/entrypoint-stateful-runtime.sh machine:~/ep.sh
 ssh machine "docker cp ~/ep.sh kioku-stateful:/entrypoint.sh && docker restart kioku-stateful"
 
-# Pull updated profile (no restart needed — runtime-api hot-reloads via SIGHUP)
+# Pull updated profile (no restart — runtime-api hot-reloads via SIGHUP)
 ssh machine "cd ~/ws/kioku && git pull && docker exec kioku-stateful kill -HUP \$(docker exec kioku-stateful pgrep -f 'port 8091')"
 
 # Clean build cache after rebuilds
@@ -159,27 +256,8 @@ curl https://dashboard.kioku.chat           # 200
 curl https://meetings.kioku.chat/health     # {"message":"Welcome to the Vexa API Gateway"}
 curl https://mcp.kioku.chat/health          # {"status":"ok"}
 curl https://api.kioku.chat/health          # {"status":"ok"}
+curl https://api.kioku.chat/health | jq .   # hivemind health check
 ```
-
-## Hivemind / feat/hivemind branch (issue #47)
-
-All work on `feat/hivemind` branch, not yet merged to main.
-
-**Done:**
-- Vexa → Hivemind transcript pipeline (`push_to_hivemind` in `post_meeting.py`)
-- Qdrant gRPC fix (qdrant-client 1.x is gRPC-only, added `grpc_port: 6335`)
-- MCP lazy provision fix (existing users get Hivemind token on next JWT refresh)
-- MCP tool names simplified — dropped `kioku_` prefix:
-  `search`, `meetings`, `meeting`, `meeting_get`, `transcript`, `documents`, `document_delete`, `session`
-- New `session` MCP tool — dumps raw content (chunked via paragraph-aware splitter) into vector DB
-- `search` + `transcript` tools now resolve `company_id` from JWT (no longer need it as an arg)
-
-**CLI distribution (issue #48) — needs kioku-web:**
-- `install.sh` ready at `docs/install.sh` — copy to `kioku-web/install.sh` when repo is pushed
-- GitHub Actions release workflow needed: `release-cli.yml` triggers on `cli/vX.Y.Z` tag, builds
-  4 targets (linux x86_64/aarch64, macos x86_64/aarch64) and publishes to GitHub Releases
-- `DEFAULT_SERVER_URL` changed from `localhost:9100` → `https://api.kioku.chat` in `main.rs`
-- Script auto-detects OS/arch, downloads from Releases, installs to `/usr/local/bin` or `~/.local/bin`
 
 ## GitHub Issue State
 
@@ -200,5 +278,5 @@ All work on `feat/hivemind` branch, not yet merged to main.
 - `#43` open: authenticated mode causes bot to self-leave immediately
 - `#45` open: UI redesign — Figma design phase
 - `#44` open: UI redesign — implement Figma into dashboard (blocked by #45)
-- `#47` open: Hivemind integration (feat/hivemind) — ready for PR to main
-- `#48` open: CLI binary distribution via install.sh — blocked until kioku-web is pushed from Windows
+- `#47` open: Hivemind integration (feat/hivemind) — ready for PR review
+- `#48` open: CLI binary distribution — multi-platform build workflow needed; install.sh blocked on kioku-web
