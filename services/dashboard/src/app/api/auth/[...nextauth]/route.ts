@@ -1,6 +1,7 @@
 import NextAuth, { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import AzureADProvider from "next-auth/providers/azure-ad";
+import GithubProvider from "next-auth/providers/github";
 import { cookies } from "next/headers";
 import { findUserByEmail, createUser, createUserToken } from "@/lib/vexa-admin-api";
 
@@ -32,6 +33,14 @@ const isGoogleAuthEnabled = () => {
   }
 
   // Default: enable if config is present (backward compatible)
+  return hasConfig;
+};
+
+const isGithubAuthEnabled = () => {
+  const flag = process.env.ENABLE_GITHUB_AUTH;
+  if (flag === "false" || flag === "0") return false;
+  const hasConfig = !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET);
+  if (flag === "true" || flag === "1") return hasConfig;
   return hasConfig;
 };
 
@@ -84,6 +93,14 @@ export const authOptions: NextAuthOptions = {
           }),
         ]
       : []),
+    ...(isGithubAuthEnabled()
+      ? [
+          GithubProvider({
+            clientId: process.env.GITHUB_CLIENT_ID!,
+            clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+          }),
+        ]
+      : []),
     ...(isAzureAdAuthEnabled()
       ? [
           AzureADProvider({
@@ -102,7 +119,7 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user, account, profile }) {
       // This callback is called after successful OAuth but before session creation
       if (
-        (account?.provider === "google" || account?.provider === "azure-ad") &&
+        (account?.provider === "google" || account?.provider === "azure-ad" || account?.provider === "github") &&
         user.email
       ) {
         try {
@@ -161,10 +178,36 @@ export const authOptions: NextAuthOptions = {
             path: "/",
           });
 
+          // Step 4: Provision Hivemind user (find-or-create personal workspace)
+          let hivemindToken: string | undefined;
+          const hivemindUrl = process.env.HIVEMIND_INTERNAL_URL || "http://localhost:9100";
+          const hivemindSecret = process.env.INTERNAL_API_SECRET;
+          if (hivemindSecret) {
+            try {
+              const provisionRes = await fetch(`${hivemindUrl}/internal/provision`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Internal-Secret": hivemindSecret,
+                },
+                body: JSON.stringify({ email: user.email, name: user.name || user.email.split("@")[0] }),
+              });
+              if (provisionRes.ok) {
+                const session = await provisionRes.json();
+                hivemindToken = session.token;
+              } else {
+                console.warn(`[NextAuth] Hivemind provision failed: ${provisionRes.status}`);
+              }
+            } catch (e) {
+              console.warn("[NextAuth] Hivemind provision error:", e);
+            }
+          }
+
           // Store Kioku user info in the user object for the JWT callback
           (user as any).vexaUser = vexaUser;
           (user as any).vexaToken = apiToken;
           (user as any).isNewUser = isNewUser;
+          (user as any).hivemindToken = hivemindToken;
 
           return true;
         } catch (error) {
@@ -176,20 +219,35 @@ export const authOptions: NextAuthOptions = {
       return false; // Deny sign-in for other providers
     },
     async jwt({ token, user }) {
-      // Persist the Kioku user data to the token
       if (user && (user as any).vexaUser) {
         token.vexaUser = (user as any).vexaUser;
         token.vexaToken = (user as any).vexaToken;
         token.isNewUser = (user as any).isNewUser;
+        token.hivemindToken = (user as any).hivemindToken;
+      }
+      // Lazy-provision Hivemind for sessions created before this feature was deployed.
+      if (!token.hivemindToken && token.email) {
+        const hivemindUrl = process.env.HIVEMIND_INTERNAL_URL || "http://localhost:9100";
+        const hivemindSecret = process.env.INTERNAL_API_SECRET;
+        if (hivemindSecret) {
+          try {
+            const r = await fetch(`${hivemindUrl}/internal/provision`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Internal-Secret": hivemindSecret },
+              body: JSON.stringify({ email: token.email, name: token.name || (token.email as string).split("@")[0] }),
+            });
+            if (r.ok) token.hivemindToken = (await r.json()).token;
+          } catch { /* retry on next refresh */ }
+        }
       }
       return token;
     },
     async session({ session, token }) {
-      // Add Kioku user data to the session
       if (token.vexaUser) {
         (session as any).vexaUser = token.vexaUser;
         (session as any).vexaToken = token.vexaToken;
         (session as any).isNewUser = token.isNewUser;
+        (session as any).hivemindToken = token.hivemindToken;
       }
       return session;
     },

@@ -3,6 +3,12 @@ use uuid::Uuid;
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
+#[derive(Debug, Deserialize)]
+pub struct ProvisionRequest {
+    pub email: String,
+    pub name: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     pub user_id: Uuid,

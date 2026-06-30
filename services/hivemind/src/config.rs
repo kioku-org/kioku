@@ -21,6 +21,10 @@ pub struct Settings {
     pub jwt_secret: String,
     #[serde(default = "default_jwt_ttl_seconds")]
     pub jwt_ttl_seconds: i64,
+    /// Optional dedicated secret for internal service-to-service calls (e.g. provision).
+    /// Falls back to jwt_secret if empty, for backward compat.
+    #[serde(default)]
+    pub internal_secret: String,
 
     #[serde(default = "default_vexa_api_url")]
     pub vexa_api_url: String,
@@ -123,6 +127,7 @@ impl Default for Settings {
 
             jwt_secret: default_jwt_secret(),
             jwt_ttl_seconds: default_jwt_ttl_seconds(),
+            internal_secret: String::new(),
 
             vexa_api_url: default_vexa_api_url(),
             vexa_admin_api_url: default_vexa_admin_api_url(),

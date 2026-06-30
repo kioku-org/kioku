@@ -10,6 +10,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::services::vector::HivemindVectorStore;
+use crate::repos::auth::validate_token;
 
 fn json_schema(value: serde_json::Value) -> Arc<JsonObject> {
     match value {
@@ -22,6 +23,7 @@ fn json_schema(value: serde_json::Value) -> Arc<JsonObject> {
 pub struct KiokuMcpService {
     pub db: PgPool,
     pub vector_store: Arc<HivemindVectorStore>,
+    pub jwt_secret: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -38,6 +40,14 @@ struct MeetingIdParams {
 #[derive(Debug, Clone, Deserialize)]
 struct DocumentIdParams {
     document_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct IngestSessionParams {
+    title: String,
+    content: String,
+    tags: Option<Vec<String>>,
+    date: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -70,7 +80,7 @@ fn parse_args<T: serde::de::DeserializeOwned>(args: Option<&JsonObject>) -> Resu
 fn all_tools() -> Vec<Tool> {
     vec![
         Tool::new(
-            "kioku_search",
+            "search",
             "Search the Kioku knowledge base for meeting transcripts and documents.",
             json_schema(serde_json::json!({
                 "type": "object",
@@ -82,12 +92,12 @@ fn all_tools() -> Vec<Tool> {
             })),
         ),
         Tool::new(
-            "kioku_list_meetings",
+            "meetings",
             "List meetings stored in Kioku.",
             json_schema(serde_json::json!({"type": "object", "properties": {}})),
         ),
         Tool::new(
-            "kioku_get_transcript",
+            "transcript",
             "Get the full transcript for a specific meeting by UUID.",
             json_schema(serde_json::json!({
                 "type": "object",
@@ -96,7 +106,7 @@ fn all_tools() -> Vec<Tool> {
             })),
         ),
         Tool::new(
-            "kioku_get_meeting",
+            "meeting_get",
             "Get details of a specific meeting by UUID.",
             json_schema(serde_json::json!({
                 "type": "object",
@@ -105,12 +115,12 @@ fn all_tools() -> Vec<Tool> {
             })),
         ),
         Tool::new(
-            "kioku_list_documents",
+            "documents",
             "List uploaded PDF documents.",
             json_schema(serde_json::json!({"type": "object", "properties": {}})),
         ),
         Tool::new(
-            "kioku_delete_document",
+            "document_delete",
             "Delete a PDF document and its embeddings.",
             json_schema(serde_json::json!({
                 "type": "object",
@@ -119,7 +129,21 @@ fn all_tools() -> Vec<Tool> {
             })),
         ),
         Tool::new(
-            "kioku_ingest_meeting",
+            "session",
+            "Dump a coding or working session into the knowledge base. Pass the full raw content — conversation logs, diffs, notes, decisions, anything. It will be chunked and embedded automatically.",
+            json_schema(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "title": { "type": "string", "description": "Short title for the session" },
+                    "content": { "type": "string", "description": "The full session content — paste everything: conversation, code diffs, decisions, notes. Will be chunked automatically." },
+                    "tags": { "type": "array", "items": { "type": "string" }, "description": "Topics or technologies (optional)" },
+                    "date": { "type": "integer", "description": "Unix timestamp ms (defaults to now)" }
+                },
+                "required": ["title", "content"]
+            })),
+        ),
+        Tool::new(
+            "meeting",
             "Ingest a meeting transcript into the knowledge base.",
             json_schema(serde_json::json!({
                 "type": "object",
@@ -182,13 +206,14 @@ impl ServerHandler for KiokuMcpService {
             let args = request.arguments.as_ref();
 
             match name.as_ref() {
-                "kioku_search" => self.handle_search(args).await,
-                "kioku_list_meetings" => self.handle_list_meetings(&context).await,
-                "kioku_get_transcript" => self.handle_get_transcript(args).await,
-                "kioku_get_meeting" => self.handle_get_meeting(args, &context).await,
-                "kioku_list_documents" => self.handle_list_documents(&context).await,
-                "kioku_delete_document" => self.handle_delete_document(args, &context).await,
-                "kioku_ingest_meeting" => self.handle_ingest_meeting(args, &context).await,
+                "search" => self.handle_search(args, &context).await,
+                "meetings" => self.handle_list_meetings(&context).await,
+                "transcript" => self.handle_get_transcript(args, &context).await,
+                "meeting_get" => self.handle_get_meeting(args, &context).await,
+                "documents" => self.handle_list_documents(&context).await,
+                "document_delete" => self.handle_delete_document(args, &context).await,
+                "session" => self.handle_ingest_session(args, &context).await,
+                "meeting" => self.handle_ingest_meeting(args, &context).await,
                 _ => Err(ErrorData::method_not_found::<
                     rmcp::model::CallToolRequestMethod,
                 >()),
@@ -198,9 +223,9 @@ impl ServerHandler for KiokuMcpService {
 }
 
 impl KiokuMcpService {
-    async fn handle_search(&self, args: Option<&JsonObject>) -> Result<CallToolResult, ErrorData> {
+    async fn handle_search(&self, args: Option<&JsonObject>, context: &RequestContext<RoleServer>) -> Result<CallToolResult, ErrorData> {
         let params: SearchParams = parse_args(args)?;
-        let company_id = extract_company_id_from_args(args)?;
+        let company_id = extract_company_id(context, self).await?;
         let limit = params.limit.unwrap_or(6).min(20).max(1);
         let query = params.query.trim().to_string();
         if query.is_empty() {
@@ -227,7 +252,7 @@ impl KiokuMcpService {
         &self,
         context: &RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        let company_id = extract_company_id(context)?;
+        let company_id = extract_company_id(context, self).await?;
         let repo = crate::repos::meeting::MeetingRepo::new(self.db.clone());
         match repo.list(company_id).await {
             Ok(meetings) => Ok(text_result(
@@ -240,9 +265,10 @@ impl KiokuMcpService {
     async fn handle_get_transcript(
         &self,
         args: Option<&JsonObject>,
+        context: &RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let params: MeetingIdParams = parse_args(args)?;
-        let company_id = extract_company_id_from_args(args)?;
+        let company_id = extract_company_id(context, self).await?;
         let meeting_id = Uuid::parse_str(&params.meeting_id).map_err(|e| {
             ErrorData::invalid_params(format!("Invalid meeting_id UUID: {}", e), None)
         })?;
@@ -262,7 +288,7 @@ impl KiokuMcpService {
         context: &RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let params: MeetingIdParams = parse_args(args)?;
-        let company_id = extract_company_id(context)?;
+        let company_id = extract_company_id(context, self).await?;
         let meeting_id = Uuid::parse_str(&params.meeting_id).map_err(|e| {
             ErrorData::invalid_params(format!("Invalid meeting_id UUID: {}", e), None)
         })?;
@@ -281,7 +307,7 @@ impl KiokuMcpService {
         &self,
         context: &RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        let company_id = extract_company_id(context)?;
+        let company_id = extract_company_id(context, self).await?;
         let repo = crate::repos::knowledge::KnowledgeRepo::new(self.db.clone());
         match repo.list_documents(company_id).await {
             Ok(docs) => Ok(text_result(
@@ -297,7 +323,7 @@ impl KiokuMcpService {
         context: &RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let params: DocumentIdParams = parse_args(args)?;
-        let company_id = extract_company_id(context)?;
+        let company_id = extract_company_id(context, self).await?;
         let document_id = Uuid::parse_str(&params.document_id).map_err(|e| {
             ErrorData::invalid_params(format!("Invalid document_id UUID: {}", e), None)
         })?;
@@ -324,8 +350,8 @@ impl KiokuMcpService {
         context: &RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let params: IngestMeetingParams = parse_args(args)?;
-        let company_id = extract_company_id(context)?;
-        let user_id = extract_user_id(context)?;
+        let company_id = extract_company_id(context, self).await?;
+        let user_id = extract_user_id(context, self).await?;
 
         let meeting_id = Uuid::new_v4();
         let segments: Vec<crate::types::TranscriptSegment> = params
@@ -384,9 +410,138 @@ impl KiokuMcpService {
             Err(e) => Ok(text_result(format!("Ingestion failed: {}", e))),
         }
     }
+
+    async fn handle_ingest_session(
+        &self,
+        args: Option<&JsonObject>,
+        context: &RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let params: IngestSessionParams = parse_args(args)?;
+        let company_id = extract_company_id(context, self).await?;
+        let user_id = extract_user_id(context, self).await?;
+
+        if params.content.trim().is_empty() {
+            return Ok(text_result("content is empty"));
+        }
+
+        let session_id = Uuid::new_v4();
+        let now = crate::util::now_ms();
+        let date = params.date.unwrap_or(now);
+        let tags = serde_json::to_value(&params.tags.unwrap_or_default())
+            .unwrap_or(serde_json::json!([]));
+
+        // Store session record (summary = first 500 chars of content for display)
+        let preview: String = params.content.chars().take(500).collect();
+        if let Err(e) = sqlx::query(
+            "INSERT INTO coding_sessions (id, company_id, user_id, title, summary, decisions, tags, date, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        )
+        .bind(session_id)
+        .bind(company_id)
+        .bind(user_id)
+        .bind(&params.title)
+        .bind(&preview)
+        .bind(serde_json::json!([]))
+        .bind(&tags)
+        .bind(date)
+        .bind(now)
+        .execute(&self.db)
+        .await
+        {
+            return Ok(text_result(format!("Failed to store session: {}", e)));
+        }
+
+        // Chunk the raw content and embed all chunks
+        let raw_chunks = crate::services::knowledge::split_text_paragraphs(&params.content, 400);
+        let chunk_count = raw_chunks.len();
+
+        let metadata_base = serde_json::json!({
+            "chunk_type": "session",
+            "session_id": session_id.to_string(),
+            "timestamp": date,
+        });
+
+        let docs: Vec<langchain_rust::schemas::Document> = raw_chunks
+            .iter()
+            .map(|chunk| langchain_rust::schemas::Document {
+                page_content: chunk.clone(),
+                metadata: {
+                    let mut m = std::collections::HashMap::new();
+                    m.insert("chunk_type".to_string(), serde_json::json!("session"));
+                    m.insert("session_id".to_string(), serde_json::json!(session_id.to_string()));
+                    m.insert("timestamp".to_string(), serde_json::json!(date));
+                    m
+                },
+                score: 0.0,
+            })
+            .collect();
+
+        // Persist chunk records to Postgres
+        for chunk_text in &raw_chunks {
+            let chunk_id = Uuid::new_v4();
+            if let Err(e) = sqlx::query(
+                "INSERT INTO knowledge_chunks (id, session_id, text, chunk_type, metadata, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+            )
+            .bind(chunk_id)
+            .bind(session_id)
+            .bind(chunk_text)
+            .bind("session")
+            .bind(&metadata_base)
+            .bind(now)
+            .execute(&self.db)
+            .await
+            {
+                return Ok(text_result(format!("Stored session but failed to persist chunk: {}", e)));
+            }
+        }
+
+        if let Err(e) = self.vector_store.add_documents_for_company(company_id, &docs).await {
+            return Ok(text_result(format!("Stored session but embedding failed: {}", e)));
+        }
+
+        Ok(text_result(format!(
+            "Session \"{}\" stored (id: {}) — {} chunks embedded. Searchable via `search`.",
+            params.title, session_id, chunk_count
+        )))
+    }
 }
 
-fn extract_company_id(context: &RequestContext<RoleServer>) -> Result<Uuid, ErrorData> {
+/// Extract Bearer token from the HTTP request parts stored in context extensions.
+fn bearer_token_from_context(context: &RequestContext<RoleServer>) -> Option<String> {
+    let parts = context.extensions.get::<axum::http::request::Parts>()?;
+    let auth = parts.headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
+    Some(auth.strip_prefix("Bearer ")?.to_string())
+}
+
+async fn resolve_claims_from_token(
+    jwt_secret: &str,
+    db: &PgPool,
+    token: &str,
+) -> Option<(Uuid, Uuid)> {
+    use crate::repos::auth::validate_token;
+    if let Ok(claims) = validate_token(jwt_secret, token) {
+        return Some((claims.company_id, claims.user_id));
+    }
+    // API key (cmp_xxx) — look up in company_api_keys by prefix
+    if token.starts_with("cmp_") && token.len() >= 12 {
+        let prefix = &token[..12];
+        let row: Option<(Uuid, Uuid)> = sqlx::query_as(
+            "SELECT company_id, user_id FROM company_api_keys WHERE key_prefix = $1 LIMIT 1",
+        )
+        .bind(prefix)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten();
+        return row;
+    }
+    None
+}
+
+async fn extract_company_id(
+    context: &RequestContext<RoleServer>,
+    service: &KiokuMcpService,
+) -> Result<Uuid, ErrorData> {
+    // 1. Try peer_info meta (set when client sends _meta.company_id in initialize)
     if let Some(info) = context.peer.peer_info() {
         if let Some(meta) = &info.meta {
             if let Some(val) = meta.get("company_id").and_then(|v| v.as_str()) {
@@ -396,13 +551,24 @@ fn extract_company_id(context: &RequestContext<RoleServer>) -> Result<Uuid, Erro
             }
         }
     }
+    // 2. Fall back to JWT/API-key in the HTTP Authorization header
+    if let Some(token) = bearer_token_from_context(context) {
+        if let Some((company_id, _)) =
+            resolve_claims_from_token(&service.jwt_secret, &service.db, &token).await
+        {
+            return Ok(company_id);
+        }
+    }
     Err(ErrorData::invalid_params(
-        "Missing company_id in session metadata. Set _meta.company_id during initialization.",
+        "Cannot determine company_id. Ensure you are authenticated with a valid Bearer token.",
         None,
     ))
 }
 
-fn extract_user_id(context: &RequestContext<RoleServer>) -> Result<Uuid, ErrorData> {
+async fn extract_user_id(
+    context: &RequestContext<RoleServer>,
+    service: &KiokuMcpService,
+) -> Result<Uuid, ErrorData> {
     if let Some(info) = context.peer.peer_info() {
         if let Some(meta) = &info.meta {
             if let Some(val) = meta.get("user_id").and_then(|v| v.as_str()) {
@@ -412,8 +578,15 @@ fn extract_user_id(context: &RequestContext<RoleServer>) -> Result<Uuid, ErrorDa
             }
         }
     }
+    if let Some(token) = bearer_token_from_context(context) {
+        if let Some((_, user_id)) =
+            resolve_claims_from_token(&service.jwt_secret, &service.db, &token).await
+        {
+            return Ok(user_id);
+        }
+    }
     Err(ErrorData::invalid_params(
-        "Missing user_id in session metadata",
+        "Cannot determine user_id. Ensure you are authenticated with a valid Bearer token.",
         None,
     ))
 }

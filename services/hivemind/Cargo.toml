@@ -21,17 +21,11 @@ dotenvy = "0.15"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 reqwest = { version = "0.12", features = ["json"] }
 config = { version = "0.14", features = ["toml"] }
-aes-gcm = "0.10"
-hex = "0.4"
-rand = "0.8"
-sha2 = "0.10"
-
 # langchain-rust + qdrant
 langchain-rust = { package = "langchain-rust-openrouter", git = "https://github.com/coolcmyk/langchain-rust-openrouter", features = ["qdrant", "ollama"] }
 qdrant-client = "=1.10.1"
 ollama-rs = "0.2.0"
 async-trait = "0.1"
-futures = "0.3"
 
 # PDF parsing
 pdf-extract = "0.7"
@@ -39,7 +33,6 @@ url = "2"
 
 # MCP protocol
 rmcp = { version = "1.7", features = ["server", "transport-streamable-http-server", "transport-streamable-http-server-session", "macros", "schemars"] }
-schemars = "1"
 tower = "0.5"
 http-body-util = "0.1"
 tokio-util = "0.7"

@@ -5,8 +5,8 @@ use axum::{
 use tower_http::cors::CorsLayer;
 
 use crate::handlers::{
-    auth, company, company_api_key, invite, knowledge, meeting, member, message, session, trace,
-    vexa,
+    auth, company, company_api_key, internal, invite, knowledge, meeting, member, message, session,
+    trace, vexa,
 };
 use crate::mcp::transport::mcp_routes;
 use crate::AppState;
@@ -19,6 +19,8 @@ pub fn build(state: AppState) -> Router {
             "/health",
             get(|| async { axum::Json(serde_json::json!({ "status": "ok" })) }),
         )
+        // Internal (dashboard → hivemind, protected by X-Internal-Secret)
+        .route("/internal/provision", post(internal::provision))
         // Auth
         .route("/auth/register/admin", post(auth::register_admin))
         .route("/auth/register/personal", post(auth::register_personal))

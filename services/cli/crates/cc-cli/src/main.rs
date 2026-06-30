@@ -5,15 +5,18 @@ use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
 use tracing_subscriber::{fmt, EnvFilter};
 
+mod signin;
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const REPO: &str = "kioku-org/kioku";
-const DEFAULT_SERVER_URL: &str = "http://localhost:9100";
+const DEFAULT_SERVER_URL: &str = "https://api.kioku.chat";
+const DEFAULT_DASHBOARD_URL: &str = "https://dashboard.kioku.chat";
 
 #[derive(Parser, Debug)]
 #[command(
     name = "kioku",
     version,
-    about = "Kioku CLI — context infrastructure client"
+    about = "Kioku — context infrastructure client"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -31,76 +34,81 @@ struct Cli {
 
 #[derive(Subcommand, Debug, PartialEq)]
 enum Commands {
-    #[command(about = "Register the initial admin account for a server")]
-    RegisterAdmin {
-        #[arg(long)]
-        company_name: Option<String>,
-        #[arg(long)]
-        company_slug: Option<String>,
-        #[arg(long)]
-        email: Option<String>,
-        #[arg(long)]
-        name: Option<String>,
-        #[arg(long)]
-        password: Option<String>,
-    },
-    #[command(about = "Sign in with email/password or API key")]
+    // ── Auth ──────────────────────────────────────────────────────────────────
+    #[command(about = "Sign in with Google, GitHub or an API key")]
     Signin {
-        #[arg(long)]
+        #[arg(long, help = "Sign in using a long-lived API key instead of OAuth")]
         api_key: Option<String>,
     },
     #[command(about = "Sign out and clear stored credentials")]
     Signout,
-    #[command(about = "Show current user info")]
+    #[command(about = "Show current user and server")]
     Whoami,
-    #[command(about = "Print stored auth token")]
-    AuthToken,
-    #[command(about = "List sessions")]
-    SessionsList,
-    #[command(about = "Create a new session")]
-    SessionsCreate {
-        #[arg(long)]
-        title: Option<String>,
-    },
-    #[command(about = "Get session details")]
-    SessionsGet { session_id: String },
-    #[command(about = "Delete a session")]
-    SessionsDelete { session_id: String },
-    #[command(about = "Send a message to a session")]
-    Send {
-        session_id: String,
-        message: Vec<String>,
-    },
-    #[command(about = "List messages in a session")]
-    Messages { session_id: String },
-    #[command(about = "Search knowledge base")]
-    KnowledgeSearch { query: String },
-    #[command(about = "Upload a PDF document")]
-    KnowledgeUpload { file: String },
+    #[command(about = "Print stored auth token (useful for scripting)")]
+    Token,
+
+    // ── Knowledge ─────────────────────────────────────────────────────────────
+    #[command(about = "Search your knowledge base")]
+    Search { query: String },
+    #[command(about = "Upload a document to your knowledge base")]
+    Upload { file: String },
     #[command(about = "List uploaded documents")]
-    KnowledgeDocuments,
+    Docs,
     #[command(about = "Delete a document")]
-    KnowledgeDelete { document_id: String },
+    DocDelete {
+        #[arg(value_name = "DOCUMENT_ID")]
+        document_id: String,
+    },
+
+    // ── Meetings ──────────────────────────────────────────────────────────────
     #[command(about = "List meetings")]
-    MeetingsList,
-    #[command(about = "Create a long-lived API key for CLI auth")]
-    AuthKeyCreate {
+    Meetings,
+
+    // ── API keys ──────────────────────────────────────────────────────────────
+    #[command(about = "List API keys")]
+    Keys,
+    #[command(about = "Create an API key")]
+    KeyCreate {
         #[arg(long, default_value = "cli-key")]
         name: String,
     },
-    #[command(about = "List long-lived API keys")]
-    AuthKeyList,
-    #[command(about = "Delete a long-lived API key")]
-    AuthKeyDelete {
+    #[command(about = "Delete an API key")]
+    KeyDelete {
         #[arg(value_name = "KEY_PREFIX_OR_ID")]
         key_prefix: String,
     },
-    #[command(about = "Print MCP server configuration for AI clients")]
+
+    // ── Tools ─────────────────────────────────────────────────────────────────
+    #[command(about = "Print MCP server config for AI clients (Claude, Cursor, etc.)")]
     Mcp,
-    #[command(about = "Check for updates")]
-    UpgradeCheck,
-    #[command(about = "Upgrade to the latest version")]
+    #[command(about = "Check for updates and upgrade if a newer version is available")]
     Upgrade,
+
+    // ── Hidden / power-user ───────────────────────────────────────────────────
+    #[command(hide = true)]
+    RegisterAdmin {
+        #[arg(long)] company_name: Option<String>,
+        #[arg(long)] company_slug: Option<String>,
+        #[arg(long)] email: Option<String>,
+        #[arg(long)] name: Option<String>,
+        #[arg(long)] password: Option<String>,
+    },
+    #[command(hide = true, name = "sessions")]
+    SessionsList,
+    #[command(hide = true, name = "session-create")]
+    SessionsCreate {
+        #[arg(long)] title: Option<String>,
+    },
+    #[command(hide = true, name = "session-get")]
+    SessionsGet { session_id: String },
+    #[command(hide = true, name = "session-delete")]
+    SessionsDelete { session_id: String },
+    #[command(hide = true, name = "send")]
+    Send { session_id: String, message: Vec<String> },
+    #[command(hide = true, name = "messages")]
+    Messages { session_id: String },
+    #[command(hide = true, name = "auth-token")]
+    AuthToken,
 }
 
 fn require_auth() -> Result<AuthFile> {
@@ -116,6 +124,24 @@ fn resolve_server_url(server_override: Option<&str>) -> String {
         server_override,
         std::env::var("KIOKU_SERVER").ok().as_deref(),
     )
+}
+
+fn resolve_dashboard_url(server_url: &str) -> String {
+    if let Ok(v) = std::env::var("KIOKU_DASHBOARD") {
+        return v;
+    }
+    if server_url.contains("api.kioku.chat") {
+        return DEFAULT_DASHBOARD_URL.to_string();
+    }
+    // Local dev: API is typically :9100, dashboard :3001
+    if let Some(stripped) = server_url
+        .strip_prefix("http://localhost:")
+        .or_else(|| server_url.strip_prefix("http://127.0.0.1:"))
+    {
+        let prefix = &server_url[..server_url.len() - stripped.len()];
+        return format!("{}3001", prefix);
+    }
+    DEFAULT_DASHBOARD_URL.to_string()
 }
 
 fn resolve_server_url_from(server_override: Option<&str>, env_server: Option<&str>) -> String {
@@ -227,6 +253,12 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             password,
         } => {
             let base_url = resolve_server_url(server.as_deref());
+            if base_url.contains("api.kioku.chat") {
+                anyhow::bail!(
+                    "register-admin is for self-hosted servers only.\n\
+                     Sign in at https://dashboard.kioku.chat instead, or use `kioku signin`."
+                );
+            }
             let client = KiokuClient::new(&base_url);
             let company_name = prompt_or(company_name, "Company name: ")?;
             let email = prompt_or(email, "Email: ")?;
@@ -257,10 +289,10 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
         }
         Commands::Signin { api_key } => {
             let base_url = resolve_server_url(server.as_deref());
-            let client = KiokuClient::new(&base_url);
             if let Some(key) = api_key {
+                let client = KiokuClient::new(&base_url);
                 let session = client.signin_api_key(&key).await?;
-                let auth = AuthFile {
+                AuthFile {
                     server_url: base_url,
                     token: session.token,
                     user_id: session.user_id,
@@ -268,24 +300,47 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
                     name: session.name,
                     company_id: session.company_id,
                     role: session.role,
-                };
-                auth.save()?;
+                }
+                .save()?;
                 println!("Signed in via API key.");
             } else {
-                let email = rprompt::prompt_reply("Email: ")?;
-                let password = rprompt::prompt_reply("Password: ")?;
-                let session = client.signin(&email, &password).await?;
-                let auth = AuthFile {
+                // OAuth flow: show provider selector → open browser → wait for callback
+                let provider = signin::select_provider()?;
+
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+                let port = listener.local_addr()?.port();
+                let state = uuid::Uuid::new_v4().to_string();
+
+                let dashboard_url = resolve_dashboard_url(&base_url);
+                let auth_url = format!(
+                    "{}/cli-auth?port={}&state={}&provider={}",
+                    dashboard_url,
+                    port,
+                    state,
+                    provider.id()
+                );
+
+                println!("Opening browser…");
+                if webbrowser::open(&auth_url).is_err() {
+                    println!("Couldn't open browser automatically. Open this URL manually:");
+                    println!("  {}", auth_url);
+                }
+                println!("Waiting for sign-in (2 min timeout)…");
+
+                let result = signin::wait_for_callback(listener, &state).await?;
+
+                AuthFile {
                     server_url: base_url,
-                    token: session.token,
-                    user_id: session.user_id,
-                    email: session.email,
-                    name: session.name,
-                    company_id: session.company_id,
-                    role: session.role,
-                };
-                auth.save()?;
-                println!("Signed in.");
+                    token: result.token,
+                    user_id: result.user_id,
+                    email: result.email.clone(),
+                    name: result.name.clone(),
+                    company_id: result.company_id,
+                    role: result.role,
+                }
+                .save()?;
+
+                println!("Signed in as {} ({})", result.name, result.email);
             }
         }
         Commands::Signout => {
@@ -296,9 +351,12 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let me = client.whoami().await?;
-            println!("{} ({}) [{}]", me.name, me.email, me.role);
+            println!("name:    {}", me.name);
+            println!("email:   {}", me.email);
+            println!("role:    {}", me.role);
+            println!("server:  {}", auth.server_url);
         }
-        Commands::AuthToken => {
+        Commands::Token | Commands::AuthToken => {
             let auth = require_auth()?;
             println!("{}", auth.token);
         }
@@ -306,8 +364,11 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let sessions = client.list_sessions().await?;
+            if sessions.is_empty() {
+                println!("No sessions.");
+            }
             for s in &sessions {
-                println!("{}  {}  {:?}", s.id, s.title, s.created_at);
+                println!("{} — {}", s.id, s.title);
             }
         }
         Commands::SessionsCreate { title } => {
@@ -322,10 +383,8 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let session = client.get_session(&session_id).await?;
-            println!(
-                "{}  {}  {:?}",
-                session.id, session.title, session.created_at
-            );
+            println!("id:    {}", session.id);
+            println!("title: {}", session.title);
         }
         Commands::SessionsDelete { session_id } => {
             let auth = require_auth()?;
@@ -351,6 +410,9 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let msgs = client.list_messages(&session_id).await?;
+            if msgs.is_empty() {
+                println!("No messages.");
+            }
             for m in &msgs {
                 let text: String = m
                     .content
@@ -358,71 +420,101 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
                     .filter_map(|p| p.text.clone())
                     .collect::<Vec<_>>()
                     .join(" ");
-                println!(
-                    "[{}] {}: {}",
-                    m.role,
-                    m.id,
-                    text.chars().take(200).collect::<String>()
-                );
+                let preview: String = text.chars().take(200).collect();
+                let ellipsis = if text.len() > 200 { "…" } else { "" };
+                println!("[{}] {}{}", m.role.to_uppercase(), preview, ellipsis);
+                println!();
             }
         }
-        Commands::KnowledgeSearch { query } => {
+        Commands::Search { query } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let results = client.knowledge_search(&query, 5).await?;
-            for r in &results {
+            if results.is_empty() {
+                println!("No results.");
+            }
+            for (i, r) in results.iter().enumerate() {
                 let text = r.chunk.get("text").and_then(|v| v.as_str()).unwrap_or("");
-                println!(
-                    "[score={:.3}]: {}",
-                    r.score,
-                    text.chars().take(200).collect::<String>()
-                );
+                let preview: String = text.chars().take(300).collect();
+                let ellipsis = if text.len() > 300 { "…" } else { "" };
+                println!("{}. [score {:.2}]  {}{}", i + 1, r.score, preview, ellipsis);
+                println!();
             }
         }
-        Commands::KnowledgeUpload { file } => {
+        Commands::Upload { file } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let path = Path::new(&file);
             client.upload_document(path).await?;
             println!("Uploaded {file}");
         }
-        Commands::KnowledgeDocuments => {
+        Commands::Docs => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let docs = client.list_documents().await?;
+            if docs.is_empty() {
+                println!("No documents.");
+            }
             for d in &docs {
-                println!("{}", serde_json::to_string_pretty(d)?);
+                let id = d.get("id").and_then(|v| v.as_str()).unwrap_or("?");
+                let name = d.get("name").and_then(|v| v.as_str())
+                    .or_else(|| d.get("filename").and_then(|v| v.as_str()))
+                    .unwrap_or("untitled");
+                println!("{} — {}", id, name);
             }
         }
-        Commands::KnowledgeDelete { document_id } => {
+        Commands::DocDelete { document_id } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             client.delete_document(&document_id).await?;
             println!("Deleted document {document_id}");
         }
-        Commands::MeetingsList => {
+        Commands::Meetings => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let meetings = client.list_meetings().await?;
+            if meetings.is_empty() {
+                println!("No meetings.");
+            }
             for m in &meetings {
-                println!("{}  {}  {:?}", m.id, m.title, m.date);
+                let date = chrono::DateTime::from_timestamp(m.date / 1000, 0)
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                    .unwrap_or_else(|| m.date.to_string());
+                println!("{} — {} ({})", m.id, m.title, date);
             }
         }
-        Commands::AuthKeyCreate { name } => {
+        Commands::KeyCreate { name } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let key = client.create_auth_key(&name).await?;
-            println!("{}", serde_json::to_string_pretty(&key)?);
+            let raw = key.get("key").and_then(|v| v.as_str())
+                .or_else(|| key.get("raw_key").and_then(|v| v.as_str()));
+            if let Some(raw_key) = raw {
+                println!("API key (save this — it won't be shown again):");
+                println!();
+                println!("  {}", raw_key);
+                println!();
+                println!("Use it with:  kioku signin --api-key <key>");
+            } else {
+                println!("{}", serde_json::to_string_pretty(&key)?);
+            }
         }
-        Commands::AuthKeyList => {
+        Commands::Keys => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let keys = client.list_auth_keys().await?;
+            if keys.is_empty() {
+                println!("No API keys.");
+            }
             for k in &keys {
-                println!("{}  {}  {}  {:?}", k.id, k.key_prefix, k.name, k.created_at);
+                let last_used = k.last_used_at
+                    .and_then(|ts| chrono::DateTime::from_timestamp(ts / 1000, 0))
+                    .map(|dt| dt.format("%Y-%m-%d").to_string())
+                    .unwrap_or_else(|| "never".to_string());
+                println!("{} — {} (prefix: {}  last used: {})", k.id, k.name, k.key_prefix, last_used);
             }
         }
-        Commands::AuthKeyDelete { key_prefix } => {
+        Commands::KeyDelete { key_prefix } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let keys = client.list_auth_keys().await?;
@@ -434,20 +526,15 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             let auth = require_auth()?;
             println!("{}", mcp_config_json(&auth.server_url, &auth.token));
         }
-        Commands::UpgradeCheck => {
+        Commands::Upgrade => {
             let info = cc_upgrade::check_for_update(REPO, VERSION).await?;
             if info.latest_version == VERSION {
-                println!("Up to date (v{VERSION}).");
+                println!("Already up to date (v{VERSION}).");
             } else {
-                println!(
-                    "New version available: v{} (current: v{VERSION})",
-                    info.latest_version
-                );
+                println!("Upgrading v{VERSION} → v{}…", info.latest_version);
+                let msg = cc_upgrade::perform_upgrade(REPO, VERSION).await?;
+                println!("{msg}");
             }
-        }
-        Commands::Upgrade => {
-            let msg = cc_upgrade::perform_upgrade(REPO, VERSION).await?;
-            println!("{msg}");
         }
     }
     Ok(())

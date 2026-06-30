@@ -87,15 +87,15 @@ Replace the hosted URLs with localhost:
 Once connected, ask your AI client:
 
 - *"What did we decide about the deployment strategy last week?"*  
-  → Claude calls `kioku_search` and returns relevant transcript excerpts.
+  → Claude calls `search` and returns relevant transcript excerpts.
 
 - *"Summarize my last three standups."*  
-  → Claude calls `kioku_list_meetings`, then `kioku_get_transcript` for each.
+  → Claude calls `meetings`, then `transcript` for each.
 
 - *"Find everything we discussed about RunPod."*  
   → Semantic search across all meetings and uploaded documents.
 
 - *"Upload this transcript."*  
-  → Claude calls `kioku_ingest_meeting` with the structured data.
+  → Claude calls `meeting` with the structured data.
 
 See [MCP Tools](/api-cli-mcp#mcp-tools) for the full list of available tools.

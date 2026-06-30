@@ -46,8 +46,8 @@ impl HivemindVectorStore {
         let exists = match self.client.collection_exists(&self.collection_name).await {
             Ok(exists) => exists,
             Err(e) => {
-                tracing::warn!(error = %e, "Could not check Qdrant collection existence");
-                return Ok(()); // Don't crash on Qdrant errors
+                tracing::warn!(error = %e, "Could not check Qdrant collection existence — will attempt to create");
+                false // treat as missing and try to create
             }
         };
         if exists {

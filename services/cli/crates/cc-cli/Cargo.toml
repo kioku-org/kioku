@@ -22,6 +22,9 @@ serde_json     = { workspace = true }
 chrono         = { workspace = true }
 uuid           = { workspace = true }
 rprompt       = "2"
+crossterm     = { workspace = true }
+webbrowser    = { workspace = true }
+urlencoding   = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = "1"

@@ -28,6 +28,9 @@ chrono       = { version = "0.4", features = ["serde"] }
 dirs         = "5"
 uuid           = { version = "1", features = ["v4"] }
 rprompt       = "2"
+crossterm     = { version = "0.28", features = ["event-stream"] }
+webbrowser    = "1"
+urlencoding   = "2"
 
 cc-kioku   = { path = "crates/cc-kioku" }
 cc-auth        = { path = "crates/cc-auth" }

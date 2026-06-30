@@ -106,7 +106,7 @@ function scopesFromApi(scopes: string[]): KeyScope[] {
 export default function ProfilePage() {
   const user = useAuthStore((state) => state.user);
 
-  // API Keys state
+  // Bot API keys (Vexa)
   const [apiKeys, setApiKeys] = useState<APIKeyDisplay[]>([]);
   const [isLoadingKeys, setIsLoadingKeys] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -117,18 +117,21 @@ export default function ProfilePage() {
   const [createdKeyToken, setCreatedKeyToken] = useState<string | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
 
+  // CLI keys (Hivemind)
+  const [cliKeys, setCliKeys] = useState<CliKey[]>([]);
+  const [isLoadingCli, setIsLoadingCli] = useState(true);
+  const [showCliCreate, setShowCliCreate] = useState(false);
+  const [newCliKeyName, setNewCliKeyName] = useState("");
+  const [isCreatingCli, setIsCreatingCli] = useState(false);
+  const [revealedCliKey, setRevealedCliKey] = useState<string | null>(null);
+  const [cliNotProvisioned, setCliNotProvisioned] = useState(false);
 
-  // Fetch API keys
   useEffect(() => {
     async function fetchKeys() {
       if (!user?.id) return;
       try {
         const response = await fetch(withBasePath(`/api/profile/keys?userId=${user.id}`));
-        if (!response.ok) {
-          // Graceful fallback — endpoint may not exist yet
-          setApiKeys([]);
-          return;
-        }
+        if (!response.ok) { setApiKeys([]); return; }
         const data = await response.json();
         setApiKeys(
           (data.keys || []).map((k: { id: string; token: string; scopes?: string[]; name?: string; created_at: string; last_used_at?: string; expires_at?: string }) => ({
@@ -142,15 +145,22 @@ export default function ProfilePage() {
             expires_at: k.expires_at || null,
           }))
         );
-      } catch {
-        setApiKeys([]);
-      } finally {
-        setIsLoadingKeys(false);
-      }
+      } catch { setApiKeys([]); }
+      finally { setIsLoadingKeys(false); }
     }
     fetchKeys();
   }, [user?.id]);
 
+  useEffect(() => {
+    fetch(withBasePath("/api/hivemind/keys"))
+      .then(async (r) => {
+        if (r.status === 401) { setCliNotProvisioned(true); return; }
+        const data = await r.json();
+        setCliKeys(Array.isArray(data) ? data : []);
+      })
+      .catch(() => setCliNotProvisioned(true))
+      .finally(() => setIsLoadingCli(false));
+  }, []);
 
   const handleCreateKey = async () => {
     setIsCreatingKey(true);
@@ -159,36 +169,25 @@ export default function ProfilePage() {
       const response = await fetch(withBasePath("/api/profile/keys"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newKeyName,
-          scopes,
-          userId: user?.id,
-          ...(newKeyExpiry ? { expires_in: parseInt(newKeyExpiry) * 86400 } : {}),
-        }),
+        body: JSON.stringify({ name: newKeyName, scopes, userId: user?.id, ...(newKeyExpiry ? { expires_in: parseInt(newKeyExpiry) * 86400 } : {}) }),
       });
       if (!response.ok) throw new Error("Failed to create key");
       const data = await response.json();
       setCreatedKeyToken(data.token);
-      // Add to list
-      setApiKeys((prev) => [
-        ...prev,
-        {
-          id: data.id || String(Date.now()),
-          name: newKeyName || "API Key",
-          scopes: data.scopes ? scopesFromApi(data.scopes) : Array.from(newKeyScopes),
-          token: data.token,
-          masked_token: maskToken(data.token),
-          created_at: new Date().toISOString(),
-          last_used_at: null,
-          expires_at: null,
-        },
-      ]);
+      setApiKeys((prev) => [...prev, {
+        id: data.id || String(Date.now()),
+        name: newKeyName || "API Key",
+        scopes: data.scopes ? scopesFromApi(data.scopes) : Array.from(newKeyScopes),
+        token: data.token,
+        masked_token: maskToken(data.token),
+        created_at: new Date().toISOString(),
+        last_used_at: null,
+        expires_at: null,
+      }]);
       toast.success("API key created");
     } catch (error) {
       toast.error("Failed to create API key", { description: (error as Error).message });
-    } finally {
-      setIsCreatingKey(false);
-    }
+    } finally { setIsCreatingKey(false); }
   };
 
   const handleRevokeKey = async (keyId: string) => {
@@ -209,15 +208,40 @@ export default function ProfilePage() {
     toast.success("Copied to clipboard");
   };
 
+  const handleCreateCliKey = async () => {
+    if (!newCliKeyName.trim()) return;
+    setIsCreatingCli(true);
+    try {
+      const r = await fetch(withBasePath("/api/hivemind/keys"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newCliKeyName.trim() }),
+      });
+      if (!r.ok) throw new Error("Failed");
+      const data = await r.json();
+      setRevealedCliKey(data.key);
+      setCliKeys((prev) => [{ id: data.id, name: data.name, key_prefix: data.key_prefix, created_at: data.created_at, last_used_at: null }, ...prev]);
+      setNewCliKeyName("");
+      setShowCliCreate(false);
+      toast.success("CLI key created — copy it now");
+    } catch { toast.error("Failed to create CLI key"); }
+    finally { setIsCreatingCli(false); }
+  };
+
+  const handleRevokeCliKey = async (id: string) => {
+    try {
+      const r = await fetch(withBasePath(`/api/hivemind/keys/${id}`), { method: "DELETE" });
+      if (!r.ok) throw new Error("Failed");
+      setCliKeys((prev) => prev.filter((k) => k.id !== id));
+      toast.success("CLI key revoked");
+    } catch { toast.error("Failed to revoke key"); }
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-semibold tracking-[-0.02em] text-foreground">Profile</h1>
-        <p className="text-sm text-muted-foreground">
-          Manage your account and API keys
-        </p>
+        <p className="text-sm text-muted-foreground">Manage your account and API keys</p>
       </div>
 
       <div className="max-w-2xl space-y-6">
@@ -245,129 +269,143 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        {/* API Keys */}
+        {/* API Keys — unified card */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <Key className="h-5 w-5" />
-                API Keys
-              </CardTitle>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setNewKeyName("");
-                  setNewKeyScopes(new Set(["bot", "tx", "browser"]));
-                  setNewKeyExpiry("");
-                  setCreatedKeyToken(null);
-                  setShowCreateDialog(true);
-                }}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Create Key
-              </Button>
-            </div>
+            <CardTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5" />
+              API Keys
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            {isLoadingKeys ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <CardContent className="space-y-6">
+
+            {/* ── Bot API section ── */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Bot API</p>
+                <Button size="sm" variant="outline" onClick={() => {
+                  setNewKeyName(""); setNewKeyScopes(new Set(["bot", "tx", "browser"]));
+                  setNewKeyExpiry(""); setCreatedKeyToken(null); setShowCreateDialog(true);
+                }}>
+                  <Plus className="h-3.5 w-3.5 mr-1" />Create
+                </Button>
               </div>
-            ) : apiKeys.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">
-                No API keys yet. Create one to get started.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {apiKeys.map((key) => (
-                  <div
-                    key={key.id}
-                    className="rounded-lg bg-muted/50 px-4 py-3 flex items-center justify-between"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{key.name}</span>
-                        {key.scopes.map((s) => (
-                          <span
-                            key={s}
-                            className={cn(
-                              "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold",
-                              SCOPE_CONFIG[s].bgColor,
-                              SCOPE_CONFIG[s].color
-                            )}
-                          >
-                            {SCOPE_CONFIG[s].label}
-                          </span>
-                        ))}
+              {isLoadingKeys ? (
+                <div className="flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+              ) : apiKeys.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-3">No bot API keys yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {apiKeys.map((key) => (
+                    <div key={key.id} className="rounded-lg bg-muted/50 px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{key.name}</span>
+                          {key.scopes.map((s) => (
+                            <span key={s} className={cn("inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold", SCOPE_CONFIG[s].bgColor, SCOPE_CONFIG[s].color)}>
+                              {SCOPE_CONFIG[s].label}
+                            </span>
+                          ))}
+                        </div>
+                        <p className="text-[11px] font-mono text-muted-foreground mt-0.5">{key.masked_token}</p>
                       </div>
-                      <p className="text-[11px] font-mono text-muted-foreground mt-0.5">
-                        {key.masked_token}
-                      </p>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-muted-foreground">{key.last_used_at ? relativeTime(key.last_used_at) : "Never used"}</span>
+                        <span className="text-muted-foreground">{key.expires_at ? `Exp ${formatExpiry(key.expires_at)}` : "No expiry"}</span>
+                        <button onClick={() => handleCopyKey(key.id, key.token)} className="text-muted-foreground hover:text-foreground transition-colors">
+                          {copiedKeyId === key.id ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                        </button>
+                        <button onClick={() => handleRevokeKey(key.id)} className="text-red-400 hover:text-red-300 transition-colors">Revoke</button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 text-xs">
-                      <span className="text-muted-foreground" title="Last used">
-                        {key.last_used_at ? relativeTime(key.last_used_at) : "Never used"}
-                      </span>
-                      <span className="text-muted-foreground" title="Expires">
-                        {key.expires_at ? `Exp ${formatExpiry(key.expires_at)}` : "No expiry"}
-                      </span>
-                      <button
-                        onClick={() => handleCopyKey(key.id, key.token)}
-                        className="text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {copiedKeyId === key.id ? (
-                          <Check className="h-3.5 w-3.5 text-emerald-400" />
-                        ) : (
-                          <Copy className="h-3.5 w-3.5" />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => handleRevokeKey(key.id)}
-                        className="text-red-400 hover:text-red-300 transition-colors"
-                      >
-                        Revoke
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t" />
+
+            {/* ── CLI section ── */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">CLI / MCP</p>
+                {!cliNotProvisioned && (
+                  <Button size="sm" variant="outline" onClick={() => setShowCliCreate((v) => !v)}>
+                    <Plus className="h-3.5 w-3.5 mr-1" />Create
+                  </Button>
+                )}
               </div>
-            )}
+              <p className="text-xs text-muted-foreground">
+                Use with <code className="bg-muted px-1 py-0.5 rounded">kioku signin --api-key cmp_…</code>
+              </p>
+
+              {revealedCliKey && (
+                <div className="rounded-lg bg-emerald-950/30 border border-emerald-800/30 p-3 space-y-2">
+                  <p className="text-xs font-medium text-emerald-300">Copy this key now — you won&apos;t see it again.</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 bg-muted rounded px-2 py-1.5 text-xs font-mono break-all">{revealedCliKey}</code>
+                    <Button size="sm" variant="secondary" onClick={() => { navigator.clipboard.writeText(revealedCliKey); toast.success("Copied"); }}>
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  <button onClick={() => setRevealedCliKey(null)} className="text-xs text-muted-foreground hover:text-foreground">Dismiss</button>
+                </div>
+              )}
+
+              {showCliCreate && (
+                <div className="flex gap-2">
+                  <Input placeholder="Key name (e.g. laptop)" value={newCliKeyName} onChange={(e) => setNewCliKeyName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleCreateCliKey()} />
+                  <Button size="sm" onClick={handleCreateCliKey} disabled={isCreatingCli || !newCliKeyName.trim()}>
+                    {isCreatingCli ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create"}
+                  </Button>
+                </div>
+              )}
+
+              {isLoadingCli ? (
+                <div className="flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+              ) : cliNotProvisioned ? (
+                <p className="text-sm text-muted-foreground text-center py-3">Sign out and sign back in to activate CLI access.</p>
+              ) : cliKeys.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-3">No CLI keys yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {cliKeys.map((key) => (
+                    <div key={key.id} className="rounded-lg bg-muted/50 px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <span className="text-sm font-medium">{key.name}</span>
+                        <p className="text-[11px] font-mono text-muted-foreground mt-0.5">{key.key_prefix}••••••••</p>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-muted-foreground">{key.last_used_at ? relativeTime(new Date(key.last_used_at).toISOString()) : "Never used"}</span>
+                        <button onClick={() => handleRevokeCliKey(key.id)} className="text-red-400 hover:text-red-300 transition-colors">Revoke</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
           </CardContent>
         </Card>
 
       </div>
 
-      {/* Create Key Dialog */}
+      {/* Create Bot API Key Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create API Key</DialogTitle>
-            <DialogDescription>
-              Choose a key type and name for your new API key.
-            </DialogDescription>
+            <DialogTitle>Create Bot API Key</DialogTitle>
+            <DialogDescription>Choose scopes and a name for your new bot API key.</DialogDescription>
           </DialogHeader>
 
           {createdKeyToken ? (
             <div className="space-y-4">
               <div className="rounded-lg bg-emerald-950/30 border border-emerald-800/30 p-4">
-                <p className="text-sm font-medium text-emerald-300 mb-2">
-                  Key created successfully
-                </p>
-                <p className="text-xs text-muted-foreground mb-3">
-                  Copy this key now. You will not be able to see it again.
-                </p>
+                <p className="text-sm font-medium text-emerald-300 mb-2">Key created successfully</p>
+                <p className="text-xs text-muted-foreground mb-3">Copy this key now. You will not be able to see it again.</p>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 bg-muted rounded px-3 py-2 text-xs font-mono break-all">
-                    {createdKeyToken}
-                  </code>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => {
-                      navigator.clipboard.writeText(createdKeyToken);
-                      toast.success("Copied to clipboard");
-                    }}
-                  >
+                  <code className="flex-1 bg-muted rounded px-3 py-2 text-xs font-mono break-all">{createdKeyToken}</code>
+                  <Button size="sm" variant="secondary" onClick={() => { navigator.clipboard.writeText(createdKeyToken); toast.success("Copied to clipboard"); }}>
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
@@ -380,11 +418,7 @@ export default function ProfilePage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Key Name</Label>
-                <Input
-                  placeholder="e.g. Production Bot Key"
-                  value={newKeyName}
-                  onChange={(e) => setNewKeyName(e.target.value)}
-                />
+                <Input placeholder="e.g. Production Bot Key" value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} />
               </div>
 
               <div className="space-y-2">
@@ -398,49 +432,19 @@ export default function ProfilePage() {
                     }[scope];
                     const checked = newKeyScopes.has(scope);
                     return (
-                      <button
-                        key={scope}
-                        type="button"
-                        onClick={() => {
-                          setNewKeyScopes((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(scope)) {
-                              next.delete(scope);
-                            } else {
-                              next.add(scope);
-                            }
-                            return next;
-                          });
-                        }}
-                        className={cn(
-                          "w-full p-3 rounded-lg border-2 text-left transition-all flex items-center gap-3",
-                          checked
-                            ? "border-foreground/20 bg-muted/50"
-                            : "border-border hover:border-muted-foreground/30"
-                        )}
+                      <button key={scope} type="button"
+                        onClick={() => setNewKeyScopes((prev) => { const next = new Set(prev); next.has(scope) ? next.delete(scope) : next.add(scope); return next; })}
+                        className={cn("w-full p-3 rounded-lg border-2 text-left transition-all flex items-center gap-3", checked ? "border-foreground/20 bg-muted/50" : "border-border hover:border-muted-foreground/30")}
                       >
-                        <div className={cn(
-                          "h-4 w-4 rounded border-2 flex items-center justify-center flex-shrink-0",
-                          checked ? "border-foreground bg-foreground" : "border-muted-foreground/40"
-                        )}>
+                        <div className={cn("h-4 w-4 rounded border-2 flex items-center justify-center flex-shrink-0", checked ? "border-foreground bg-foreground" : "border-muted-foreground/40")}>
                           {checked && <Check className="h-3 w-3 text-background" />}
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium">{config.name}</span>
-                            <span
-                              className={cn(
-                                "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold",
-                                SCOPE_CONFIG[scope].bgColor,
-                                SCOPE_CONFIG[scope].color
-                              )}
-                            >
-                              {SCOPE_CONFIG[scope].label}
-                            </span>
+                            <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold", SCOPE_CONFIG[scope].bgColor, SCOPE_CONFIG[scope].color)}>{SCOPE_CONFIG[scope].label}</span>
                           </div>
-                          <p className="text-[11px] text-muted-foreground">
-                            {config.desc}
-                          </p>
+                          <p className="text-[11px] text-muted-foreground">{config.desc}</p>
                         </div>
                       </button>
                     );
@@ -451,48 +455,18 @@ export default function ProfilePage() {
               <div className="space-y-2">
                 <Label>Expiration</Label>
                 <div className="grid grid-cols-4 gap-2">
-                  {[
-                    { label: "Never", value: "" },
-                    { label: "30 days", value: "30" },
-                    { label: "90 days", value: "90" },
-                    { label: "1 year", value: "365" },
-                  ].map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setNewKeyExpiry(opt.value)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-md text-xs font-medium border transition-all",
-                        newKeyExpiry === opt.value
-                          ? "border-foreground/30 bg-muted"
-                          : "border-border hover:border-muted-foreground/30"
-                      )}
-                    >
-                      {opt.label}
-                    </button>
+                  {[{ label: "Never", value: "" }, { label: "30 days", value: "30" }, { label: "90 days", value: "90" }, { label: "1 year", value: "365" }].map((opt) => (
+                    <button key={opt.value} type="button" onClick={() => setNewKeyExpiry(opt.value)}
+                      className={cn("px-3 py-1.5 rounded-md text-xs font-medium border transition-all", newKeyExpiry === opt.value ? "border-foreground/30 bg-muted" : "border-border hover:border-muted-foreground/30")}
+                    >{opt.label}</button>
                   ))}
                 </div>
               </div>
 
               <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowCreateDialog(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleCreateKey}
-                  disabled={isCreatingKey || !newKeyName.trim() || newKeyScopes.size === 0}
-                >
-                  {isCreatingKey ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    "Create Key"
-                  )}
+                <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
+                <Button onClick={handleCreateKey} disabled={isCreatingKey || !newKeyName.trim() || newKeyScopes.size === 0}>
+                  {isCreatingKey ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating...</> : "Create Key"}
                 </Button>
               </DialogFooter>
             </div>
@@ -504,6 +478,14 @@ export default function ProfilePage() {
       <GitWorkspaceCard />
     </div>
   );
+}
+
+interface CliKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  created_at: number;
+  last_used_at: number | null;
 }
 
 function GitWorkspaceCard() {

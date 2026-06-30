@@ -9,6 +9,7 @@ interface HealthStatus {
   checks: {
     smtp: { configured: boolean; optional: boolean; error?: string };
     googleOAuth: { configured: boolean; optional: boolean; error?: string };
+    githubOAuth: { configured: boolean; optional: boolean; error?: string };
     azureAdOAuth: { configured: boolean; optional: boolean; error?: string };
     adminApi: { configured: boolean; reachable: boolean; error?: string };
     vexaApi: { configured: boolean; reachable: boolean; error?: string };
@@ -26,6 +27,7 @@ export async function GET() {
     checks: {
       smtp: { configured: false, optional: true },
       googleOAuth: { configured: false, optional: true },
+      githubOAuth: { configured: false, optional: true },
       azureAdOAuth: { configured: false, optional: true },
       adminApi: { configured: false, reachable: false },
       vexaApi: { configured: false, reachable: false },
@@ -55,6 +57,22 @@ export async function GET() {
     } else {
       status.checks.azureAdOAuth.error = "Azure AD OAuth not configured";
     }
+  }
+
+  // Check GitHub OAuth configuration (optional)
+  const enableGithubAuth = process.env.ENABLE_GITHUB_AUTH;
+  const githubClientId = process.env.GITHUB_CLIENT_ID;
+  const githubClientSecret = process.env.GITHUB_CLIENT_SECRET;
+
+  if (enableGithubAuth === "false" || enableGithubAuth === "0") {
+    status.checks.githubOAuth.error = "GitHub OAuth is disabled";
+  } else if (githubClientId && githubClientSecret) {
+    status.checks.githubOAuth.configured = true;
+  } else {
+    status.checks.githubOAuth.error =
+      enableGithubAuth === "true" || enableGithubAuth === "1"
+        ? "GitHub OAuth is enabled but configuration is incomplete"
+        : "GitHub OAuth not configured";
   }
 
   // Check Google OAuth configuration (optional - enables Google auth)
