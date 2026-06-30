@@ -43,9 +43,11 @@ fn create_mcp_service(state: &AppState) -> McpService {
             "127.0.0.1".to_string(),
             "0.0.0.0".to_string(),
             "api.coolcmyk.dev".to_string(),
+            "api.kioku.chat".to_string(),
         ])
         .with_allowed_origins(vec![
             "https://api.coolcmyk.dev".to_string(),
+            "https://api.kioku.chat".to_string(),
             "http://localhost:9100".to_string(),
         ]);
 
