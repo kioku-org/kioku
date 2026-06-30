@@ -208,6 +208,21 @@ export const authOptions: NextAuthOptions = {
         token.isNewUser = (user as any).isNewUser;
         token.hivemindToken = (user as any).hivemindToken;
       }
+      // Lazy-provision Hivemind for sessions created before this feature was deployed.
+      if (!token.hivemindToken && token.email) {
+        const hivemindUrl = process.env.HIVEMIND_INTERNAL_URL || "http://localhost:9100";
+        const hivemindSecret = process.env.HIVEMIND_JWT_SECRET;
+        if (hivemindSecret) {
+          try {
+            const r = await fetch(`${hivemindUrl}/internal/provision`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Internal-Secret": hivemindSecret },
+              body: JSON.stringify({ email: token.email, name: token.name || (token.email as string).split("@")[0] }),
+            });
+            if (r.ok) token.hivemindToken = (await r.json()).token;
+          } catch { /* retry on next refresh */ }
+        }
+      }
       return token;
     },
     async session({ session, token }) {
