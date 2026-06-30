@@ -5,6 +5,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use http_body_util::BodyExt;
 use rmcp::transport::streamable_http_server::{
     session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
 };
@@ -18,12 +19,20 @@ use crate::AppState;
 
 type McpService = StreamableHttpService<KiokuMcpService, LocalSessionManager>;
 
+struct McpState {
+    service: McpService,
+    jwt_secret: String,
+}
+
 pub fn mcp_routes(state: &AppState) -> Router<AppState> {
-    let mcp_service = create_mcp_service(state);
+    let mcp_state = Arc::new(McpState {
+        service: create_mcp_service(state),
+        jwt_secret: state.settings.jwt_secret.clone(),
+    });
     Router::new()
         .route("/mcp", post(mcp_handler))
         .route("/mcp", get(mcp_handler))
-        .with_state(mcp_service)
+        .with_state(mcp_state)
 }
 
 fn create_mcp_service(state: &AppState) -> McpService {
@@ -63,16 +72,101 @@ fn create_mcp_service(state: &AppState) -> McpService {
     )
 }
 
+/// Decode JWT from Authorization header, return (company_id, user_id) strings.
+fn decode_jwt(jwt_secret: &str, req: &Request<Body>) -> Option<(String, String)> {
+    use crate::repos::auth::validate_token;
+    let auth = req.headers().get("authorization")?.to_str().ok()?;
+    let token = auth.strip_prefix("Bearer ")?;
+    let claims = validate_token(jwt_secret, token).ok()?;
+    Some((claims.company_id.to_string(), claims.user_id.to_string()))
+}
+
+/// For MCP initialize requests, inject company_id + user_id into
+/// clientInfo._meta so handlers can read them via context.peer.peer_info().
+async fn inject_auth_into_init(
+    jwt_secret: &str,
+    req: Request<Body>,
+) -> Result<Request<Body>, StatusCode> {
+    let auth_ids = decode_jwt(jwt_secret, &req);
+
+    // Only body-rewrite POST requests; GET (SSE) passes through unchanged.
+    if req.method() != axum::http::Method::POST {
+        return Ok(req);
+    }
+
+    let (parts, body) = req.into_parts();
+    let bytes = body
+        .collect()
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .to_bytes();
+
+    let Ok(mut json) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        // Not JSON — reconstruct and pass through.
+        let new_body = Body::from(bytes);
+        return Ok(Request::from_parts(parts, new_body));
+    };
+
+    // Only rewrite initialize requests.
+    if json.get("method").and_then(|m| m.as_str()) == Some("initialize") {
+        if let Some((company_id, user_id)) = auth_ids {
+            let meta = json
+                .pointer_mut("/params/clientInfo/_meta")
+                .and_then(|v| v.as_object_mut());
+
+            if let Some(meta_obj) = meta {
+                meta_obj
+                    .entry("company_id")
+                    .or_insert(serde_json::Value::String(company_id.clone()));
+                meta_obj
+                    .entry("user_id")
+                    .or_insert(serde_json::Value::String(user_id.clone()));
+            } else {
+                // _meta doesn't exist yet — create it.
+                let meta_val = serde_json::json!({
+                    "company_id": company_id,
+                    "user_id": user_id,
+                });
+                if let Some(client_info) = json.pointer_mut("/params/clientInfo") {
+                    if let Some(obj) = client_info.as_object_mut() {
+                        obj.insert("_meta".to_string(), meta_val);
+                    }
+                } else {
+                    // No clientInfo at all — inject at params level as fallback.
+                    if let Some(params) = json.pointer_mut("/params") {
+                        if let Some(obj) = params.as_object_mut() {
+                            obj.entry("clientInfo").or_insert(serde_json::json!({
+                                "name": "kioku-client",
+                                "version": "1.0",
+                                "_meta": { "company_id": company_id, "user_id": user_id }
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let new_bytes = serde_json::to_vec(&json).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut new_req = Request::from_parts(parts, Body::from(new_bytes));
+    // Update Content-Length to match rewritten body.
+    new_req.headers_mut().remove("content-length");
+    Ok(new_req)
+}
+
 async fn mcp_handler(
-    State(service): State<McpService>,
+    State(state): State<Arc<McpState>>,
     req: Request<Body>,
 ) -> Result<Response<Body>, StatusCode> {
-    let response = service
+    let req = inject_auth_into_init(&state.jwt_secret, req).await?;
+
+    let response = state
+        .service
+        .clone()
         .oneshot(req)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let (parts, body) = response.into_parts();
-    let body = Body::new(body);
-    Ok(Response::from_parts(parts, body))
+    Ok(Response::from_parts(parts, Body::new(body)))
 }
