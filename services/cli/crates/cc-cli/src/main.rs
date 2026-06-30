@@ -5,9 +5,12 @@ use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
 use tracing_subscriber::{fmt, EnvFilter};
 
+mod signin;
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const REPO: &str = "kioku-org/kioku";
 const DEFAULT_SERVER_URL: &str = "https://api.kioku.chat";
+const DEFAULT_DASHBOARD_URL: &str = "https://dashboard.kioku.chat";
 
 #[derive(Parser, Debug)]
 #[command(
@@ -116,6 +119,24 @@ fn resolve_server_url(server_override: Option<&str>) -> String {
         server_override,
         std::env::var("KIOKU_SERVER").ok().as_deref(),
     )
+}
+
+fn resolve_dashboard_url(server_url: &str) -> String {
+    if let Ok(v) = std::env::var("KIOKU_DASHBOARD") {
+        return v;
+    }
+    if server_url.contains("api.kioku.chat") {
+        return DEFAULT_DASHBOARD_URL.to_string();
+    }
+    // Local dev: API is typically :9100, dashboard :3001
+    if let Some(stripped) = server_url
+        .strip_prefix("http://localhost:")
+        .or_else(|| server_url.strip_prefix("http://127.0.0.1:"))
+    {
+        let prefix = &server_url[..server_url.len() - stripped.len()];
+        return format!("{}3001", prefix);
+    }
+    DEFAULT_DASHBOARD_URL.to_string()
 }
 
 fn resolve_server_url_from(server_override: Option<&str>, env_server: Option<&str>) -> String {
@@ -257,10 +278,10 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
         }
         Commands::Signin { api_key } => {
             let base_url = resolve_server_url(server.as_deref());
-            let client = KiokuClient::new(&base_url);
             if let Some(key) = api_key {
+                let client = KiokuClient::new(&base_url);
                 let session = client.signin_api_key(&key).await?;
-                let auth = AuthFile {
+                AuthFile {
                     server_url: base_url,
                     token: session.token,
                     user_id: session.user_id,
@@ -268,24 +289,47 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
                     name: session.name,
                     company_id: session.company_id,
                     role: session.role,
-                };
-                auth.save()?;
+                }
+                .save()?;
                 println!("Signed in via API key.");
             } else {
-                let email = rprompt::prompt_reply("Email: ")?;
-                let password = rprompt::prompt_reply("Password: ")?;
-                let session = client.signin(&email, &password).await?;
-                let auth = AuthFile {
+                // OAuth flow: show provider selector → open browser → wait for callback
+                let provider = signin::select_provider()?;
+
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+                let port = listener.local_addr()?.port();
+                let state = uuid::Uuid::new_v4().to_string();
+
+                let dashboard_url = resolve_dashboard_url(&base_url);
+                let auth_url = format!(
+                    "{}/cli-auth?port={}&state={}&provider={}",
+                    dashboard_url,
+                    port,
+                    state,
+                    provider.id()
+                );
+
+                println!("Opening browser…");
+                if webbrowser::open(&auth_url).is_err() {
+                    println!("Couldn't open browser automatically. Open this URL manually:");
+                    println!("  {}", auth_url);
+                }
+                println!("Waiting for sign-in (2 min timeout)…");
+
+                let result = signin::wait_for_callback(listener, &state).await?;
+
+                AuthFile {
                     server_url: base_url,
-                    token: session.token,
-                    user_id: session.user_id,
-                    email: session.email,
-                    name: session.name,
-                    company_id: session.company_id,
-                    role: session.role,
-                };
-                auth.save()?;
-                println!("Signed in.");
+                    token: result.token,
+                    user_id: result.user_id,
+                    email: result.email.clone(),
+                    name: result.name.clone(),
+                    company_id: result.company_id,
+                    role: result.role,
+                }
+                .save()?;
+
+                println!("Signed in as {} ({})", result.name, result.email);
             }
         }
         Commands::Signout => {

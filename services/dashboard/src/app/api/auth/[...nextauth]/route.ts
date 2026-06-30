@@ -1,6 +1,7 @@
 import NextAuth, { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import AzureADProvider from "next-auth/providers/azure-ad";
+import GithubProvider from "next-auth/providers/github";
 import { cookies } from "next/headers";
 import { findUserByEmail, createUser, createUserToken } from "@/lib/vexa-admin-api";
 
@@ -32,6 +33,14 @@ const isGoogleAuthEnabled = () => {
   }
 
   // Default: enable if config is present (backward compatible)
+  return hasConfig;
+};
+
+const isGithubAuthEnabled = () => {
+  const flag = process.env.ENABLE_GITHUB_AUTH;
+  if (flag === "false" || flag === "0") return false;
+  const hasConfig = !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET);
+  if (flag === "true" || flag === "1") return hasConfig;
   return hasConfig;
 };
 
@@ -81,6 +90,14 @@ export const authOptions: NextAuthOptions = {
           GoogleProvider({
             clientId: process.env.GOOGLE_CLIENT_ID!,
             clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+          }),
+        ]
+      : []),
+    ...(isGithubAuthEnabled()
+      ? [
+          GithubProvider({
+            clientId: process.env.GITHUB_CLIENT_ID!,
+            clientSecret: process.env.GITHUB_CLIENT_SECRET!,
           }),
         ]
       : []),
