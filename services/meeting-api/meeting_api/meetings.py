@@ -1177,27 +1177,32 @@ async def request_bot(
     except Exception:
         pass
 
-    # System defaults for timeouts (ms)
+    def _env_ms(var: str, fallback: int) -> int:
+        raw = os.getenv(var, "").strip()
+        try:
+            return int(raw) if raw else fallback
+        except ValueError:
+            return fallback
+
+    # System defaults for timeouts (ms).
+    # Resolution order: per-request → user.data.bot_config → env var → hardcoded fallback
     SYSTEM_DEFAULTS = {
-        "max_bot_time": 7200000,          # 2h
-        "max_wait_for_admission": 900000, # 15 min
-        "max_time_left_alone": 900000,    # 15 min
-        "no_one_joined_timeout": 120000,  # 2 min
+        "max_bot_time":           _env_ms("BOT_MAX_TIME",               7200000),  # 2h
+        "max_wait_for_admission": _env_ms("BOT_MAX_WAIT_FOR_ADMISSION",   900000),  # 15 min
+        "max_time_left_alone":    _env_ms("BOT_MAX_TIME_LEFT_ALONE",      900000),  # 15 min
+        "no_one_joined_timeout":  _env_ms("BOT_NO_ONE_JOINED_TIMEOUT",    120000),  # 2 min
     }
 
-    # Resolution order: per-request → user.data.bot_config → system defaults
+    # Resolution order: per-request → user.data.bot_config → env var → hardcoded fallback
     def resolve_timeout(field_name: str) -> int:
-        # Per-request override
         if req.automatic_leave:
             val = getattr(req.automatic_leave, field_name, None)
             if val is not None:
                 return val
-        # User-level default from user.data.bot_config
         if isinstance(user_bot_config, dict):
             val = user_bot_config.get(field_name)
             if val is not None:
                 return int(val)
-        # System default
         return SYSTEM_DEFAULTS[field_name]
 
     resolved_max_bot_time = resolve_timeout("max_bot_time")
