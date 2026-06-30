@@ -34,76 +34,81 @@ struct Cli {
 
 #[derive(Subcommand, Debug, PartialEq)]
 enum Commands {
-    #[command(about = "Register the initial admin account for a self-hosted server", hide = true)]
-    RegisterAdmin {
-        #[arg(long)]
-        company_name: Option<String>,
-        #[arg(long)]
-        company_slug: Option<String>,
-        #[arg(long)]
-        email: Option<String>,
-        #[arg(long)]
-        name: Option<String>,
-        #[arg(long)]
-        password: Option<String>,
-    },
-    #[command(about = "Sign in with Google, Github or API key")]
+    // ── Auth ──────────────────────────────────────────────────────────────────
+    #[command(about = "Sign in with Google, GitHub or an API key")]
     Signin {
-        #[arg(long)]
+        #[arg(long, help = "Sign in using a long-lived API key instead of OAuth")]
         api_key: Option<String>,
     },
     #[command(about = "Sign out and clear stored credentials")]
     Signout,
-    #[command(about = "Show current user info")]
+    #[command(about = "Show current user and server")]
     Whoami,
-    #[command(about = "Print stored auth token")]
-    AuthToken,
-    #[command(about = "List sessions")]
-    SessionsList,
-    #[command(about = "Create a new session")]
-    SessionsCreate {
-        #[arg(long)]
-        title: Option<String>,
-    },
-    #[command(about = "Get session details")]
-    SessionsGet { session_id: String },
-    #[command(about = "Delete a session")]
-    SessionsDelete { session_id: String },
-    #[command(about = "Send a message to a session")]
-    Send {
-        session_id: String,
-        message: Vec<String>,
-    },
-    #[command(about = "List messages in a session")]
-    Messages { session_id: String },
-    #[command(about = "Search knowledge base")]
-    KnowledgeSearch { query: String },
-    #[command(about = "Upload a PDF document")]
-    KnowledgeUpload { file: String },
+    #[command(about = "Print stored auth token (useful for scripting)")]
+    Token,
+
+    // ── Knowledge ─────────────────────────────────────────────────────────────
+    #[command(about = "Search your knowledge base")]
+    Search { query: String },
+    #[command(about = "Upload a document to your knowledge base")]
+    Upload { file: String },
     #[command(about = "List uploaded documents")]
-    KnowledgeDocuments,
+    Docs,
     #[command(about = "Delete a document")]
-    KnowledgeDelete { document_id: String },
+    DocDelete {
+        #[arg(value_name = "DOCUMENT_ID")]
+        document_id: String,
+    },
+
+    // ── Meetings ──────────────────────────────────────────────────────────────
     #[command(about = "List meetings")]
-    MeetingsList,
-    #[command(about = "Create a long-lived API key for CLI auth")]
-    AuthKeyCreate {
+    Meetings,
+
+    // ── API keys ──────────────────────────────────────────────────────────────
+    #[command(about = "List API keys")]
+    Keys,
+    #[command(about = "Create an API key")]
+    KeyCreate {
         #[arg(long, default_value = "cli-key")]
         name: String,
     },
-    #[command(about = "List long-lived API keys")]
-    AuthKeyList,
-    #[command(about = "Delete a long-lived API key")]
-    AuthKeyDelete {
+    #[command(about = "Delete an API key")]
+    KeyDelete {
         #[arg(value_name = "KEY_PREFIX_OR_ID")]
         key_prefix: String,
     },
-    #[command(about = "Print MCP server configuration for AI clients")]
+
+    // ── Tools ─────────────────────────────────────────────────────────────────
+    #[command(about = "Print MCP server config for AI clients (Claude, Cursor, etc.)")]
     Mcp,
-    #[command(about = "Check for updates")]
-    UpgradeCheck,
-    #[command(about = "Upgrade to the latest version")]
+    #[command(about = "Check for updates and upgrade if a newer version is available")]
     Upgrade,
+
+    // ── Hidden / power-user ───────────────────────────────────────────────────
+    #[command(hide = true)]
+    RegisterAdmin {
+        #[arg(long)] company_name: Option<String>,
+        #[arg(long)] company_slug: Option<String>,
+        #[arg(long)] email: Option<String>,
+        #[arg(long)] name: Option<String>,
+        #[arg(long)] password: Option<String>,
+    },
+    #[command(hide = true, name = "sessions")]
+    SessionsList,
+    #[command(hide = true, name = "session-create")]
+    SessionsCreate {
+        #[arg(long)] title: Option<String>,
+    },
+    #[command(hide = true, name = "session-get")]
+    SessionsGet { session_id: String },
+    #[command(hide = true, name = "session-delete")]
+    SessionsDelete { session_id: String },
+    #[command(hide = true, name = "send")]
+    Send { session_id: String, message: Vec<String> },
+    #[command(hide = true, name = "messages")]
+    Messages { session_id: String },
+    #[command(hide = true, name = "auth-token")]
+    AuthToken,
 }
 
 fn require_auth() -> Result<AuthFile> {
@@ -351,7 +356,7 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             println!("role:    {}", me.role);
             println!("server:  {}", auth.server_url);
         }
-        Commands::AuthToken => {
+        Commands::Token | Commands::AuthToken => {
             let auth = require_auth()?;
             println!("{}", auth.token);
         }
@@ -421,7 +426,7 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
                 println!();
             }
         }
-        Commands::KnowledgeSearch { query } => {
+        Commands::Search { query } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let results = client.knowledge_search(&query, 5).await?;
@@ -436,14 +441,14 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
                 println!();
             }
         }
-        Commands::KnowledgeUpload { file } => {
+        Commands::Upload { file } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let path = Path::new(&file);
             client.upload_document(path).await?;
             println!("Uploaded {file}");
         }
-        Commands::KnowledgeDocuments => {
+        Commands::Docs => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let docs = client.list_documents().await?;
@@ -458,13 +463,13 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
                 println!("{} — {}", id, name);
             }
         }
-        Commands::KnowledgeDelete { document_id } => {
+        Commands::DocDelete { document_id } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             client.delete_document(&document_id).await?;
             println!("Deleted document {document_id}");
         }
-        Commands::MeetingsList => {
+        Commands::Meetings => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let meetings = client.list_meetings().await?;
@@ -478,7 +483,7 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
                 println!("{} — {} ({})", m.id, m.title, date);
             }
         }
-        Commands::AuthKeyCreate { name } => {
+        Commands::KeyCreate { name } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let key = client.create_auth_key(&name).await?;
@@ -494,7 +499,7 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&key)?);
             }
         }
-        Commands::AuthKeyList => {
+        Commands::Keys => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let keys = client.list_auth_keys().await?;
@@ -509,7 +514,7 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
                 println!("{} — {} (prefix: {}  last used: {})", k.id, k.name, k.key_prefix, last_used);
             }
         }
-        Commands::AuthKeyDelete { key_prefix } => {
+        Commands::KeyDelete { key_prefix } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let keys = client.list_auth_keys().await?;
@@ -521,20 +526,15 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             let auth = require_auth()?;
             println!("{}", mcp_config_json(&auth.server_url, &auth.token));
         }
-        Commands::UpgradeCheck => {
+        Commands::Upgrade => {
             let info = cc_upgrade::check_for_update(REPO, VERSION).await?;
             if info.latest_version == VERSION {
-                println!("Up to date (v{VERSION}).");
+                println!("Already up to date (v{VERSION}).");
             } else {
-                println!(
-                    "New version available: v{} (current: v{VERSION})",
-                    info.latest_version
-                );
+                println!("Upgrading v{VERSION} → v{}…", info.latest_version);
+                let msg = cc_upgrade::perform_upgrade(REPO, VERSION).await?;
+                println!("{msg}");
             }
-        }
-        Commands::Upgrade => {
-            let msg = cc_upgrade::perform_upgrade(REPO, VERSION).await?;
-            println!("{msg}");
         }
     }
     Ok(())
