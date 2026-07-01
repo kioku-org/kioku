@@ -336,7 +336,7 @@ export default function ProfilePage() {
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                Use with <code className="bg-muted px-1 py-0.5 rounded">kioku signin --api-key cmp_…</code>
+                Use with <code className="bg-muted px-1 py-0.5 rounded">kioku signin --api-key kioku_…</code>
               </p>
 
               {revealedCliKey && (

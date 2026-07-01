@@ -16,6 +16,7 @@ class User(Base):
     image_url = Column(Text)
     created_at = Column(DateTime, server_default=func.now(), default=func.now())
     max_concurrent_bots = Column(Integer, nullable=False, server_default='1', default=1)
+    tier = Column(String(16), nullable=False, server_default='free', default='free')
     data = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"), default=lambda: {})
 
     api_tokens = relationship("APIToken", back_populates="user")

@@ -320,7 +320,8 @@ async def create_user(user_in: UserCreate, response: Response, db: AsyncSession 
         email=user_data['email'],
         name=user_data.get('name'),
         image_url=user_data.get('image_url'),
-        max_concurrent_bots=user_data.get('max_concurrent_bots') or 1
+        max_concurrent_bots=user_data.get('max_concurrent_bots') or 1,
+        tier=user_data.get('tier') or 'free'
     )
     db.add(db_user)
     await db.commit()

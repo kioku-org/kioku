@@ -76,7 +76,13 @@ pub fn build(state: AppState) -> Router {
         )
         // Vexa
         .route("/vexa/bots", post(vexa::request_bot))
+        .route("/vexa/bots/status", get(vexa::get_bots_status))
+        .route(
+            "/vexa/bots/:platform/:native_meeting_id",
+            delete(vexa::stop_bot),
+        )
         .route("/vexa/meetings", get(vexa::get_meetings))
+        .route("/vexa/token", get(vexa::get_vexa_token))
         // MCP
         .merge(mcp_routes(&state))
         .with_state(state)

@@ -24,9 +24,33 @@ async def health() -> Dict[str, str]:
 
 
 BASE_URL = os.getenv("KIOKU_API_URL", "http://api-gateway:8000")
+HIVEMIND_API_URL = os.getenv("HIVEMIND_API_URL", "")
 
 # Standard bearer-token auth parsing. We treat the token value as the Kioku API key.
 bearer_scheme = HTTPBearer(auto_error=False)
+
+
+async def _exchange_for_vexa_key(token: str) -> str:
+    """Exchange a Kioku credential (JWT or kioku_/cmp_ key) for the caller's
+    per-user Vexa API key via Hivemind, so one Kioku credential authenticates
+    to both the knowledge MCP and this meetings MCP. Falls back to using the
+    token as-is if exchange isn't configured or fails (e.g. it's already a
+    raw Vexa key configured directly)."""
+    if not HIVEMIND_API_URL:
+        return token
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"{HIVEMIND_API_URL}/vexa/token",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        if resp.status_code == 200:
+            vexa_key = resp.json().get("vexa_api_key")
+            if vexa_key:
+                return vexa_key
+    except httpx.HTTPError:
+        pass
+    return token
 
 
 # ---------------------------
@@ -47,7 +71,8 @@ async def get_api_key(
     - Authorization: <token>
     - X-API-Key: <token>
 
-    The extracted token value is treated as the Kioku API key and forwarded to the REST API as X-API-Key.
+    The extracted token is a Kioku credential (JWT or kioku_/cmp_ key), exchanged
+    for the caller's Vexa API key before being forwarded to the REST API as X-API-Key.
     """
     token: Optional[str] = None
 
@@ -71,7 +96,7 @@ async def get_api_key(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return token
+    return await _exchange_for_vexa_key(token)
 
 
 def get_headers(api_key: str) -> Dict[str, str]:

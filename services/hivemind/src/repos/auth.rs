@@ -220,6 +220,38 @@ impl AuthRepo {
             .map_err(AppError::from)?;
         Ok(())
     }
+
+    /// Per-user Vexa credential link, provisioned lazily on first bot-management call.
+    pub async fn find_vexa_link(&self, user_id: Uuid) -> Result<Option<VexaLinkRecord>, AppError> {
+        sqlx::query_as::<_, VexaLinkRecord>(
+            r#"SELECT vexa_user_id, vexa_token_id, vexa_token
+               FROM users WHERE id = $1 AND vexa_token IS NOT NULL"#,
+        )
+        .bind(user_id)
+        .fetch_optional(&self.db)
+        .await
+        .map_err(AppError::from)
+    }
+
+    pub async fn set_vexa_link(
+        &self,
+        user_id: Uuid,
+        vexa_user_id: i32,
+        vexa_token_id: i32,
+        vexa_token: &str,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"UPDATE users SET vexa_user_id = $1, vexa_token_id = $2, vexa_token = $3 WHERE id = $4"#,
+        )
+        .bind(vexa_user_id)
+        .bind(vexa_token_id)
+        .bind(vexa_token)
+        .bind(user_id)
+        .execute(&self.db)
+        .await
+        .map_err(AppError::from)?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -256,6 +288,13 @@ pub struct UserContextRecord {
     pub company_name: String,
     pub company_slug: String,
     pub role: String,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct VexaLinkRecord {
+    pub vexa_user_id: i32,
+    pub vexa_token_id: i32,
+    pub vexa_token: String,
 }
 
 // ─── JWT helpers ─────────────────────────────────────────────────────────────

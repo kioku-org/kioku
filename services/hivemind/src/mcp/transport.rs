@@ -95,7 +95,7 @@ async fn resolve_auth_ids(
         return Some((claims.company_id.to_string(), claims.user_id.to_string()));
     }
 
-    // Non-JWT token (e.g. cmp_xxx API key) — look up in auth_tokens.
+    // Non-JWT token (e.g. an exchanged kioku_xxx API key session) — look up in auth_tokens.
     let row: Option<(uuid::Uuid, uuid::Uuid)> = sqlx::query_as(
         "SELECT company_id, user_id FROM auth_tokens WHERE token = $1 LIMIT 1",
     )

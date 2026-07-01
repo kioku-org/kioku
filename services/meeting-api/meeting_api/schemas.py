@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Tuple, Any
+from typing import List, Optional, Dict, Tuple, Any, Literal
 from urllib.parse import urlparse, parse_qs
 import hashlib
 from pydantic import BaseModel, Field, EmailStr, field_serializer, field_validator, model_validator, ValidationInfo
@@ -315,13 +315,16 @@ class Platform(str, Enum):
         except ValueError:
             return None
 
-# --- Schemas from Admin API --- 
+# --- Schemas from Admin API ---
+
+UserTier = Literal["free", "pro", "team"]
 
 class UserBase(BaseModel): # Base for common user fields
     email: EmailStr
     name: Optional[str] = None
     image_url: Optional[str] = None
     max_concurrent_bots: Optional[int] = Field(None, description="Maximum number of concurrent bots allowed for the user")
+    tier: Optional[UserTier] = Field(None, description="Subscription tier: free, pro, or team")
     data: Optional[Dict[str, Any]] = Field(None, description="JSONB storage for arbitrary user data, like webhook URLs")
 
 class UserCreate(UserBase):
@@ -331,6 +334,7 @@ class UserResponse(UserBase):
     id: int
     created_at: datetime
     max_concurrent_bots: int = Field(..., description="Maximum number of concurrent bots allowed for the user")
+    tier: UserTier = Field(..., description="Subscription tier: free, pro, or team")
 
     @field_serializer('data')
     def exclude_webhook_secret(self, data: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -369,6 +373,7 @@ class UserUpdate(BaseModel):
     name: Optional[str] = None
     image_url: Optional[str] = None
     max_concurrent_bots: Optional[int] = Field(None, description="Maximum number of concurrent bots allowed for the user")
+    tier: Optional[UserTier] = Field(None, description="Subscription tier: free, pro, or team")
     data: Optional[Dict[str, Any]] = Field(None, description="JSONB storage for arbitrary user data, like webhook URLs and subscription info")
 # --- END UserUpdate Schema ---
 

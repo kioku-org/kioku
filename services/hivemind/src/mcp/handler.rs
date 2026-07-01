@@ -512,7 +512,7 @@ fn bearer_token_from_context(context: &RequestContext<RoleServer>) -> Option<Str
     Some(auth.strip_prefix("Bearer ")?.to_string())
 }
 
-async fn resolve_claims_from_token(
+pub(crate) async fn resolve_claims_from_token(
     jwt_secret: &str,
     db: &PgPool,
     token: &str,
@@ -521,7 +521,19 @@ async fn resolve_claims_from_token(
     if let Ok(claims) = validate_token(jwt_secret, token) {
         return Some((claims.company_id, claims.user_id));
     }
-    // API key (cmp_xxx) — look up in company_api_keys by prefix
+    // API key (kioku_xxx, or legacy cmp_xxx) — look up in company_api_keys by prefix
+    if token.starts_with("kioku_") && token.len() >= 14 {
+        let prefix = &token[..14];
+        let row: Option<(Uuid, Uuid)> = sqlx::query_as(
+            "SELECT company_id, user_id FROM company_api_keys WHERE key_prefix = $1 LIMIT 1",
+        )
+        .bind(prefix)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten();
+        return row;
+    }
     if token.starts_with("cmp_") && token.len() >= 12 {
         let prefix = &token[..12];
         let row: Option<(Uuid, Uuid)> = sqlx::query_as(

@@ -273,7 +273,7 @@ stderr_logfile=/var/log/hivemind.err
 [program:mcp]
 command=/opt/venv/bin/python main.py
 directory=/opt/vexa/services/mcp
-environment=KIOKU_API_URL="http://localhost:8056",KIOKU_ENV="${VEXA_ENV:-production}",LOG_LEVEL="${LOG_LEVEL:-INFO}"
+environment=KIOKU_API_URL="http://localhost:8056",HIVEMIND_API_URL="http://localhost:9100",KIOKU_ENV="${VEXA_ENV:-production}",LOG_LEVEL="${LOG_LEVEL:-INFO}"
 autostart=true
 autorestart=true
 stdout_logfile=/var/log/mcp.log

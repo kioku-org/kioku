@@ -17,17 +17,24 @@ fn extract_api_key(headers: &HeaderMap) -> Result<&str, AppError> {
         .ok_or_else(|| AppError::Unauthorized("Missing X-API-Key header".into()))
 }
 
+/// Keys are minted as `kioku_<hex>`. Older `cmp_<hex>` keys (pre-rename) keep
+/// working — same bcrypt-hash lookup, just a shorter prefix.
+fn key_lookup_prefix(raw_key: &str) -> Result<&str, AppError> {
+    if raw_key.starts_with("kioku_") {
+        Ok(&raw_key[..raw_key.len().min(14)])
+    } else if raw_key.starts_with("cmp_") {
+        Ok(&raw_key[..raw_key.len().min(12)])
+    } else {
+        Err(AppError::Unauthorized("Invalid API key format".into()))
+    }
+}
+
 pub async fn exchange_api_key(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<AuthSession>, AppError> {
     let raw_key = extract_api_key(&headers)?;
-
-    if !raw_key.starts_with("cmp_") {
-        return Err(AppError::Unauthorized("Invalid API key format".into()));
-    }
-
-    let key_prefix = &raw_key[..12];
+    let key_prefix = key_lookup_prefix(raw_key)?;
 
     let key_repo = CompanyApiKeyRepo::new(state.db.clone());
     let key_record = key_repo
@@ -93,8 +100,8 @@ pub async fn create_api_key(
         ));
     }
 
-    let raw_key = format!("cmp_{}", Uuid::new_v4().simple());
-    let key_prefix = &raw_key[..12];
+    let raw_key = format!("kioku_{}", Uuid::new_v4().simple());
+    let key_prefix = &raw_key[..14];
     let key_hash =
         bcrypt::hash(&raw_key, bcrypt::DEFAULT_COST).map_err(|e| AppError::Internal(e.into()))?;
 
@@ -158,4 +165,32 @@ pub async fn delete_api_key(
     let repo = CompanyApiKeyRepo::new(state.db.clone());
     repo.delete(key_id, auth.company_id).await?;
     Ok(Json(()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn key_lookup_prefix_accepts_new_kioku_format() {
+        let raw = "kioku_1234567890abcdef";
+        assert_eq!(key_lookup_prefix(raw).unwrap(), "kioku_12345678");
+    }
+
+    #[test]
+    fn key_lookup_prefix_accepts_legacy_cmp_format() {
+        let raw = "cmp_1234567890abcdef";
+        assert_eq!(key_lookup_prefix(raw).unwrap(), "cmp_12345678");
+    }
+
+    #[test]
+    fn key_lookup_prefix_rejects_unknown_format() {
+        assert!(key_lookup_prefix("sk_1234567890abcdef").is_err());
+    }
+
+    #[test]
+    fn key_lookup_prefix_handles_short_keys_without_panicking() {
+        assert_eq!(key_lookup_prefix("kioku_ab").unwrap(), "kioku_ab");
+        assert_eq!(key_lookup_prefix("cmp_ab").unwrap(), "cmp_ab");
+    }
 }

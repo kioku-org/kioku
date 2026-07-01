@@ -233,6 +233,7 @@ export interface VexaUserData {
   email: string;
   name: string;
   max_concurrent_bots: number;
+  tier: "free" | "pro" | "team";
   created_at: string;
   data?: Record<string, unknown>;
 }
