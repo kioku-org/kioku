@@ -351,3 +351,5 @@ curl https://api.kioku.chat/health | jq .   # hivemind health check
 - `#53` closed: admin login always failed — `admin-verify` threw on missing `JWT_SECRET`; fixed with fallback chain, deployed and verified
 - `#54` closed: admin API proxy always 401'd — `admin/[...path]` route decoded the signed cookie wrong; sign/verify logic extracted to shared `lib/admin-session.ts`, deployed and verified
 - `#55` closed: profile page's max-bots showed "—" — `/api/auth/me` dropped `max_concurrent_bots` (gateway returns it as `max_concurrent`); also standardized the free-tier default from a hardcoded 3 to 1 across 3 places. Deployed; code-verified, live click-through as regular user still pending (no plaintext user API key available)
+- `#56` open: CLI subcommand enhancements (`--json` output, `search --limit`, meeting detail/transcript parity with MCP, shell completions, decide fate of hidden agent-chat commands) — tracked on `feat/cli-enhancement`
+- `#57` open: e2e test coverage across the whole system (CLI binary tests, dashboard Playwright, decouple from flaky RunPod-dependent CI `test` job) — tracked on `feat/cli-enhancement`
