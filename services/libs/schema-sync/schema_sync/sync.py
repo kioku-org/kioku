@@ -63,6 +63,12 @@ def _col_default_sql(col):
                 return ""
             if hasattr(arg, "text"):
                 return f" DEFAULT {arg.text}"
+            if isinstance(arg, str):
+                # Plain Python string defaults (e.g. server_default='free') need
+                # SQL quoting — unquoted, Postgres parses the bare word as a
+                # column/function reference and rejects the ALTER TABLE outright.
+                escaped = arg.replace("'", "''")
+                return f" DEFAULT '{escaped}'"
             return f" DEFAULT {arg}"
     return ""
 
