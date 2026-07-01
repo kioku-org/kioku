@@ -257,7 +257,7 @@ export async function createUser(data: {
     body: JSON.stringify({
       email: data.email,
       name: data.name || data.email.split("@")[0],
-      max_concurrent_bots: data.max_concurrent_bots ?? 3,
+      max_concurrent_bots: data.max_concurrent_bots ?? 1,
     }),
   });
 }

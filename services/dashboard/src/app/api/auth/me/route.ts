@@ -44,6 +44,7 @@ export async function GET() {
       id: data.user_id,
       email: data.email,
       name: data.name || data.email,
+      max_concurrent_bots: data.max_concurrent,
     };
 
     return NextResponse.json({ authenticated: true, user, token });

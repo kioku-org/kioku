@@ -49,7 +49,7 @@ export default function AdminUsersPage() {
   const [newUserData, setNewUserData] = useState<CreateUserRequest>({
     email: "",
     name: "",
-    max_concurrent_bots: 3,
+    max_concurrent_bots: 1,
   });
 
   useEffect(() => {
@@ -75,7 +75,7 @@ export default function AdminUsersPage() {
     if (user) {
       toast.success(`User "${user.email}" created successfully`);
       setIsCreateDialogOpen(false);
-      setNewUserData({ email: "", name: "", max_concurrent_bots: 3 });
+      setNewUserData({ email: "", name: "", max_concurrent_bots: 1 });
     } else {
       toast.error("Failed to create user");
     }
@@ -152,11 +152,11 @@ export default function AdminUsersPage() {
                     type="number"
                     min={1}
                     max={100}
-                    value={newUserData.max_concurrent_bots || 3}
+                    value={newUserData.max_concurrent_bots || 1}
                     onChange={(e) =>
                       setNewUserData({
                         ...newUserData,
-                        max_concurrent_bots: parseInt(e.target.value) || 3,
+                        max_concurrent_bots: parseInt(e.target.value) || 1,
                       })
                     }
                   />
