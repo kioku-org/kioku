@@ -50,14 +50,17 @@ enum Commands {
     // ── Knowledge ─────────────────────────────────────────────────────────────
     #[command(about = "Search your knowledge base")]
     Search { query: String },
-    #[command(about = "Upload a document to your knowledge base")]
-    Upload { file: String },
-    #[command(about = "List uploaded documents")]
-    Docs,
-    #[command(about = "Delete a document")]
-    DocDelete {
-        #[arg(value_name = "DOCUMENT_ID")]
-        document_id: String,
+    #[command(about = "List documents, upload a new one, or delete one")]
+    Docs {
+        #[arg(value_name = "PATH", help = "Path to a file to upload")]
+        path: Option<String>,
+        #[arg(
+            long,
+            value_name = "DOCUMENT_ID",
+            conflicts_with = "path",
+            help = "Delete a document by id"
+        )]
+        delete: Option<String>,
     },
 
     // ── Meetings ──────────────────────────────────────────────────────────────
@@ -65,17 +68,19 @@ enum Commands {
     Meetings,
 
     // ── API keys ──────────────────────────────────────────────────────────────
-    #[command(about = "List API keys")]
-    Keys,
-    #[command(about = "Create an API key")]
-    KeyCreate {
-        #[arg(long, default_value = "cli-key")]
+    #[command(about = "List API keys, create a new one, or delete one")]
+    Key {
+        #[arg(long, help = "Create a new API key")]
+        create: bool,
+        #[arg(long, default_value = "cli-key", help = "Name for the new key (used with --create)")]
         name: String,
-    },
-    #[command(about = "Delete an API key")]
-    KeyDelete {
-        #[arg(value_name = "KEY_PREFIX_OR_ID")]
-        key_prefix: String,
+        #[arg(
+            long,
+            value_name = "KEY_PREFIX_OR_ID",
+            conflicts_with = "create",
+            help = "Delete an API key by id or prefix"
+        )]
+        delete: Option<String>,
     },
 
     // ── Tools ─────────────────────────────────────────────────────────────────
@@ -197,7 +202,7 @@ fn resolve_auth_key_delete_target(
     }
 
     Err(anyhow::anyhow!(
-        "auth key `{}` not found — run `kioku auth-key-list` to inspect valid ids and prefixes",
+        "auth key `{}` not found — run `kioku key` to inspect valid ids and prefixes",
         key_prefix_or_id
     ))
 }
@@ -361,33 +366,29 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
                 println!();
             }
         }
-        Commands::Upload { file } => {
+        Commands::Docs { path, delete } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
-            let path = Path::new(&file);
-            client.upload_document(path).await?;
-            println!("Uploaded {file}");
-        }
-        Commands::Docs => {
-            let auth = require_auth()?;
-            let client = make_client(&auth);
-            let docs = client.list_documents().await?;
-            if docs.is_empty() {
-                println!("No documents.");
+            if let Some(document_id) = delete {
+                client.delete_document(&document_id).await?;
+                println!("Deleted document {document_id}");
+            } else if let Some(file) = path {
+                let file_path = Path::new(&file);
+                client.upload_document(file_path).await?;
+                println!("Uploaded {file}");
+            } else {
+                let docs = client.list_documents().await?;
+                if docs.is_empty() {
+                    println!("No documents.");
+                }
+                for d in &docs {
+                    let id = d.get("id").and_then(|v| v.as_str()).unwrap_or("?");
+                    let name = d.get("name").and_then(|v| v.as_str())
+                        .or_else(|| d.get("filename").and_then(|v| v.as_str()))
+                        .unwrap_or("untitled");
+                    println!("{} — {}", id, name);
+                }
             }
-            for d in &docs {
-                let id = d.get("id").and_then(|v| v.as_str()).unwrap_or("?");
-                let name = d.get("name").and_then(|v| v.as_str())
-                    .or_else(|| d.get("filename").and_then(|v| v.as_str()))
-                    .unwrap_or("untitled");
-                println!("{} — {}", id, name);
-            }
-        }
-        Commands::DocDelete { document_id } => {
-            let auth = require_auth()?;
-            let client = make_client(&auth);
-            client.delete_document(&document_id).await?;
-            println!("Deleted document {document_id}");
         }
         Commands::Meetings => {
             let auth = require_auth()?;
@@ -403,44 +404,40 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
                 println!("{} — {} ({})", m.id, m.title, date);
             }
         }
-        Commands::KeyCreate { name } => {
+        Commands::Key { create, name, delete } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
-            let key = client.create_auth_key(&name).await?;
-            let raw = key.get("key").and_then(|v| v.as_str())
-                .or_else(|| key.get("raw_key").and_then(|v| v.as_str()));
-            if let Some(raw_key) = raw {
-                println!("API key (save this — it won't be shown again):");
-                println!();
-                println!("  {}", raw_key);
-                println!();
-                println!("Use it with:  kioku signin --api-key <key>");
+            if create {
+                let key = client.create_auth_key(&name).await?;
+                let raw = key.get("key").and_then(|v| v.as_str())
+                    .or_else(|| key.get("raw_key").and_then(|v| v.as_str()));
+                if let Some(raw_key) = raw {
+                    println!("API key (save this — it won't be shown again):");
+                    println!();
+                    println!("  {}", raw_key);
+                    println!();
+                    println!("Use it with:  kioku signin --api-key <key>");
+                } else {
+                    println!("{}", serde_json::to_string_pretty(&key)?);
+                }
+            } else if let Some(key_prefix) = delete {
+                let keys = client.list_auth_keys().await?;
+                let key_id = resolve_auth_key_delete_target(&keys, &key_prefix)?;
+                client.delete_auth_key(&key_id).await?;
+                println!("Deleted key {key_prefix}");
             } else {
-                println!("{}", serde_json::to_string_pretty(&key)?);
+                let keys = client.list_auth_keys().await?;
+                if keys.is_empty() {
+                    println!("No API keys.");
+                }
+                for k in &keys {
+                    let last_used = k.last_used_at
+                        .and_then(|ts| chrono::DateTime::from_timestamp(ts / 1000, 0))
+                        .map(|dt| dt.format("%Y-%m-%d").to_string())
+                        .unwrap_or_else(|| "never".to_string());
+                    println!("{} — {} (prefix: {}  last used: {})", k.id, k.name, k.key_prefix, last_used);
+                }
             }
-        }
-        Commands::Keys => {
-            let auth = require_auth()?;
-            let client = make_client(&auth);
-            let keys = client.list_auth_keys().await?;
-            if keys.is_empty() {
-                println!("No API keys.");
-            }
-            for k in &keys {
-                let last_used = k.last_used_at
-                    .and_then(|ts| chrono::DateTime::from_timestamp(ts / 1000, 0))
-                    .map(|dt| dt.format("%Y-%m-%d").to_string())
-                    .unwrap_or_else(|| "never".to_string());
-                println!("{} — {} (prefix: {}  last used: {})", k.id, k.name, k.key_prefix, last_used);
-            }
-        }
-        Commands::KeyDelete { key_prefix } => {
-            let auth = require_auth()?;
-            let client = make_client(&auth);
-            let keys = client.list_auth_keys().await?;
-            let key_id = resolve_auth_key_delete_target(&keys, &key_prefix)?;
-            client.delete_auth_key(&key_id).await?;
-            println!("Deleted key {key_prefix}");
         }
         Commands::Mcp => {
             let auth = require_auth()?;
@@ -612,7 +609,7 @@ mod tests {
             .unwrap_err()
             .to_string();
         let expected =
-            "auth key `cmp_missing` not found — run `kioku auth-key-list` to inspect valid ids and prefixes"
+            "auth key `cmp_missing` not found — run `kioku key` to inspect valid ids and prefixes"
                 .to_string();
 
         assert_eq!(actual, expected);
