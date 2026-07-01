@@ -93,20 +93,6 @@ enum Commands {
         #[arg(long)] name: Option<String>,
         #[arg(long)] password: Option<String>,
     },
-    #[command(hide = true, name = "sessions")]
-    SessionsList,
-    #[command(hide = true, name = "session-create")]
-    SessionsCreate {
-        #[arg(long)] title: Option<String>,
-    },
-    #[command(hide = true, name = "session-get")]
-    SessionsGet { session_id: String },
-    #[command(hide = true, name = "session-delete")]
-    SessionsDelete { session_id: String },
-    #[command(hide = true, name = "send")]
-    Send { session_id: String, message: Vec<String> },
-    #[command(hide = true, name = "messages")]
-    Messages { session_id: String },
     #[command(hide = true, name = "auth-token")]
     AuthToken,
 }
@@ -359,72 +345,6 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
         Commands::Token | Commands::AuthToken => {
             let auth = require_auth()?;
             println!("{}", auth.token);
-        }
-        Commands::SessionsList => {
-            let auth = require_auth()?;
-            let client = make_client(&auth);
-            let sessions = client.list_sessions().await?;
-            if sessions.is_empty() {
-                println!("No sessions.");
-            }
-            for s in &sessions {
-                println!("{} — {}", s.id, s.title);
-            }
-        }
-        Commands::SessionsCreate { title } => {
-            let auth = require_auth()?;
-            let client = make_client(&auth);
-            let session = client
-                .create_session(title.as_deref().unwrap_or("New session"), "research")
-                .await?;
-            println!("Created session: {}", session.id);
-        }
-        Commands::SessionsGet { session_id } => {
-            let auth = require_auth()?;
-            let client = make_client(&auth);
-            let session = client.get_session(&session_id).await?;
-            println!("id:    {}", session.id);
-            println!("title: {}", session.title);
-        }
-        Commands::SessionsDelete { session_id } => {
-            let auth = require_auth()?;
-            let client = make_client(&auth);
-            client.delete_session(&session_id).await?;
-            println!("Deleted session {session_id}");
-        }
-        Commands::Send {
-            session_id,
-            message,
-        } => {
-            let auth = require_auth()?;
-            let client = make_client(&auth);
-            let msg = message.join(" ");
-            let resp = client.send_message(&session_id, &msg).await?;
-            for part in &resp.content {
-                if let Some(text) = &part.text {
-                    println!("{text}");
-                }
-            }
-        }
-        Commands::Messages { session_id } => {
-            let auth = require_auth()?;
-            let client = make_client(&auth);
-            let msgs = client.list_messages(&session_id).await?;
-            if msgs.is_empty() {
-                println!("No messages.");
-            }
-            for m in &msgs {
-                let text: String = m
-                    .content
-                    .iter()
-                    .filter_map(|p| p.text.clone())
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                let preview: String = text.chars().take(200).collect();
-                let ellipsis = if text.len() > 200 { "…" } else { "" };
-                println!("[{}] {}{}", m.role.to_uppercase(), preview, ellipsis);
-                println!();
-            }
         }
         Commands::Search { query } => {
             let auth = require_auth()?;
