@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-
-const ADMIN_COOKIE_NAME = "kioku-admin-session";
-const COOKIE_MAX_AGE = 60 * 60 * 24; // 24 hours
+import { ADMIN_COOKIE_NAME, ADMIN_COOKIE_MAX_AGE, verifyCookieValue } from "@/lib/admin-session";
 
 /**
  * Verify admin session from cookie
@@ -16,13 +14,17 @@ async function verifyAdminSession(): Promise<boolean> {
       return false;
     }
 
-    const sessionData = JSON.parse(
-      Buffer.from(sessionCookie.value, "base64").toString()
-    );
+    // Verify HMAC signature before trusting the payload
+    const payload = verifyCookieValue(sessionCookie.value);
+    if (!payload) {
+      return false;
+    }
+
+    const sessionData = JSON.parse(Buffer.from(payload, "base64").toString());
 
     // Check if session is expired (24 hours)
     const sessionAge = Date.now() - sessionData.timestamp;
-    if (sessionAge > COOKIE_MAX_AGE * 1000) {
+    if (sessionAge > ADMIN_COOKIE_MAX_AGE * 1000) {
       return false;
     }
 

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-
-const ADMIN_COOKIE_NAME = "kioku-admin-session";
+import { ADMIN_COOKIE_NAME } from "@/lib/admin-session";
 
 export async function POST() {
   try {

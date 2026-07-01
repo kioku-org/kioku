@@ -1,35 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import crypto from "crypto";
-
-const ADMIN_COOKIE_NAME = "kioku-admin-session";
+import {
+  ADMIN_COOKIE_NAME,
+  ADMIN_COOKIE_MAX_AGE,
+  signCookieValue,
+  verifyCookieValue,
+} from "@/lib/admin-session";
 
 function isSecureRequest(): boolean {
   return process.env.NEXTAUTH_URL?.startsWith("https://") ||
          process.env.DASHBOARD_URL?.startsWith("https://") ||
          false;
-}
-const COOKIE_MAX_AGE = 60 * 60 * 24; // 24 hours
-
-function getSigningSecret(): string {
-  return process.env.JWT_SECRET || process.env.VEXA_ADMIN_API_KEY || "default-secret-change-me";
-}
-
-function signCookieValue(payload: string): string {
-  const hmac = crypto.createHmac("sha256", getSigningSecret()).update(payload).digest("hex");
-  return `${payload}.${hmac}`;
-}
-
-function verifyCookieValue(signed: string): string | null {
-  const dotIndex = signed.lastIndexOf(".");
-  if (dotIndex === -1) return null;
-  const payload = signed.substring(0, dotIndex);
-  const signature = signed.substring(dotIndex + 1);
-  const expected = crypto.createHmac("sha256", getSigningSecret()).update(payload).digest("hex");
-  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-    return null;
-  }
-  return payload;
 }
 
 export async function POST(request: NextRequest) {
@@ -77,7 +58,7 @@ export async function POST(request: NextRequest) {
       httpOnly: true,
       secure: isSecureRequest(),
       sameSite: "lax",
-      maxAge: COOKIE_MAX_AGE,
+      maxAge: ADMIN_COOKIE_MAX_AGE,
       path: "/",
     });
 
@@ -117,7 +98,7 @@ export async function GET() {
 
       // Check if session is expired (24 hours)
       const sessionAge = Date.now() - sessionData.timestamp;
-      if (sessionAge > COOKIE_MAX_AGE * 1000) {
+      if (sessionAge > ADMIN_COOKIE_MAX_AGE * 1000) {
         return NextResponse.json({ authenticated: false, reason: "expired" }, { status: 401 });
       }
 
