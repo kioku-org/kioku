@@ -1,6 +1,6 @@
 # LEFTOVER
 
-Last updated: 2026-07-01 (rev 11)
+Last updated: 2026-07-02 (rev 13)
 
 ## Current Status
 
@@ -193,10 +193,78 @@ When the last human leaves a meeting, the bot should auto-exit. Needs idle-detec
 
 ### UI redesign (issues #45 → #44)
 
-- **#45** — produce Figma design for dashboard
+- **#45** — produce Figma design for dashboard — **in progress, see below**
 - **#44** — implement Figma design into Next.js dashboard (blocked by #45)
 
-No Figma link or design assets yet.
+**Figma file:** https://www.figma.com/design/HVIghjV1LG91z07MjmCKQo/Kioku
+
+Built via Figma MCP directly from `services/dashboard` source (not live-fetched — no browser
+tool was available at build time). File has two pages:
+- **Components** — design tokens (colors/radius converted from the shadcn `globals.css` oklch
+  theme, light mode only; Geist Sans/Mono type), Button/Badge/Input/Avatar/Card/Sidebar-nav-item
+  components, and an "App Shell" template (Header + Sidebar) that every screen instances + detaches.
+- **Screens** — 12 frames: Login, Meetings, Meeting Detail, Profile/API Keys, Workspace, Settings,
+  MCP Setup, Agent chat, Webhooks, Tracker, Admin Users, Admin Bots. Sidebar nav click-through wired
+  (70 links) plus meetings-row → Meeting Detail and Login → Meetings; Login is the flow start point.
+
+**Not done yet:**
+- Dark mode variables (only light mode tokens exist in Figma so far)
+- Pixel-diffing against the live app — installed `playwright` MCP server (user scope, via
+  `claude mcp add --scope user playwright -- npx -y @playwright/mcp@latest`) to browse
+  `dashboard.kioku.chat` for this, but it was added mid-session so the running session couldn't
+  load it. **Next session should have it available automatically** — use it to screenshot the
+  live dashboard and reconcile spacing/copy/colors against the Figma frames above before closing #45.
+- Only the primary/default state of complex pages (Meeting Detail, Agent, Workspace) was built —
+  no loading/error/editing states.
+
+## Bugfix SOP
+
+Standard pipeline for any bug found (in this repo or on the live deploy server). Follow all
+steps in order — don't skip the issue or the live verification.
+
+1. **Confirm root cause before filing.** Read the actual code path, don't guess. Reproduce if
+   possible (a small standalone script/curl beats a hunch).
+2. **File a GitHub issue** (`gh issue create --repo kioku-org/kioku`) with: symptom, root cause
+   with `file:line` references, and the fix approach. Do this even for small fixes — it's the
+   paper trail for the "Fixes #N" commit trailer below and for `## GitHub Issue State`.
+3. **Isolate in a worktree** off local `master` (not `origin/main` — the two have diverged;
+   `master` is the branch actually deployed). `EnterWorktree` defaults to branching from
+   `origin/<default-branch>`, which may lack recent work — if so, branch manually:
+   `git worktree add .claude/worktrees/<name> master -b <name>` then
+   `EnterWorktree({ path: ... })`.
+4. **Implement the fix.** Minimal, targeted — no drive-by refactors.
+5. **Validate before committing:**
+   - dashboard (TS): symlink `node_modules` from `services/dashboard` into the worktree copy,
+     run `node scripts/generate-release-version.js` (needs `NEXT_PUBLIC_VEXA_OSS_VERSION` set,
+     e.g. `=0.1.0`, if no git tag/VERSION is resolvable), then `npx tsc --noEmit -p tsconfig.json`
+     and `npx eslint <changed files>`.
+   - python (admin-api/meeting-api/etc): `python3 -m py_compile <changed files>` at minimum.
+   - Where feasible, reproduce the exact bug logic in a throwaway `node -e` / script to prove the
+     fix resolves it (e.g. the cookie-decode bug in #54 was reproduced standalone before trusting
+     the fix).
+6. **Commit** with a body explaining root cause (not just what changed) and a `Fixes #N` trailer
+   so GitHub auto-closes the issue on merge to `master`.
+7. **Merge to local `master` and sync:**
+   ```bash
+   git -C <repo-root> fetch origin master:refs/remotes/origin/master
+   git -C <repo-root> log --oneline master..origin/master   # check for divergence
+   git -C <repo-root> merge --ff-only <branch>               # or `rebase origin/master` first if it diverged
+   git -C <repo-root> push origin master
+   ```
+8. **Clean up the worktree:** `git worktree remove <path> --force && git branch -D <branch>`.
+9. **Deploy to the dev/production server** (see `## Deploy Server` below) — pull the code and
+   **build from source** (not `docker compose pull`, unless explicitly told otherwise), recreate
+   the container, and always chain a prune:
+   ```bash
+   ssh machine "cd ~/ws/kioku && git pull --ff-only origin master"
+   ssh machine "cd ~/ws/kioku/deployment/docker && docker compose -f docker-compose.stateful.yml build kioku-stateful && docker compose -f docker-compose.stateful.yml up -d kioku-stateful && docker image prune -f"
+   ```
+10. **Verify live**, not just "container is running" — hit the actual endpoint/flow the bug was
+    in (curl the API route with a real cookie/token round-trip, not just a health check). Docker's
+    own healthcheck for `kioku-stateful` is known-broken (checks `/health` on :8056, which 404s —
+    pre-existing, unrelated to app health) so don't use container health status as your signal.
+11. **Comment on the issue** with what was fixed, the deployed commit SHA, and the live
+    verification output. Let `Fixes #N` auto-close it.
 
 ## Deploy Server
 
@@ -276,7 +344,10 @@ curl https://api.kioku.chat/health | jq .   # hivemind health check
 - `#41` open: bot cleanup when left alone
 - `#42` open: Makefile for fresh install
 - `#43` open: authenticated mode causes bot to self-leave immediately
-- `#45` open: UI redesign — Figma design phase
+- `#45` open: UI redesign — Figma design phase, 12/12 screens drafted, needs live-app pixel review
 - `#44` open: UI redesign — implement Figma into dashboard (blocked by #45)
 - `#47` open: Hivemind integration (feat/hivemind) — ready for PR review
 - `#48` open: CLI binary distribution — multi-platform build workflow needed; install.sh blocked on kioku-web
+- `#53` closed: admin login always failed — `admin-verify` threw on missing `JWT_SECRET`; fixed with fallback chain, deployed and verified
+- `#54` closed: admin API proxy always 401'd — `admin/[...path]` route decoded the signed cookie wrong; sign/verify logic extracted to shared `lib/admin-session.ts`, deployed and verified
+- `#55` closed: profile page's max-bots showed "—" — `/api/auth/me` dropped `max_concurrent_bots` (gateway returns it as `max_concurrent`); also standardized the free-tier default from a hardcoded 3 to 1 across 3 places. Deployed; code-verified, live click-through as regular user still pending (no plaintext user API key available)
