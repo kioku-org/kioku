@@ -72,6 +72,23 @@ pub async fn signin(ctx: AppContext, api_key: Option<String>) -> Result<()> {
     .save()?;
 
     println!("Signed in as {} ({})", result.name, result.email);
+
+    // Piggyback Calendar consent onto Google signin, so `kioku cal` doesn't
+    // need a separate connect step later — one sitting instead of two.
+    // GitHub can't grant Google Calendar access, so there's nothing to chain
+    // there; `kioku cal` still runs its own connect flow on first use for
+    // GitHub-signed-in users. Best-effort: a declined/failed consent here
+    // doesn't fail signin itself — `kioku cal` will just prompt again later.
+    if matches!(provider, signin::Provider::Google) {
+        println!();
+        println!("Also connecting Google Calendar access (used by `kioku cal`)…");
+        if let Err(e) = crate::google_calendar::ensure_valid_token_or_connect().await {
+            println!(
+                "Skipped Calendar connect ({e}) — `kioku cal` will prompt again when you use it."
+            );
+        }
+    }
+
     Ok(())
 }
 
