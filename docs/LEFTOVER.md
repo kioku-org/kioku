@@ -1,6 +1,6 @@
 # LEFTOVER
 
-Last updated: 2026-07-02 (rev 13)
+Last updated: 2026-07-02 (rev 14)
 
 ## Current Status
 
@@ -69,17 +69,26 @@ Bot containers run on `kioku-network` and reach stateful services by container n
 
 **Binary:** `services/cli/` workspace with crates `cc-cli`, `cc-auth`, `cc-kioku`, `cc-upgrade`
 
-**14 visible commands** (as of dev.5):
+**16 visible commands** (as of `cli/v0.1.2-dev.2`, current latest — see `## GitHub Issue State` #56/#58/#59 for what changed):
 
 ```
 signin     signout    whoami     token
-search     upload     docs       doc-delete
-meetings
-keys       key-create key-delete
-mcp        upgrade
+search     docs       meetings   meeting
+transcript meet       cal        keys
+mcp        upgrade    completions
 ```
 
-Hidden (still functional): `sessions`, `session-create`, `session-get`, `session-delete`, `send`, `messages`, `auth-token`, `register-admin`
+`docs` now folds in upload/delete (`docs`, `docs <path>`, `docs --delete <id>`);
+`keys` folds in create/delete (`keys`, `keys --create`, `keys --delete <id>`).
+Hidden (still functional, deliberately not orphaned): `auth-token`, `register-admin`.
+The old `sessions`/`session-create`/`session-get`/`session-delete`/`send`/`messages`
+hidden commands were removed as orphaned (superseded by the MCP `session`/`meeting` tools).
+
+**Releases:** `cli/v0.1.2-dev.2` is current (linux x86_64 only). Install with
+`export KIOKU_VERSION=cli/v0.1.2-dev.2 && curl -fsSL https://kioku.chat/install.sh | sh`
+— **do not** use `KIOKU_VERSION=... curl ... | sh` on one line, the env var only
+applies to `curl`, not the piped `sh` (see #62). Plain `curl ... | sh` with no
+`KIOKU_VERSION` is currently broken for everyone (#62, also open).
 
 **`kioku signin` OAuth flow:**
 1. Animated left/right provider selector (crossterm) — Google / GitHub, navigate with `← →` / `h l`
@@ -351,8 +360,10 @@ curl https://api.kioku.chat/health | jq .   # hivemind health check
 - `#53` closed: admin login always failed — `admin-verify` threw on missing `JWT_SECRET`; fixed with fallback chain, deployed and verified
 - `#54` closed: admin API proxy always 401'd — `admin/[...path]` route decoded the signed cookie wrong; sign/verify logic extracted to shared `lib/admin-session.ts`, deployed and verified
 - `#55` closed: profile page's max-bots showed "—" — `/api/auth/me` dropped `max_concurrent_bots` (gateway returns it as `max_concurrent`); also standardized the free-tier default from a hardcoded 3 to 1 across 3 places. Deployed; code-verified, live click-through as regular user still pending (no plaintext user API key available)
-- `#56` open: CLI subcommand enhancements (`--json` output, `search --limit`, meeting detail/transcript parity with MCP, shell completions, decide fate of hidden agent-chat commands) — tracked on `feat/cli-enhancement`
-- `#57` open: e2e test coverage across the whole system (CLI binary tests, dashboard Playwright, decouple from flaky RunPod-dependent CI `test` job) — tracked on `feat/cli-enhancement`
-- `#58` open: `kioku meet` (join/list/kill bots) — join already possible via existing Hivemind `/vexa/bots` proxy; list/kill need 2 new Hivemind proxy routes (same pattern, not yet built) — tracked on `feat/cli-enhancement`
-- `#59` open: `kioku cal` (list Google Calendar meetings today/`--week`/`--date`) — decided CLI calls Google Calendar API directly (own OAuth scope), not a new backend endpoint — tracked on `feat/cli-enhancement`
-- `#60` open: investigate unifying Hivemind (`cmp_` bcrypt keys, schema `hivemind`) and Vexa (`api_tokens` plaintext, schema `vexa`) credential systems — currently bridged only by one static shared service-account token in `vexa.rs`. Real production auth surgery — needs its own scoped plan/branch, deliberately paused rather than bolted onto CLI work
+- `#56` closed: CLI subcommand enhancements — `--json` global flag, `search --limit`, `kioku meeting`/`kioku transcript` (new Hivemind REST routes reusing the MCP tools' repo calls), `kioku completions`, removed orphaned agent-chat commands. Also consolidated `docs`/`upload`/`doc-delete` → `docs`/`docs <path>`/`docs --delete` and `keys`/`key-create`/`key-delete` → `keys`/`keys --create`/`keys --delete`. Deployed, live-verified against production with a real session.
+- `#57` open: e2e test coverage across the whole system — deliberately not started this session (explicit user instruction to hold off)
+- `#58` closed: `kioku meet` (join/list/kill bots) — 2 new Hivemind routes (`GET /vexa/bots/status`, `DELETE /vexa/bots/:platform/:id`) plus CLI wiring. Live-verified: `kioku meet` successfully round-tripped through the full #60 credential chain (lazy per-user Vexa token provisioning fired correctly, matched the existing Vexa user by email).
+- `#59` open: `kioku cal` (list Google Calendar meetings today/`--week`/`--date`) — implemented (separate direct CLI↔Google PKCE OAuth flow, own Desktop-app OAuth client, distinct from dashboard sign-in). `KIOKU_GOOGLE_CALENDAR_CLIENT_ID`/`_SECRET` provisioned and wired into `docker-compose.stateful.yml` + the dev server's `.env`. Not yet exercised against the live Google Calendar API (that requires actually completing the browser consent flow) — left open until that's done.
+- `#60` closed: Hivemind (`cmp_`/`kioku_` bcrypt keys, schema `hivemind`) ↔ Vexa (`api_tokens` plaintext, schema `vexa`) credential unification. Shipped: per-user Vexa token lazy-provisioning (`services/hivemind/src/handlers/vexa.rs`) replacing the single shared `vexa_admin_token`; `cmp_` → `kioku_` key prefix (backward compatible); `tier` column on `vexa.users`; MCP unification (`services/mcp` now exchanges any Kioku credential for the caller's Vexa token via new `GET /vexa/token`, so one credential works for both MCP servers). Deployed, live-verified via DB inspection and a real `kioku meet` call.
+- `#61` closed: admin-api crashed on startup during the #60 deploy — `schema_sync._col_default_sql()` emitted unquoted string `DEFAULT` values (`DEFAULT free` instead of `DEFAULT 'free'`), invalid SQL. Fixed with proper quoting + escaping, regression-tested, redeployed clean.
+- `#62` open: `install.sh`'s default (no `KIOKU_VERSION`) path 404s — every CLI release ever published is a GitHub pre-release, so `releases/latest` (what the script falls back to) never resolves. Needs either a real non-prerelease release cut, or the installer's fallback logic changed to consider prereleases via the GitHub API. The `keys` (plural, not singular `key`) naming portion of this issue is fixed and shipped (`cli/v0.1.2-dev.2`).
