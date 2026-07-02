@@ -62,10 +62,15 @@ export async function GET(request: NextRequest) {
 
   if (!email || !identityOk || !calendarOk) {
     // Not signed in, or signed in without what this request needs — send
-    // to the OAuth provider, come back here after.
+    // to the OAuth provider, come back here after. Deliberately anchored
+    // to NEXTAUTH_URL rather than `request.url`: behind this deployment's
+    // reverse proxy, `request.url`'s origin resolves to the container's
+    // internal bind address (0.0.0.0:3001) instead of the public hostname,
+    // which produces an unreachable redirect for the browser.
     const self = `/cli-auth?port=${port}&state=${encodeURIComponent(state)}&provider=${provider}`;
+    const base = process.env.NEXTAUTH_URL || request.url;
     return NextResponse.redirect(
-      new URL(`/api/auth/signin/${nextAuthProviderId}?callbackUrl=${encodeURIComponent(self)}`, request.url)
+      new URL(`/api/auth/signin/${nextAuthProviderId}?callbackUrl=${encodeURIComponent(self)}`, base)
     );
   }
 
