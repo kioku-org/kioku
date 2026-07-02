@@ -91,6 +91,25 @@ export const authOptions: NextAuthOptions = {
             clientId: process.env.GOOGLE_CLIENT_ID!,
             clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
           }),
+          // Used only by the CLI's /cli-auth flow (never the web /login
+          // page) — same client, wider scope, so `kioku signin` gets
+          // Google Calendar consent in the same round trip instead of a
+          // separate step the first time `kioku cal` runs. access_type
+          // + prompt=consent guarantee a refresh_token, which Google
+          // otherwise only issues on a user's very first consent.
+          GoogleProvider({
+            id: "google-calendar",
+            name: "Google (CLI + Calendar)",
+            clientId: process.env.GOOGLE_CLIENT_ID!,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+            authorization: {
+              params: {
+                scope: "openid email profile https://www.googleapis.com/auth/calendar.readonly",
+                access_type: "offline",
+                prompt: "consent",
+              },
+            },
+          }),
         ]
       : []),
     ...(isGithubAuthEnabled()
@@ -119,7 +138,10 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user, account, profile }) {
       // This callback is called after successful OAuth but before session creation
       if (
-        (account?.provider === "google" || account?.provider === "azure-ad" || account?.provider === "github") &&
+        (account?.provider === "google" ||
+          account?.provider === "google-calendar" ||
+          account?.provider === "azure-ad" ||
+          account?.provider === "github") &&
         user.email
       ) {
         try {
@@ -208,6 +230,16 @@ export const authOptions: NextAuthOptions = {
           (user as any).vexaToken = apiToken;
           (user as any).isNewUser = isNewUser;
           (user as any).hivemindToken = hivemindToken;
+          (user as any).provider = account.provider;
+
+          // google-calendar's OAuth grant includes calendar.readonly —
+          // carry the raw Google tokens through so /cli-auth can hand
+          // them to the CLI directly, no separate consent step needed.
+          if (account.provider === "google-calendar") {
+            (user as any).googleAccessToken = account.access_token;
+            (user as any).googleRefreshToken = account.refresh_token;
+            (user as any).googleTokenExpiresAt = account.expires_at;
+          }
 
           return true;
         } catch (error) {
@@ -224,6 +256,12 @@ export const authOptions: NextAuthOptions = {
         token.vexaToken = (user as any).vexaToken;
         token.isNewUser = (user as any).isNewUser;
         token.hivemindToken = (user as any).hivemindToken;
+        token.provider = (user as any).provider;
+        if ((user as any).googleAccessToken) {
+          token.googleAccessToken = (user as any).googleAccessToken;
+          token.googleRefreshToken = (user as any).googleRefreshToken;
+          token.googleTokenExpiresAt = (user as any).googleTokenExpiresAt;
+        }
       }
       // Lazy-provision Hivemind for sessions created before this feature was deployed.
       if (!token.hivemindToken && token.email) {
@@ -248,6 +286,12 @@ export const authOptions: NextAuthOptions = {
         (session as any).vexaToken = token.vexaToken;
         (session as any).isNewUser = token.isNewUser;
         (session as any).hivemindToken = token.hivemindToken;
+        (session as any).provider = token.provider;
+        if (token.googleAccessToken) {
+          (session as any).googleAccessToken = token.googleAccessToken;
+          (session as any).googleRefreshToken = token.googleRefreshToken;
+          (session as any).googleTokenExpiresAt = token.googleTokenExpiresAt;
+        }
       }
       return session;
     },

@@ -18,80 +18,72 @@ export async function GET(request: NextRequest) {
 
   const session = await getServerSession(authOptions);
 
-  if (!session?.user?.email) {
-    // Not signed in — send to the OAuth provider, come back here after
+  // For the CLI, picking Google always means "and Calendar access too" —
+  // there's no separate `kioku cal` connect step later. GitHub can't grant
+  // Calendar, so it's untouched. This only affects the CLI's /cli-auth
+  // flow — the web /login page still uses the plain "google" provider
+  // (default scope), so ordinary dashboard users are never prompted for
+  // Calendar access they didn't ask for.
+  const wantsCalendar = provider !== "github";
+  const nextAuthProviderId = wantsCalendar ? "google-calendar" : "github";
+
+  const email = session?.user?.email;
+  const hivemindToken: string | undefined = (session as any)?.hivemindToken;
+  const googleAccessToken: string | undefined = (session as any)?.googleAccessToken;
+  const googleRefreshToken: string | undefined = (session as any)?.googleRefreshToken;
+  const googleTokenExpiresAt: number | undefined = (session as any)?.googleTokenExpiresAt;
+
+  // Decide whether the current session (if any) is actually usable for
+  // this request: valid post-rename identity token, and — when the CLI
+  // wants Calendar — a Calendar-scoped Google grant too. A session missing
+  // either falls through to a fresh OAuth round trip rather than being
+  // used half-broken.
+  let identityOk = false;
+  let name = email?.split("@")[0] ?? "";
+  let workspaceId: string | undefined;
+  let role: string | undefined;
+  let userId: string | undefined;
+  if (hivemindToken) {
+    try {
+      const payload = JSON.parse(Buffer.from(hivemindToken.split(".")[1], "base64url").toString());
+      if (payload.user_id && payload.workspace_id) {
+        identityOk = true;
+        userId = payload.user_id;
+        workspaceId = payload.workspace_id;
+        role = payload.role ?? "member";
+        name = payload.name ?? name;
+      }
+    } catch {
+      // Malformed token — treat as unusable, fall through.
+    }
+  }
+
+  const calendarOk = !wantsCalendar || !!(googleAccessToken && googleRefreshToken);
+
+  if (!email || !identityOk || !calendarOk) {
+    // Not signed in, or signed in without what this request needs — send
+    // to the OAuth provider, come back here after.
     const self = `/cli-auth?port=${port}&state=${encodeURIComponent(state)}&provider=${provider}`;
-    const providerPath = provider === "github" ? "github" : "google";
     return NextResponse.redirect(
-      new URL(`/api/auth/signin/${providerPath}?callbackUrl=${encodeURIComponent(self)}`, request.url)
+      new URL(`/api/auth/signin/${nextAuthProviderId}?callbackUrl=${encodeURIComponent(self)}`, request.url)
     );
   }
 
-  // Signed in — provision (or re-use) the Hivemind JWT
-  const hivemindToken: string | undefined = (session as any).hivemindToken;
-  const email = session.user.email;
-  const name = session.user.name ?? email.split("@")[0];
-
-  // If the session already carries a hivemindToken, use it directly — but
-  // only if it's actually a post-rename token. Sessions cached before the
-  // company->workspace rename carry a JWT with no `workspace_id` claim;
-  // trusting it here would silently redirect the CLI with an empty
-  // workspace_id instead of failing loudly. Falling through re-provisions,
-  // which mints a fresh, current-shape token.
-  if (hivemindToken) {
-    try {
-      const payload = JSON.parse(
-        Buffer.from(hivemindToken.split(".")[1], "base64url").toString()
-      );
-      if (payload.user_id && payload.workspace_id) {
-        const params = new URLSearchParams({
-          token: hivemindToken,
-          state: state!,
-          user_id: payload.user_id,
-          email: payload.email ?? email,
-          name: payload.name ?? name,
-          workspace_id: payload.workspace_id,
-          role: payload.role ?? "member",
-        });
-        return NextResponse.redirect(`http://localhost:${portNum}/callback?${params}`);
-      }
-      // Missing user_id/workspace_id — stale pre-rename token, fall through.
-    } catch {
-      // Malformed token — fall through to re-provision
+  const params = new URLSearchParams({
+    token: hivemindToken!,
+    state,
+    user_id: userId!,
+    email,
+    name,
+    workspace_id: workspaceId!,
+    role: role!,
+  });
+  if (wantsCalendar && googleAccessToken && googleRefreshToken) {
+    params.set("google_access_token", googleAccessToken);
+    params.set("google_refresh_token", googleRefreshToken);
+    if (googleTokenExpiresAt) {
+      params.set("google_token_expires_at", String(googleTokenExpiresAt));
     }
   }
-
-  // No cached token: call provision endpoint
-  const hivemindUrl = process.env.HIVEMIND_INTERNAL_URL ?? "http://localhost:9100";
-  const internalSecret = process.env.INTERNAL_API_SECRET;
-  if (!internalSecret) {
-    return new NextResponse("Server configuration error: missing INTERNAL_API_SECRET.", { status: 500 });
-  }
-
-  try {
-    const r = await fetch(`${hivemindUrl}/internal/provision`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Internal-Secret": internalSecret,
-      },
-      body: JSON.stringify({ email, name }),
-    });
-    if (!r.ok) {
-      return new NextResponse(`Backend provision failed (${r.status}).`, { status: 502 });
-    }
-    const data = await r.json();
-    const params = new URLSearchParams({
-      token: data.token,
-      state: state!,
-      user_id: data.user_id,
-      email: data.email,
-      name: data.name,
-      workspace_id: data.workspace_id,
-      role: data.role,
-    });
-    return NextResponse.redirect(`http://localhost:${portNum}/callback?${params}`);
-  } catch {
-    return new NextResponse("Could not reach the Kioku backend.", { status: 502 });
-  }
+  return NextResponse.redirect(`http://localhost:${portNum}/callback?${params}`);
 }

@@ -145,6 +145,34 @@ fn draw(out: &mut impl Write, selected: usize) -> Result<()> {
 
 // ── OAuth callback server ─────────────────────────────────────────────────────
 
+/// Opens the browser to the dashboard's /cli-auth flow for `provider` and
+/// waits for its loopback callback. Picking Google always also requests
+/// Calendar access in the same round trip (see the dashboard's
+/// `google-calendar` NextAuth provider) — `result.google_access_token` etc.
+/// are set whenever that happened.
+pub async fn run_oauth_flow(dashboard_url: &str, provider: &Provider) -> Result<OAuthResult> {
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let port = listener.local_addr()?.port();
+    let state = uuid::Uuid::new_v4().to_string();
+
+    let auth_url = format!(
+        "{}/cli-auth?port={}&state={}&provider={}",
+        dashboard_url,
+        port,
+        state,
+        provider.id()
+    );
+
+    println!("Opening browser…");
+    if webbrowser::open(&auth_url).is_err() {
+        println!("Couldn't open browser automatically. Open this URL manually:");
+        println!("  {}", auth_url);
+    }
+    println!("Waiting for sign-in (2 min timeout)…");
+
+    wait_for_callback(listener, &state).await
+}
+
 /// Waits for the browser to redirect to `http://localhost:<port>/callback?...`
 /// Returns (token, user_id, email, name, workspace_id, role).
 pub async fn wait_for_callback(listener: TcpListener, expected_state: &str) -> Result<OAuthResult> {
@@ -206,6 +234,20 @@ pub async fn wait_for_callback(listener: TcpListener, expected_state: &str) -> R
     // Respond with a success page before closing
     respond(&mut stream, 200, "OK", &success_html(&name, &email)).await?;
 
+    let google_access_token = params.get("google_access_token").map(|v| {
+        urlencoding::decode(&v.replace('+', " "))
+            .unwrap_or_default()
+            .into_owned()
+    });
+    let google_refresh_token = params.get("google_refresh_token").map(|v| {
+        urlencoding::decode(&v.replace('+', " "))
+            .unwrap_or_default()
+            .into_owned()
+    });
+    let google_token_expires_at = params
+        .get("google_token_expires_at")
+        .and_then(|v| v.parse::<i64>().ok());
+
     Ok(OAuthResult {
         token,
         user_id: decode("user_id"),
@@ -213,6 +255,9 @@ pub async fn wait_for_callback(listener: TcpListener, expected_state: &str) -> R
         name,
         workspace_id: decode("workspace_id"),
         role: decode("role"),
+        google_access_token,
+        google_refresh_token,
+        google_token_expires_at,
     })
 }
 
@@ -223,6 +268,14 @@ pub struct OAuthResult {
     pub name: String,
     pub workspace_id: String,
     pub role: String,
+    /// Set when this flow requested (and was granted) Google Calendar
+    /// access alongside identity — see `run_oauth_flow`.
+    pub google_access_token: Option<String>,
+    pub google_refresh_token: Option<String>,
+    /// Unix seconds, as returned by the dashboard (NextAuth's
+    /// `account.expires_at` convention) — convert to ms when saving into
+    /// `GoogleCalendarAuth`.
+    pub google_token_expires_at: Option<i64>,
 }
 
 async fn respond(
