@@ -28,7 +28,7 @@ impl AuthRepo {
         slug: &str,
     ) -> Result<Option<CompanyRecord>, AppError> {
         sqlx::query_as::<_, CompanyRecord>(
-            r#"SELECT id, name, slug FROM companies WHERE slug = $1"#,
+            r#"SELECT id, name, slug, tier FROM companies WHERE slug = $1"#,
         )
         .bind(slug)
         .fetch_optional(&self.db)
@@ -37,11 +37,24 @@ impl AuthRepo {
     }
 
     pub async fn find_company_by_id(&self, id: Uuid) -> Result<CompanyRecord, AppError> {
-        sqlx::query_as::<_, CompanyRecord>(r#"SELECT id, name, slug FROM companies WHERE id = $1"#)
-            .bind(id)
-            .fetch_one(&self.db)
-            .await
-            .map_err(AppError::from)
+        sqlx::query_as::<_, CompanyRecord>(
+            r#"SELECT id, name, slug, tier FROM companies WHERE id = $1"#,
+        )
+        .bind(id)
+        .fetch_one(&self.db)
+        .await
+        .map_err(AppError::from)
+    }
+
+    /// Number of members currently in a company. Free tier is capped at 1.
+    pub async fn count_company_members(&self, company_id: Uuid) -> Result<i64, AppError> {
+        let row: (i64,) =
+            sqlx::query_as(r#"SELECT COUNT(*) FROM company_members WHERE company_id = $1"#)
+                .bind(company_id)
+                .fetch_one(&self.db)
+                .await
+                .map_err(AppError::from)?;
+        Ok(row.0)
     }
 
     pub async fn find_invite(
@@ -267,6 +280,13 @@ pub struct CompanyRecord {
     pub id: Uuid,
     pub name: String,
     pub slug: String,
+    pub tier: String,
+}
+
+impl CompanyRecord {
+    pub fn is_free_tier(&self) -> bool {
+        self.tier == "free"
+    }
 }
 
 #[derive(Debug, sqlx::FromRow)]

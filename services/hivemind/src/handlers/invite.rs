@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::errors::AppError;
 use crate::middleware::AuthContext;
+use crate::repos::auth::AuthRepo;
 use crate::repos::invite::InviteRepo;
 use crate::types::{InviteCreate, InviteOut};
 use crate::AppState;
@@ -15,6 +16,14 @@ pub async fn create(
 ) -> Result<Json<InviteOut>, AppError> {
     if auth.role != "admin" {
         return Err(AppError::Forbidden("Admin access required".into()));
+    }
+
+    let auth_repo = AuthRepo::new(state.db.clone());
+    let company = auth_repo.find_company_by_id(auth.company_id).await?;
+    if company.is_free_tier() {
+        return Err(AppError::Forbidden(
+            "Free tier is limited to 1 person — upgrade to Pro to invite teammates".into(),
+        ));
     }
 
     let repo = InviteRepo::new(state.db.clone());

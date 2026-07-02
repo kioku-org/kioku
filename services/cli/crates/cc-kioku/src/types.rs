@@ -190,3 +190,24 @@ pub struct CompanyAuthKeyOut {
     pub created_at: i64,
     pub last_used_at: Option<i64>,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InviteCreateRequest {
+    pub email: String,
+    #[serde(default = "default_invite_role")]
+    pub role: String,
+}
+
+fn default_invite_role() -> String {
+    "member".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InviteOut {
+    pub id: String,
+    pub company_id: String,
+    pub email: String,
+    pub role: String,
+    pub created_at: i64,
+    pub used_at: Option<i64>,
+}

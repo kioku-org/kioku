@@ -103,6 +103,15 @@ impl AuthService {
             return Err(AppError::BadRequest("Email already registered".into()));
         }
 
+        // Defense in depth: invite creation is already blocked for free-tier
+        // companies (see invite::create), but re-check here in case tier
+        // changed after the invite was issued.
+        if company.is_free_tier() && repo.count_company_members(company.id).await? >= 1 {
+            return Err(AppError::Forbidden(
+                "Free tier is limited to 1 person — upgrade to Pro to add teammates".into(),
+            ));
+        }
+
         let now = crate::util::now_ms();
         let user_id = Uuid::new_v4();
         let password_hash = auth::hash_password(&req.password)?;

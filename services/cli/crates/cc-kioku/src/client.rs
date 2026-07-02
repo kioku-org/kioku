@@ -440,4 +440,40 @@ impl KiokuClient {
             .context("delete auth key failed")?;
         Self::expect_ok(resp).await
     }
+
+    // ─── Company Invites (Pro/Teams teammate sharing) ──────────────────────
+
+    pub async fn create_invite(&self, email: &str, role: &str) -> Result<InviteOut> {
+        let resp = self
+            .authed(self.client.post(self.url("/company/invites")))
+            .json(&InviteCreateRequest {
+                email: email.to_string(),
+                role: role.to_string(),
+            })
+            .send()
+            .await
+            .context("create invite failed")?;
+        Self::parse(resp, "invalid invite response").await
+    }
+
+    pub async fn list_invites(&self) -> Result<Vec<InviteOut>> {
+        let resp = self
+            .authed(self.client.get(self.url("/company/invites")))
+            .send()
+            .await
+            .context("list invites failed")?;
+        Self::parse(resp, "invalid invites response").await
+    }
+
+    pub async fn delete_invite(&self, invite_id: &str) -> Result<()> {
+        let resp = self
+            .authed(
+                self.client
+                    .delete(self.url(&format!("/company/invites/{}", invite_id))),
+            )
+            .send()
+            .await
+            .context("delete invite failed")?;
+        Self::expect_ok(resp).await
+    }
 }

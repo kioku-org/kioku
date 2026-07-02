@@ -7,6 +7,7 @@ pub mod auth;
 pub mod calendar;
 pub mod completions;
 pub mod docs;
+pub mod invite;
 pub mod keys;
 pub mod mcp;
 pub mod meetings;
@@ -64,6 +65,8 @@ pub async fn run(cli: Cli) -> Result<()> {
             name,
             delete,
         }) => keys::run(ctx, create, name, delete).await,
+
+        Some(Commands::Invite { email, revoke }) => invite::run(ctx, email, revoke).await,
 
         Some(Commands::Mcp) => mcp::run().await,
 

@@ -121,6 +121,22 @@ pub enum Commands {
         delete: Option<String>,
     },
 
+    // ── Teammates (Pro/Teams tier) ───────────────────────────────────────────
+    #[command(
+        about = "List pending invites, invite a teammate to your company, or revoke an invite"
+    )]
+    Invite {
+        #[arg(value_name = "EMAIL", help = "Email address to invite")]
+        email: Option<String>,
+        #[arg(
+            long,
+            value_name = "INVITE_ID",
+            conflicts_with = "email",
+            help = "Revoke a pending invite by id"
+        )]
+        revoke: Option<String>,
+    },
+
     // ── Tools ─────────────────────────────────────────────────────────────────
     #[command(about = "Print MCP server config for AI clients (Claude, Cursor, etc.)")]
     Mcp,
