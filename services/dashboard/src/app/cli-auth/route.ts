@@ -32,23 +32,30 @@ export async function GET(request: NextRequest) {
   const email = session.user.email;
   const name = session.user.name ?? email.split("@")[0];
 
-  // If the session already carries a hivemindToken, use it directly
+  // If the session already carries a hivemindToken, use it directly — but
+  // only if it's actually a post-rename token. Sessions cached before the
+  // company->workspace rename carry a JWT with no `workspace_id` claim;
+  // trusting it here would silently redirect the CLI with an empty
+  // workspace_id instead of failing loudly. Falling through re-provisions,
+  // which mints a fresh, current-shape token.
   if (hivemindToken) {
-    // Decode the JWT payload to extract user_id / workspace_id / role
     try {
       const payload = JSON.parse(
         Buffer.from(hivemindToken.split(".")[1], "base64url").toString()
       );
-      const params = new URLSearchParams({
-        token: hivemindToken,
-        state: state!,
-        user_id: payload.sub ?? "",
-        email: payload.email ?? email,
-        name: payload.name ?? name,
-        workspace_id: payload.workspace_id ?? "",
-        role: payload.role ?? "member",
-      });
-      return NextResponse.redirect(`http://localhost:${portNum}/callback?${params}`);
+      if (payload.user_id && payload.workspace_id) {
+        const params = new URLSearchParams({
+          token: hivemindToken,
+          state: state!,
+          user_id: payload.user_id,
+          email: payload.email ?? email,
+          name: payload.name ?? name,
+          workspace_id: payload.workspace_id,
+          role: payload.role ?? "member",
+        });
+        return NextResponse.redirect(`http://localhost:${portNum}/callback?${params}`);
+      }
+      // Missing user_id/workspace_id — stale pre-rename token, fall through.
     } catch {
       // Malformed token — fall through to re-provision
     }
