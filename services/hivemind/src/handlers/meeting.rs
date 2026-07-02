@@ -1,8 +1,10 @@
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::response::Json;
+use uuid::Uuid;
 
 use crate::errors::AppError;
 use crate::middleware::AuthContext;
+use crate::repos::knowledge::KnowledgeRepo;
 use crate::repos::meeting::MeetingRepo;
 use crate::services::knowledge::KnowledgeService;
 use crate::types::{MeetingIngestRequest, MeetingOut};
@@ -41,4 +43,27 @@ pub async fn list(
     let repo = MeetingRepo::new(state.db.clone());
     let meetings = repo.list(auth.company_id).await?;
     Ok(Json(meetings))
+}
+
+pub async fn get(
+    State(state): State<AppState>,
+    auth: AuthContext,
+    Path(meeting_id): Path<Uuid>,
+) -> Result<Json<MeetingOut>, AppError> {
+    let repo = MeetingRepo::new(state.db.clone());
+    let meeting = repo
+        .get(meeting_id, auth.company_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Meeting not found".into()))?;
+    Ok(Json(meeting))
+}
+
+pub async fn transcript(
+    State(state): State<AppState>,
+    auth: AuthContext,
+    Path(meeting_id): Path<Uuid>,
+) -> Result<Json<Vec<serde_json::Value>>, AppError> {
+    let repo = KnowledgeRepo::new(state.db.clone());
+    let chunks = repo.get_meeting_chunks(meeting_id, auth.company_id).await?;
+    Ok(Json(chunks))
 }

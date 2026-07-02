@@ -1,7 +1,7 @@
 use anyhow::Result;
 use cc_auth::AuthFile;
 use cc_kioku::KiokuClient;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use std::path::{Path, PathBuf};
 use tracing_subscriber::{fmt, EnvFilter};
 
@@ -30,6 +30,13 @@ struct Cli {
 
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]
     verbose: u8,
+
+    #[arg(
+        long,
+        global = true,
+        help = "Print machine-readable JSON instead of formatted text"
+    )]
+    json: bool,
 }
 
 #[derive(Subcommand, Debug, PartialEq)]
@@ -49,7 +56,11 @@ enum Commands {
 
     // ── Knowledge ─────────────────────────────────────────────────────────────
     #[command(about = "Search your knowledge base")]
-    Search { query: String },
+    Search {
+        query: String,
+        #[arg(long, default_value_t = 5, help = "Max results to return")]
+        limit: u32,
+    },
     #[command(about = "List documents, upload a new one, or delete one")]
     Docs {
         #[arg(value_name = "PATH", help = "Path to a file to upload")]
@@ -66,13 +77,27 @@ enum Commands {
     // ── Meetings ──────────────────────────────────────────────────────────────
     #[command(about = "List meetings")]
     Meetings,
+    #[command(about = "Show details for a specific meeting")]
+    Meeting {
+        #[arg(value_name = "MEETING_ID")]
+        meeting_id: String,
+    },
+    #[command(about = "Print the transcript for a specific meeting")]
+    Transcript {
+        #[arg(value_name = "MEETING_ID")]
+        meeting_id: String,
+    },
 
     // ── API keys ──────────────────────────────────────────────────────────────
     #[command(about = "List API keys, create a new one, or delete one")]
     Key {
         #[arg(long, help = "Create a new API key")]
         create: bool,
-        #[arg(long, default_value = "cli-key", help = "Name for the new key (used with --create)")]
+        #[arg(
+            long,
+            default_value = "cli-key",
+            help = "Name for the new key (used with --create)"
+        )]
         name: String,
         #[arg(
             long,
@@ -88,15 +113,25 @@ enum Commands {
     Mcp,
     #[command(about = "Check for updates and upgrade if a newer version is available")]
     Upgrade,
+    #[command(about = "Generate shell completion script")]
+    Completions {
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
 
     // ── Hidden / power-user ───────────────────────────────────────────────────
     #[command(hide = true)]
     RegisterAdmin {
-        #[arg(long)] company_name: Option<String>,
-        #[arg(long)] company_slug: Option<String>,
-        #[arg(long)] email: Option<String>,
-        #[arg(long)] name: Option<String>,
-        #[arg(long)] password: Option<String>,
+        #[arg(long)]
+        company_name: Option<String>,
+        #[arg(long)]
+        company_slug: Option<String>,
+        #[arg(long)]
+        email: Option<String>,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        password: Option<String>,
     },
     #[command(hide = true, name = "auth-token")]
     AuthToken,
@@ -230,11 +265,11 @@ async fn main() -> Result<()> {
             writeln!(stdout, "Run `kioku help` for available commands.")?;
             Ok(())
         }
-        Some(cmd) => run(cmd, cli.server).await,
+        Some(cmd) => run(cmd, cli.server, cli.json).await,
     }
 }
 
-async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
+async fn run(cmd: Commands, server: Option<String>, json: bool) -> Result<()> {
     match cmd {
         Commands::RegisterAdmin {
             company_name,
@@ -351,19 +386,23 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             let auth = require_auth()?;
             println!("{}", auth.token);
         }
-        Commands::Search { query } => {
+        Commands::Search { query, limit } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
-            let results = client.knowledge_search(&query, 5).await?;
-            if results.is_empty() {
-                println!("No results.");
-            }
-            for (i, r) in results.iter().enumerate() {
-                let text = r.chunk.get("text").and_then(|v| v.as_str()).unwrap_or("");
-                let preview: String = text.chars().take(300).collect();
-                let ellipsis = if text.len() > 300 { "…" } else { "" };
-                println!("{}. [score {:.2}]  {}{}", i + 1, r.score, preview, ellipsis);
-                println!();
+            let results = client.knowledge_search(&query, limit).await?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&results)?);
+            } else {
+                if results.is_empty() {
+                    println!("No results.");
+                }
+                for (i, r) in results.iter().enumerate() {
+                    let text = r.chunk.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                    let preview: String = text.chars().take(300).collect();
+                    let ellipsis = if text.len() > 300 { "…" } else { "" };
+                    println!("{}. [score {:.2}]  {}{}", i + 1, r.score, preview, ellipsis);
+                    println!();
+                }
             }
         }
         Commands::Docs { path, delete } => {
@@ -378,15 +417,21 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
                 println!("Uploaded {file}");
             } else {
                 let docs = client.list_documents().await?;
-                if docs.is_empty() {
-                    println!("No documents.");
-                }
-                for d in &docs {
-                    let id = d.get("id").and_then(|v| v.as_str()).unwrap_or("?");
-                    let name = d.get("name").and_then(|v| v.as_str())
-                        .or_else(|| d.get("filename").and_then(|v| v.as_str()))
-                        .unwrap_or("untitled");
-                    println!("{} — {}", id, name);
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&docs)?);
+                } else {
+                    if docs.is_empty() {
+                        println!("No documents.");
+                    }
+                    for d in &docs {
+                        let id = d.get("id").and_then(|v| v.as_str()).unwrap_or("?");
+                        let name = d
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| d.get("filename").and_then(|v| v.as_str()))
+                            .unwrap_or("untitled");
+                        println!("{} — {}", id, name);
+                    }
                 }
             }
         }
@@ -394,31 +439,83 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
             let auth = require_auth()?;
             let client = make_client(&auth);
             let meetings = client.list_meetings().await?;
-            if meetings.is_empty() {
-                println!("No meetings.");
-            }
-            for m in &meetings {
-                let date = chrono::DateTime::from_timestamp(m.date / 1000, 0)
-                    .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
-                    .unwrap_or_else(|| m.date.to_string());
-                println!("{} — {} ({})", m.id, m.title, date);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&meetings)?);
+            } else {
+                if meetings.is_empty() {
+                    println!("No meetings.");
+                }
+                for m in &meetings {
+                    let date = chrono::DateTime::from_timestamp(m.date / 1000, 0)
+                        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                        .unwrap_or_else(|| m.date.to_string());
+                    println!("{} — {} ({})", m.id, m.title, date);
+                }
             }
         }
-        Commands::Key { create, name, delete } => {
+        Commands::Meeting { meeting_id } => {
+            let auth = require_auth()?;
+            let client = make_client(&auth);
+            let meeting = client.get_meeting(&meeting_id).await?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&meeting)?);
+            } else {
+                let date = chrono::DateTime::from_timestamp(meeting.date / 1000, 0)
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                    .unwrap_or_else(|| meeting.date.to_string());
+                println!("id:        {}", meeting.id);
+                println!("title:     {}", meeting.title);
+                println!("date:      {date}");
+                println!("duration:  {}s", meeting.duration_seconds);
+                println!("participants: {}", meeting.participants.join(", "));
+                if let Some(summary) = &meeting.summary {
+                    println!();
+                    println!("{summary}");
+                }
+            }
+        }
+        Commands::Transcript { meeting_id } => {
+            let auth = require_auth()?;
+            let client = make_client(&auth);
+            let chunks = client.get_transcript(&meeting_id).await?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&chunks)?);
+            } else {
+                if chunks.is_empty() {
+                    println!("No transcript.");
+                }
+                for c in &chunks {
+                    let speaker = c.get("speaker").and_then(|v| v.as_str()).unwrap_or("?");
+                    let text = c.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                    println!("{speaker}: {text}");
+                }
+            }
+        }
+        Commands::Key {
+            create,
+            name,
+            delete,
+        } => {
             let auth = require_auth()?;
             let client = make_client(&auth);
             if create {
                 let key = client.create_auth_key(&name).await?;
-                let raw = key.get("key").and_then(|v| v.as_str())
-                    .or_else(|| key.get("raw_key").and_then(|v| v.as_str()));
-                if let Some(raw_key) = raw {
-                    println!("API key (save this — it won't be shown again):");
-                    println!();
-                    println!("  {}", raw_key);
-                    println!();
-                    println!("Use it with:  kioku signin --api-key <key>");
-                } else {
+                if json {
                     println!("{}", serde_json::to_string_pretty(&key)?);
+                } else {
+                    let raw = key
+                        .get("key")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| key.get("raw_key").and_then(|v| v.as_str()));
+                    if let Some(raw_key) = raw {
+                        println!("API key (save this — it won't be shown again):");
+                        println!();
+                        println!("  {}", raw_key);
+                        println!();
+                        println!("Use it with:  kioku signin --api-key <key>");
+                    } else {
+                        println!("{}", serde_json::to_string_pretty(&key)?);
+                    }
                 }
             } else if let Some(key_prefix) = delete {
                 let keys = client.list_auth_keys().await?;
@@ -427,21 +524,34 @@ async fn run(cmd: Commands, server: Option<String>) -> Result<()> {
                 println!("Deleted key {key_prefix}");
             } else {
                 let keys = client.list_auth_keys().await?;
-                if keys.is_empty() {
-                    println!("No API keys.");
-                }
-                for k in &keys {
-                    let last_used = k.last_used_at
-                        .and_then(|ts| chrono::DateTime::from_timestamp(ts / 1000, 0))
-                        .map(|dt| dt.format("%Y-%m-%d").to_string())
-                        .unwrap_or_else(|| "never".to_string());
-                    println!("{} — {} (prefix: {}  last used: {})", k.id, k.name, k.key_prefix, last_used);
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&keys)?);
+                } else {
+                    if keys.is_empty() {
+                        println!("No API keys.");
+                    }
+                    for k in &keys {
+                        let last_used = k
+                            .last_used_at
+                            .and_then(|ts| chrono::DateTime::from_timestamp(ts / 1000, 0))
+                            .map(|dt| dt.format("%Y-%m-%d").to_string())
+                            .unwrap_or_else(|| "never".to_string());
+                        println!(
+                            "{} — {} (prefix: {}  last used: {})",
+                            k.id, k.name, k.key_prefix, last_used
+                        );
+                    }
                 }
             }
         }
         Commands::Mcp => {
             let auth = require_auth()?;
             println!("{}", mcp_config_json(&auth.server_url, &auth.token));
+        }
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            let name = cmd.get_name().to_string();
+            clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
         }
         Commands::Upgrade => {
             let info = cc_upgrade::check_for_update(REPO, VERSION).await?;

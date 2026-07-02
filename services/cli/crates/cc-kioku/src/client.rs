@@ -405,6 +405,38 @@ impl KiokuClient {
             .context("invalid meetings response")
     }
 
+    pub async fn get_meeting(&self, meeting_id: &str) -> Result<Meeting> {
+        let resp = self
+            .client
+            .get(self.url(&format!("/meetings/{meeting_id}")))
+            .header("Authorization", self.auth_header().unwrap_or_default())
+            .send()
+            .await
+            .context("get meeting failed")?;
+        if !resp.status().is_success() {
+            return Err(Self::handle_error(resp).await);
+        }
+        resp.json::<Meeting>()
+            .await
+            .context("invalid meeting response")
+    }
+
+    pub async fn get_transcript(&self, meeting_id: &str) -> Result<Vec<serde_json::Value>> {
+        let resp = self
+            .client
+            .get(self.url(&format!("/meetings/{meeting_id}/transcript")))
+            .header("Authorization", self.auth_header().unwrap_or_default())
+            .send()
+            .await
+            .context("get transcript failed")?;
+        if !resp.status().is_success() {
+            return Err(Self::handle_error(resp).await);
+        }
+        resp.json::<Vec<serde_json::Value>>()
+            .await
+            .context("invalid transcript response")
+    }
+
     pub async fn ingest_meeting(&self, req: &MeetingIngestRequest) -> Result<Meeting> {
         let resp = self
             .client

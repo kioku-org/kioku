@@ -14,6 +14,7 @@ cc-kioku   = { workspace = true }
 cc-auth        = { workspace = true }
 cc-upgrade     = { workspace = true }
 clap           = { workspace = true }
+clap_complete  = { workspace = true }
 tokio          = { workspace = true }
 anyhow         = { workspace = true }
 tracing        = { workspace = true }

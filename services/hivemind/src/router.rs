@@ -50,6 +50,8 @@ pub fn build(state: AppState) -> Router {
         // Meetings
         .route("/meetings", get(meeting::list))
         .route("/meetings", post(meeting::ingest))
+        .route("/meetings/:meeting_id", get(meeting::get))
+        .route("/meetings/:meeting_id/transcript", get(meeting::transcript))
         // Knowledge
         .route("/knowledge/search", post(knowledge_search))
         .route("/knowledge/documents", get(knowledge::list_documents))
