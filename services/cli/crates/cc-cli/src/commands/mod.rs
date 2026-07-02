@@ -13,6 +13,7 @@ pub mod mcp;
 pub mod meetings;
 pub mod search;
 pub mod upgrade;
+pub mod ws;
 
 pub async fn run(cli: Cli) -> Result<()> {
     if cli.token {
@@ -66,6 +67,12 @@ pub async fn run(cli: Cli) -> Result<()> {
             delete,
         }) => keys::run(ctx, create, name, delete).await,
 
+        Some(Commands::Ws {
+            name,
+            create,
+            invite,
+        }) => ws::run(ctx, name, create, invite).await,
+
         Some(Commands::Invite { email, revoke }) => invite::run(ctx, email, revoke).await,
 
         Some(Commands::Mcp) => mcp::run().await,
@@ -75,11 +82,13 @@ pub async fn run(cli: Cli) -> Result<()> {
         Some(Commands::Completions { shell }) => completions::run(shell),
 
         Some(Commands::RegisterAdmin {
-            company_name,
-            company_slug,
+            workspace_name,
+            workspace_slug,
             email,
             name,
             password,
-        }) => auth::register_admin(ctx, company_name, company_slug, email, name, password).await,
+        }) => {
+            auth::register_admin(ctx, workspace_name, workspace_slug, email, name, password).await
+        }
     }
 }

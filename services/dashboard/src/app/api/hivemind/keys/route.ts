@@ -17,7 +17,7 @@ export async function GET() {
     return NextResponse.json({ error: "Not provisioned with Hivemind" }, { status: 401 });
   }
 
-  const res = await fetch(`${hivemindUrl()}/company/auth-keys`, {
+  const res = await fetch(`${hivemindUrl()}/workspace/auth-keys`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const res = await fetch(`${hivemindUrl()}/company/auth-keys`, {
+  const res = await fetch(`${hivemindUrl()}/workspace/auth-keys`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,

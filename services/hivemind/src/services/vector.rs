@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 const COLLECTION_NAME: &str = "knowledge";
 
-/// Qdrant vector store that wraps langchain-rust's VectorStore with company-scoped filtering.
+/// Qdrant vector store that wraps langchain-rust's VectorStore with workspace-scoped filtering.
 pub struct HivemindVectorStore {
     client: Qdrant,
     embedder: Arc<dyn Embedder>,
@@ -89,18 +89,18 @@ impl HivemindVectorStore {
         Ok(())
     }
 
-    /// Build a company-scoped filter for Qdrant queries.
-    fn company_filter(company_id: Uuid) -> Filter {
+    /// Build a workspace-scoped filter for Qdrant queries.
+    fn workspace_filter(workspace_id: Uuid) -> Filter {
         Filter::must([qdrant_client::qdrant::Condition::matches(
-            "company_id",
-            company_id.to_string(),
+            "workspace_id",
+            workspace_id.to_string(),
         )])
     }
 
-    /// Add documents to the store with company_id in payload.
-    pub async fn add_documents_for_company(
+    /// Add documents to the store with workspace_id in payload.
+    pub async fn add_documents_for_workspace(
         &self,
-        company_id: Uuid,
+        workspace_id: Uuid,
         docs: &[Document],
     ) -> Result<Vec<String>, Box<dyn Error>> {
         let texts: Vec<String> = docs.iter().map(|d| d.page_content.clone()).collect();
@@ -118,7 +118,7 @@ impl HivemindVectorStore {
             let payload = json!({
                 "page_content": doc.page_content,
                 "metadata": doc.metadata,
-                "company_id": company_id.to_string(),
+                "workspace_id": workspace_id.to_string(),
             });
 
             let point = PointStruct::new(point_id, vector_f32, Payload::try_from(payload).unwrap());
@@ -132,10 +132,10 @@ impl HivemindVectorStore {
         Ok(ids)
     }
 
-    /// Search with company scope.
-    pub async fn search_for_company(
+    /// Search with workspace scope.
+    pub async fn search_for_workspace(
         &self,
-        company_id: Uuid,
+        workspace_id: Uuid,
         query: &str,
         limit: usize,
     ) -> Result<Vec<Document>, Box<dyn Error>> {
@@ -148,7 +148,7 @@ impl HivemindVectorStore {
             .collect();
 
         let operation = SearchPointsBuilder::new(&self.collection_name, query_vector, limit as u64)
-            .filter(Self::company_filter(company_id))
+            .filter(Self::workspace_filter(workspace_id))
             .with_payload(true);
 
         let results = self.client.search_points(operation).await?;
@@ -228,8 +228,8 @@ impl VectorStore for HivemindVectorStore {
         _docs: &[Document],
         _opt: &VecStoreOptions<Value>,
     ) -> Result<Vec<String>, Box<dyn Error>> {
-        // This is a fallback; use add_documents_for_company instead for company-scoped inserts
-        Err("Use add_documents_for_company with company_id".into())
+        // This is a fallback; use add_documents_for_workspace instead for workspace-scoped inserts
+        Err("Use add_documents_for_workspace with workspace_id".into())
     }
 
     async fn similarity_search(
@@ -238,7 +238,7 @@ impl VectorStore for HivemindVectorStore {
         _limit: usize,
         _opt: &VecStoreOptions<Value>,
     ) -> Result<Vec<Document>, Box<dyn Error>> {
-        // Fallback without company scope
-        Err("Use search_for_company with company_id".into())
+        // Fallback without workspace scope
+        Err("Use search_for_workspace with workspace_id".into())
     }
 }

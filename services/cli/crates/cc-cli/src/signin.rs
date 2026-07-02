@@ -56,31 +56,30 @@ fn select_provider_inner() -> Result<Provider> {
         draw(&mut out, selected)?;
 
         match event::read()? {
-            Event::Key(KeyEvent { code, modifiers, .. }) => {
-                match (code, modifiers) {
-                    (KeyCode::Left, _) | (KeyCode::Char('h'), KeyModifiers::NONE) => {
-                        selected = 0;
-                    }
-                    (KeyCode::Right, _) | (KeyCode::Char('l'), KeyModifiers::NONE) => {
-                        selected = 1;
-                    }
-                    (KeyCode::Enter, _) => {
-                        return Ok(if selected == 0 {
-                            Provider::Google
-                        } else {
-                            Provider::Github
-                        });
-                    }
-                    (KeyCode::Esc, _)
-                    | (KeyCode::Char('q'), KeyModifiers::NONE) => {
-                        anyhow::bail!("cancelled");
-                    }
-                    (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
-                        anyhow::bail!("cancelled");
-                    }
-                    _ => {}
+            Event::Key(KeyEvent {
+                code, modifiers, ..
+            }) => match (code, modifiers) {
+                (KeyCode::Left, _) | (KeyCode::Char('h'), KeyModifiers::NONE) => {
+                    selected = 0;
                 }
-            }
+                (KeyCode::Right, _) | (KeyCode::Char('l'), KeyModifiers::NONE) => {
+                    selected = 1;
+                }
+                (KeyCode::Enter, _) => {
+                    return Ok(if selected == 0 {
+                        Provider::Google
+                    } else {
+                        Provider::Github
+                    });
+                }
+                (KeyCode::Esc, _) | (KeyCode::Char('q'), KeyModifiers::NONE) => {
+                    anyhow::bail!("cancelled");
+                }
+                (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+                    anyhow::bail!("cancelled");
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -147,11 +146,8 @@ fn draw(out: &mut impl Write, selected: usize) -> Result<()> {
 // ── OAuth callback server ─────────────────────────────────────────────────────
 
 /// Waits for the browser to redirect to `http://localhost:<port>/callback?...`
-/// Returns (token, user_id, email, name, company_id, role).
-pub async fn wait_for_callback(
-    listener: TcpListener,
-    expected_state: &str,
-) -> Result<OAuthResult> {
+/// Returns (token, user_id, email, name, workspace_id, role).
+pub async fn wait_for_callback(listener: TcpListener, expected_state: &str) -> Result<OAuthResult> {
     use tokio::time::{timeout, Duration};
 
     let (mut stream, _) = timeout(Duration::from_secs(120), listener.accept())
@@ -190,7 +186,11 @@ pub async fn wait_for_callback(
     let decode = |key: &str| -> String {
         params
             .get(key)
-            .map(|v| urlencoding::decode(&v.replace('+', " ")).unwrap_or_default().into_owned())
+            .map(|v| {
+                urlencoding::decode(&v.replace('+', " "))
+                    .unwrap_or_default()
+                    .into_owned()
+            })
             .unwrap_or_default()
     };
 
@@ -211,7 +211,7 @@ pub async fn wait_for_callback(
         user_id: decode("user_id"),
         email,
         name,
-        company_id: decode("company_id"),
+        workspace_id: decode("workspace_id"),
         role: decode("role"),
     })
 }
@@ -221,7 +221,7 @@ pub struct OAuthResult {
     pub user_id: String,
     pub email: String,
     pub name: String,
-    pub company_id: String,
+    pub workspace_id: String,
     pub role: String,
 }
 

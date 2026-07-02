@@ -63,7 +63,7 @@ pub async fn upload_pdf(
     let repo = KnowledgeRepo::new(state.db.clone());
     repo.create_document(
         doc_id,
-        auth.company_id,
+        auth.workspace_id,
         auth.user_id,
         &filename,
         file_data.len() as i64,
@@ -82,14 +82,14 @@ pub async fn upload_pdf(
     }
 
     // Chunk the text
-    let docs = pdf::chunk_pdf_text(&text, auth.company_id, doc_id, &filename);
+    let docs = pdf::chunk_pdf_text(&text, auth.workspace_id, doc_id, &filename);
     let chunk_count = docs.len() as i32;
 
     // Ingest into Postgres + Qdrant
     KnowledgeService::ingest_pdf_documents(
         &state.db,
         &state.vector_store,
-        auth.company_id,
+        auth.workspace_id,
         doc_id,
         &docs,
     )
@@ -101,20 +101,20 @@ pub async fn upload_pdf(
 
     // Return the document
     let doc = repo
-        .get_document(doc_id, auth.company_id)
+        .get_document(doc_id, auth.workspace_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Document not found".into()))?;
 
     Ok(Json(doc))
 }
 
-/// List all knowledge documents for the company.
+/// List all knowledge documents for the workspace.
 pub async fn list_documents(
     State(state): State<AppState>,
     auth: AuthContext,
 ) -> Result<Json<Vec<KnowledgeDocumentOut>>, AppError> {
     let repo = KnowledgeRepo::new(state.db.clone());
-    let documents = repo.list_documents(auth.company_id).await?;
+    let documents = repo.list_documents(auth.workspace_id).await?;
     Ok(Json(documents))
 }
 
@@ -126,9 +126,9 @@ pub async fn delete_document(
 ) -> Result<Json<()>, AppError> {
     let repo = KnowledgeRepo::new(state.db.clone());
 
-    // Verify document belongs to company
+    // Verify document belongs to workspace
     let doc = repo
-        .get_document(document_id, auth.company_id)
+        .get_document(document_id, auth.workspace_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Document not found".into()))?;
 
@@ -140,11 +140,11 @@ pub async fn delete_document(
         .map_err(|e| AppError::Internal(anyhow::anyhow!("Failed to delete vectors: {}", e)))?;
 
     // Delete from Postgres
-    repo.delete_document(document_id, auth.company_id).await?;
+    repo.delete_document(document_id, auth.workspace_id).await?;
 
     tracing::info!(
         document_id = %document_id,
-        company_id = %auth.company_id,
+        workspace_id = %auth.workspace_id,
         filename = %doc.filename,
         "Knowledge document deleted"
     );

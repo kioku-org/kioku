@@ -82,7 +82,7 @@ fn bearer_token(req: &Request<Body>) -> Option<String> {
     Some(auth.strip_prefix("Bearer ")?.to_string())
 }
 
-/// Resolve company_id + user_id from a Bearer token.
+/// Resolve workspace_id + user_id from a Bearer token.
 /// Tries JWT decode first (fast); falls back to auth_tokens DB lookup for API keys.
 async fn resolve_auth_ids(
     jwt_secret: &str,
@@ -92,23 +92,22 @@ async fn resolve_auth_ids(
     use crate::repos::auth::validate_token;
 
     if let Ok(claims) = validate_token(jwt_secret, token) {
-        return Some((claims.company_id.to_string(), claims.user_id.to_string()));
+        return Some((claims.workspace_id.to_string(), claims.user_id.to_string()));
     }
 
     // Non-JWT token (e.g. an exchanged kioku_xxx API key session) — look up in auth_tokens.
-    let row: Option<(uuid::Uuid, uuid::Uuid)> = sqlx::query_as(
-        "SELECT company_id, user_id FROM auth_tokens WHERE token = $1 LIMIT 1",
-    )
-    .bind(token)
-    .fetch_optional(db)
-    .await
-    .ok()
-    .flatten();
+    let row: Option<(uuid::Uuid, uuid::Uuid)> =
+        sqlx::query_as("SELECT workspace_id, user_id FROM auth_tokens WHERE token = $1 LIMIT 1")
+            .bind(token)
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten();
 
-    row.map(|(company_id, user_id)| (company_id.to_string(), user_id.to_string()))
+    row.map(|(workspace_id, user_id)| (workspace_id.to_string(), user_id.to_string()))
 }
 
-/// For MCP initialize requests, inject company_id + user_id into params._meta
+/// For MCP initialize requests, inject workspace_id + user_id into params._meta
 /// so handlers can read them via context.peer.peer_info().meta.
 async fn inject_auth_into_init(
     jwt_secret: &str,
@@ -141,7 +140,7 @@ async fn inject_auth_into_init(
 
     // Only rewrite initialize requests.
     if json.get("method").and_then(|m| m.as_str()) == Some("initialize") {
-        if let Some((company_id, user_id)) = auth_ids {
+        if let Some((workspace_id, user_id)) = auth_ids {
             // peer_info() returns InitializeRequestParams whose _meta is at params._meta
             let existing_meta = json
                 .pointer_mut("/params/_meta")
@@ -149,8 +148,8 @@ async fn inject_auth_into_init(
 
             if let Some(meta_obj) = existing_meta {
                 meta_obj
-                    .entry("company_id")
-                    .or_insert(serde_json::Value::String(company_id.clone()));
+                    .entry("workspace_id")
+                    .or_insert(serde_json::Value::String(workspace_id.clone()));
                 meta_obj
                     .entry("user_id")
                     .or_insert(serde_json::Value::String(user_id.clone()));
@@ -159,7 +158,7 @@ async fn inject_auth_into_init(
                     obj.insert(
                         "_meta".to_string(),
                         serde_json::json!({
-                            "company_id": company_id,
+                            "workspace_id": workspace_id,
                             "user_id": user_id,
                         }),
                     );

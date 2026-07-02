@@ -3,11 +3,11 @@ use uuid::Uuid;
 
 use crate::errors::AppError;
 
-pub struct CompanyApiKeyRepo {
+pub struct WorkspaceApiKeyRepo {
     db: PgPool,
 }
 
-impl CompanyApiKeyRepo {
+impl WorkspaceApiKeyRepo {
     pub fn new(db: PgPool) -> Self {
         Self { db }
     }
@@ -15,10 +15,10 @@ impl CompanyApiKeyRepo {
     pub async fn find_by_key_prefix(
         &self,
         key_prefix: &str,
-    ) -> Result<Option<CompanyApiKeyRecord>, AppError> {
-        sqlx::query_as::<_, CompanyApiKeyRecord>(
-            r#"SELECT id, company_id, user_id, name, key_prefix, key_hash, created_at, last_used_at
-               FROM company_api_keys WHERE key_prefix = $1"#,
+    ) -> Result<Option<WorkspaceApiKeyRecord>, AppError> {
+        sqlx::query_as::<_, WorkspaceApiKeyRecord>(
+            r#"SELECT id, workspace_id, user_id, name, key_prefix, key_hash, created_at, last_used_at
+               FROM workspace_api_keys WHERE key_prefix = $1"#,
         )
         .bind(key_prefix)
         .fetch_optional(&self.db)
@@ -29,7 +29,7 @@ impl CompanyApiKeyRepo {
     pub async fn create(
         &self,
         id: Uuid,
-        company_id: Uuid,
+        workspace_id: Uuid,
         user_id: Uuid,
         name: &str,
         key_prefix: &str,
@@ -37,11 +37,11 @@ impl CompanyApiKeyRepo {
         now: i64,
     ) -> Result<(), AppError> {
         sqlx::query(
-            r#"INSERT INTO company_api_keys (id, company_id, user_id, name, key_prefix, key_hash, created_at)
+            r#"INSERT INTO workspace_api_keys (id, workspace_id, user_id, name, key_prefix, key_hash, created_at)
                VALUES ($1, $2, $3, $4, $5, $6, $7)"#,
         )
         .bind(id)
-        .bind(company_id)
+        .bind(workspace_id)
         .bind(user_id)
         .bind(name)
         .bind(key_prefix)
@@ -53,25 +53,25 @@ impl CompanyApiKeyRepo {
         Ok(())
     }
 
-    pub async fn list_by_company(
+    pub async fn list_by_workspace(
         &self,
-        company_id: Uuid,
-    ) -> Result<Vec<CompanyApiKeyRecord>, AppError> {
-        sqlx::query_as::<_, CompanyApiKeyRecord>(
-            r#"SELECT id, company_id, user_id, name, key_prefix, key_hash, created_at, last_used_at
-               FROM company_api_keys WHERE company_id = $1 ORDER BY created_at DESC"#,
+        workspace_id: Uuid,
+    ) -> Result<Vec<WorkspaceApiKeyRecord>, AppError> {
+        sqlx::query_as::<_, WorkspaceApiKeyRecord>(
+            r#"SELECT id, workspace_id, user_id, name, key_prefix, key_hash, created_at, last_used_at
+               FROM workspace_api_keys WHERE workspace_id = $1 ORDER BY created_at DESC"#,
         )
-        .bind(company_id)
+        .bind(workspace_id)
         .fetch_all(&self.db)
         .await
         .map_err(AppError::from)
     }
 
-    pub async fn delete(&self, id: Uuid, company_id: Uuid) -> Result<(), AppError> {
+    pub async fn delete(&self, id: Uuid, workspace_id: Uuid) -> Result<(), AppError> {
         let result =
-            sqlx::query(r#"DELETE FROM company_api_keys WHERE id = $1 AND company_id = $2"#)
+            sqlx::query(r#"DELETE FROM workspace_api_keys WHERE id = $1 AND workspace_id = $2"#)
                 .bind(id)
-                .bind(company_id)
+                .bind(workspace_id)
                 .execute(&self.db)
                 .await
                 .map_err(AppError::from)?;
@@ -83,7 +83,7 @@ impl CompanyApiKeyRepo {
     }
 
     pub async fn update_last_used(&self, id: Uuid, now: i64) -> Result<(), AppError> {
-        sqlx::query(r#"UPDATE company_api_keys SET last_used_at = $1 WHERE id = $2"#)
+        sqlx::query(r#"UPDATE workspace_api_keys SET last_used_at = $1 WHERE id = $2"#)
             .bind(now)
             .bind(id)
             .execute(&self.db)
@@ -94,9 +94,9 @@ impl CompanyApiKeyRepo {
 }
 
 #[derive(Debug, sqlx::FromRow)]
-pub struct CompanyApiKeyRecord {
+pub struct WorkspaceApiKeyRecord {
     pub id: Uuid,
-    pub company_id: Uuid,
+    pub workspace_id: Uuid,
     pub user_id: Uuid,
     pub name: String,
     pub key_prefix: String,

@@ -15,7 +15,7 @@ impl SessionRepo {
 
     pub async fn create(
         &self,
-        company_id: Uuid,
+        workspace_id: Uuid,
         user_id: Uuid,
         req: SessionCreateRequest,
         now: i64,
@@ -26,12 +26,12 @@ impl SessionRepo {
 
         sqlx::query(
             r#"
-            INSERT INTO sessions (id, company_id, user_id, title, status, cwd, mode, created_at, updated_at)
+            INSERT INTO sessions (id, workspace_id, user_id, title, status, cwd, mode, created_at, updated_at)
             VALUES ($1, $2, $3, $4, 'idle', $5, $6, $7, $7)
             "#,
         )
         .bind(id)
-        .bind(company_id)
+        .bind(workspace_id)
         .bind(user_id)
         .bind(&title)
         .bind(req.cwd.as_deref())
@@ -43,7 +43,7 @@ impl SessionRepo {
 
         Ok(SessionOut {
             id,
-            company_id,
+            workspace_id,
             user_id,
             title,
             status: "idle".into(),
@@ -54,16 +54,20 @@ impl SessionRepo {
         })
     }
 
-    pub async fn list(&self, company_id: Uuid, user_id: Uuid) -> Result<Vec<SessionOut>, AppError> {
+    pub async fn list(
+        &self,
+        workspace_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Vec<SessionOut>, AppError> {
         let rows = sqlx::query(
             r#"
-            SELECT id, company_id, user_id, title, status, cwd, mode, created_at, updated_at
+            SELECT id, workspace_id, user_id, title, status, cwd, mode, created_at, updated_at
             FROM sessions
-            WHERE company_id = $1 AND user_id = $2
+            WHERE workspace_id = $1 AND user_id = $2
             ORDER BY updated_at DESC
             "#,
         )
-        .bind(company_id)
+        .bind(workspace_id)
         .bind(user_id)
         .fetch_all(&self.db)
         .await
@@ -75,18 +79,18 @@ impl SessionRepo {
     pub async fn get_by_id(
         &self,
         session_id: Uuid,
-        company_id: Uuid,
+        workspace_id: Uuid,
         user_id: Uuid,
     ) -> Result<Option<SessionOut>, AppError> {
         let row = sqlx::query(
             r#"
-            SELECT id, company_id, user_id, title, status, cwd, mode, created_at, updated_at
+            SELECT id, workspace_id, user_id, title, status, cwd, mode, created_at, updated_at
             FROM sessions
-            WHERE id = $1 AND company_id = $2 AND user_id = $3
+            WHERE id = $1 AND workspace_id = $2 AND user_id = $3
             "#,
         )
         .bind(session_id)
-        .bind(company_id)
+        .bind(workspace_id)
         .bind(user_id)
         .fetch_optional(&self.db)
         .await
@@ -98,7 +102,7 @@ impl SessionRepo {
     pub async fn update(
         &self,
         session_id: Uuid,
-        company_id: Uuid,
+        workspace_id: Uuid,
         user_id: Uuid,
         req: SessionPatchRequest,
         now: i64,
@@ -110,12 +114,12 @@ impl SessionRepo {
                 status = COALESCE($5, status),
                 mode = COALESCE($6, mode),
                 updated_at = $7
-            WHERE id = $1 AND company_id = $2 AND user_id = $3
-            RETURNING id, company_id, user_id, title, status, cwd, mode, created_at, updated_at
+            WHERE id = $1 AND workspace_id = $2 AND user_id = $3
+            RETURNING id, workspace_id, user_id, title, status, cwd, mode, created_at, updated_at
             "#,
         )
         .bind(session_id)
-        .bind(company_id)
+        .bind(workspace_id)
         .bind(user_id)
         .bind(req.title.as_deref())
         .bind(req.status.as_deref())
@@ -131,14 +135,14 @@ impl SessionRepo {
     pub async fn delete(
         &self,
         session_id: Uuid,
-        company_id: Uuid,
+        workspace_id: Uuid,
         user_id: Uuid,
     ) -> Result<u64, AppError> {
         let result = sqlx::query(
-            r#"DELETE FROM sessions WHERE id = $1 AND company_id = $2 AND user_id = $3"#,
+            r#"DELETE FROM sessions WHERE id = $1 AND workspace_id = $2 AND user_id = $3"#,
         )
         .bind(session_id)
-        .bind(company_id)
+        .bind(workspace_id)
         .bind(user_id)
         .execute(&self.db)
         .await
@@ -150,14 +154,14 @@ impl SessionRepo {
     pub async fn is_accessible(
         &self,
         session_id: Uuid,
-        company_id: Uuid,
+        workspace_id: Uuid,
         user_id: Uuid,
     ) -> Result<bool, AppError> {
         let row = sqlx::query(
-            r#"SELECT 1 FROM sessions WHERE id = $1 AND company_id = $2 AND user_id = $3"#,
+            r#"SELECT 1 FROM sessions WHERE id = $1 AND workspace_id = $2 AND user_id = $3"#,
         )
         .bind(session_id)
-        .bind(company_id)
+        .bind(workspace_id)
         .bind(user_id)
         .fetch_optional(&self.db)
         .await
@@ -171,7 +175,7 @@ pub fn session_from_row(row: sqlx::postgres::PgRow) -> SessionOut {
     use sqlx::Row;
     SessionOut {
         id: row.get("id"),
-        company_id: row.get("company_id"),
+        workspace_id: row.get("workspace_id"),
         user_id: row.get("user_id"),
         title: row.get("title"),
         status: row.get("status"),

@@ -8,6 +8,7 @@ pub struct KiokuClient {
     base_url: String,
     client: Client,
     token: Option<String>,
+    workspace_id: Option<String>,
 }
 
 impl KiokuClient {
@@ -16,6 +17,7 @@ impl KiokuClient {
             base_url: base_url.trim_end_matches('/').to_string(),
             client: Client::new(),
             token: None,
+            workspace_id: None,
         }
     }
 
@@ -24,6 +26,7 @@ impl KiokuClient {
             base_url: base_url.trim_end_matches('/').to_string(),
             client: Client::new(),
             token: Some(token.to_string()),
+            workspace_id: None,
         }
     }
 
@@ -33,6 +36,12 @@ impl KiokuClient {
 
     pub fn token(&self) -> Option<&str> {
         self.token.as_deref()
+    }
+
+    /// Scope every subsequent request to a specific workspace (sent as the
+    /// X-Workspace-Id header), for accounts belonging to more than one.
+    pub fn set_workspace_id(&mut self, workspace_id: Option<String>) {
+        self.workspace_id = workspace_id;
     }
 
     pub fn base_url(&self) -> &str {
@@ -47,11 +56,16 @@ impl KiokuClient {
         self.token.as_ref().map(|t| format!("Bearer {}", t))
     }
 
-    /// Attach the `Authorization` header when a token is set; leave the
-    /// request untouched otherwise.
+    /// Attach the `Authorization` header when a token is set, and the
+    /// `X-Workspace-Id` header when a non-default workspace is active;
+    /// leave the request untouched otherwise.
     fn authed(&self, req: RequestBuilder) -> RequestBuilder {
-        match self.auth_header() {
+        let req = match self.auth_header() {
             Some(auth) => req.header("Authorization", auth),
+            None => req,
+        };
+        match &self.workspace_id {
+            Some(id) => req.header("X-Workspace-Id", id),
             None => req,
         }
     }
@@ -133,8 +147,8 @@ impl KiokuClient {
 
     pub async fn register_admin(
         &self,
-        company_name: &str,
-        company_slug: Option<&str>,
+        workspace_name: &str,
+        workspace_slug: Option<&str>,
         email: &str,
         name: &str,
         password: &str,
@@ -143,8 +157,8 @@ impl KiokuClient {
             .client
             .post(self.url("/auth/register/admin"))
             .json(&RegisterAdminRequest {
-                company_name: company_name.to_string(),
-                company_slug: company_slug.map(|slug| slug.to_string()),
+                workspace_name: workspace_name.to_string(),
+                workspace_slug: workspace_slug.map(|slug| slug.to_string()),
                 email: email.to_string(),
                 name: name.to_string(),
                 password: password.to_string(),
@@ -408,11 +422,11 @@ impl KiokuClient {
         Self::parse(resp, "invalid meeting response").await
     }
 
-    // ─── Company Auth Keys (CLI API keys) ──────────────────────────────────
+    // ─── Workspace Auth Keys (CLI API keys) ──────────────────────────────────
 
     pub async fn create_auth_key(&self, name: &str) -> Result<serde_json::Value> {
         let resp = self
-            .authed(self.client.post(self.url("/company/auth-keys")))
+            .authed(self.client.post(self.url("/workspace/auth-keys")))
             .json(&serde_json::json!({ "name": name }))
             .send()
             .await
@@ -420,9 +434,9 @@ impl KiokuClient {
         Self::parse(resp, "invalid auth key response").await
     }
 
-    pub async fn list_auth_keys(&self) -> Result<Vec<CompanyAuthKeyOut>> {
+    pub async fn list_auth_keys(&self) -> Result<Vec<WorkspaceApiKeyOut>> {
         let resp = self
-            .authed(self.client.get(self.url("/company/auth-keys")))
+            .authed(self.client.get(self.url("/workspace/auth-keys")))
             .send()
             .await
             .context("list auth keys failed")?;
@@ -433,7 +447,7 @@ impl KiokuClient {
         let resp = self
             .authed(
                 self.client
-                    .delete(self.url(&format!("/company/auth-keys/{}", key_id))),
+                    .delete(self.url(&format!("/workspace/auth-keys/{}", key_id))),
             )
             .send()
             .await
@@ -441,11 +455,11 @@ impl KiokuClient {
         Self::expect_ok(resp).await
     }
 
-    // ─── Company Invites (Pro/Teams teammate sharing) ──────────────────────
+    // ─── Workspace Invites (Pro/Teams teammate sharing) ──────────────────────
 
     pub async fn create_invite(&self, email: &str, role: &str) -> Result<InviteOut> {
         let resp = self
-            .authed(self.client.post(self.url("/company/invites")))
+            .authed(self.client.post(self.url("/workspace/invites")))
             .json(&InviteCreateRequest {
                 email: email.to_string(),
                 role: role.to_string(),
@@ -458,7 +472,7 @@ impl KiokuClient {
 
     pub async fn list_invites(&self) -> Result<Vec<InviteOut>> {
         let resp = self
-            .authed(self.client.get(self.url("/company/invites")))
+            .authed(self.client.get(self.url("/workspace/invites")))
             .send()
             .await
             .context("list invites failed")?;
@@ -469,11 +483,63 @@ impl KiokuClient {
         let resp = self
             .authed(
                 self.client
-                    .delete(self.url(&format!("/company/invites/{}", invite_id))),
+                    .delete(self.url(&format!("/workspace/invites/{}", invite_id))),
             )
             .send()
             .await
             .context("delete invite failed")?;
         Self::expect_ok(resp).await
+    }
+
+    // ─── Workspaces (kioku ws) ───────────────────────────────────────────────
+
+    pub async fn list_workspaces(&self) -> Result<Vec<WorkspaceOut>> {
+        let resp = self
+            .authed(self.client.get(self.url("/workspaces")))
+            .send()
+            .await
+            .context("list workspaces failed")?;
+        Self::parse(resp, "invalid workspaces response").await
+    }
+
+    pub async fn create_workspace(
+        &self,
+        name: &str,
+        slug: Option<&str>,
+    ) -> Result<WorkspaceCreateResponse> {
+        let resp = self
+            .authed(self.client.post(self.url("/workspaces")))
+            .json(&WorkspaceCreateRequest {
+                name: name.to_string(),
+                slug: slug.map(|s| s.to_string()),
+            })
+            .send()
+            .await
+            .context("create workspace failed")?;
+        Self::parse(resp, "invalid workspace response").await
+    }
+
+    /// Invite a teammate into a specific workspace by id or slug — unlike
+    /// `create_invite`, which always targets the active workspace, this can
+    /// target any workspace the caller is an admin of.
+    pub async fn create_workspace_invite(
+        &self,
+        workspace_id_or_slug: &str,
+        email: &str,
+        role: &str,
+    ) -> Result<InviteOut> {
+        let resp = self
+            .authed(
+                self.client
+                    .post(self.url(&format!("/workspaces/{}/invites", workspace_id_or_slug))),
+            )
+            .json(&InviteCreateRequest {
+                email: email.to_string(),
+                role: role.to_string(),
+            })
+            .send()
+            .await
+            .context("create workspace invite failed")?;
+        Self::parse(resp, "invalid invite response").await
     }
 }

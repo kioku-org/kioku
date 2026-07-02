@@ -6,8 +6,8 @@ use uuid::Uuid;
 use crate::errors::AppError;
 use crate::middleware::AuthContext;
 use crate::repos::auth::AuthRepo;
-use crate::repos::company_api_key::CompanyApiKeyRepo;
-use crate::types::{AuthSession, CompanyApiKeyCreate, CompanyApiKeyOut};
+use crate::repos::workspace_api_key::WorkspaceApiKeyRepo;
+use crate::types::{AuthSession, WorkspaceApiKeyCreate, WorkspaceApiKeyOut};
 use crate::AppState;
 
 fn extract_api_key(headers: &HeaderMap) -> Result<&str, AppError> {
@@ -36,7 +36,7 @@ pub async fn exchange_api_key(
     let raw_key = extract_api_key(&headers)?;
     let key_prefix = key_lookup_prefix(raw_key)?;
 
-    let key_repo = CompanyApiKeyRepo::new(state.db.clone());
+    let key_repo = WorkspaceApiKeyRepo::new(state.db.clone());
     let key_record = key_repo
         .find_by_key_prefix(key_prefix)
         .await?
@@ -54,15 +54,17 @@ pub async fn exchange_api_key(
 
     let auth_repo = AuthRepo::new(state.db.clone());
     let ctx = auth_repo
-        .find_user_context(key_record.user_id, key_record.company_id)
+        .find_user_context(key_record.user_id, key_record.workspace_id)
         .await?
         .ok_or_else(|| AppError::Unauthorized("User not found".into()))?;
 
+    let memberships = auth_repo.list_memberships(key_record.user_id).await?;
     let token = crate::repos::auth::create_token(
         &state.settings.jwt_secret,
         key_record.user_id,
-        key_record.company_id,
+        key_record.workspace_id,
         &ctx.role,
+        &memberships,
         state.settings.jwt_ttl_seconds,
     )?;
 
@@ -71,7 +73,7 @@ pub async fn exchange_api_key(
         .create_auth_token(
             &token,
             key_record.user_id,
-            key_record.company_id,
+            key_record.workspace_id,
             now,
             expires_at,
         )
@@ -81,9 +83,9 @@ pub async fn exchange_api_key(
         key_record.user_id,
         ctx.email,
         ctx.name,
-        key_record.company_id,
-        ctx.company_name,
-        ctx.company_slug,
+        key_record.workspace_id,
+        ctx.workspace_name,
+        ctx.workspace_slug,
         ctx.role,
         token,
     )))
@@ -92,7 +94,7 @@ pub async fn exchange_api_key(
 pub async fn create_api_key(
     State(state): State<AppState>,
     auth: AuthContext,
-    Json(req): Json<CompanyApiKeyCreate>,
+    Json(req): Json<WorkspaceApiKeyCreate>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     if auth.role != "admin" {
         return Err(AppError::Forbidden(
@@ -108,10 +110,10 @@ pub async fn create_api_key(
     let id = Uuid::new_v4();
     let now = crate::util::now_ms();
 
-    let repo = CompanyApiKeyRepo::new(state.db.clone());
+    let repo = WorkspaceApiKeyRepo::new(state.db.clone());
     repo.create(
         id,
-        auth.company_id,
+        auth.workspace_id,
         auth.user_id,
         &req.name,
         key_prefix,
@@ -132,13 +134,13 @@ pub async fn create_api_key(
 pub async fn list_api_keys(
     State(state): State<AppState>,
     auth: AuthContext,
-) -> Result<Json<Vec<CompanyApiKeyOut>>, AppError> {
-    let repo = CompanyApiKeyRepo::new(state.db.clone());
-    let keys = repo.list_by_company(auth.company_id).await?;
+) -> Result<Json<Vec<WorkspaceApiKeyOut>>, AppError> {
+    let repo = WorkspaceApiKeyRepo::new(state.db.clone());
+    let keys = repo.list_by_workspace(auth.workspace_id).await?;
 
-    let out: Vec<CompanyApiKeyOut> = keys
+    let out: Vec<WorkspaceApiKeyOut> = keys
         .into_iter()
-        .map(|k| CompanyApiKeyOut {
+        .map(|k| WorkspaceApiKeyOut {
             id: k.id,
             user_id: k.user_id,
             name: k.name,
@@ -162,8 +164,8 @@ pub async fn delete_api_key(
         ));
     }
 
-    let repo = CompanyApiKeyRepo::new(state.db.clone());
-    repo.delete(key_id, auth.company_id).await?;
+    let repo = WorkspaceApiKeyRepo::new(state.db.clone());
+    repo.delete(key_id, auth.workspace_id).await?;
     Ok(Json(()))
 }
 

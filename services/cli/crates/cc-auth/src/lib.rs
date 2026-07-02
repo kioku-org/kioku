@@ -43,8 +43,15 @@ pub struct AuthFile {
     pub user_id: String,
     pub email: String,
     pub name: String,
-    pub company_id: String,
+    /// The token's default workspace (workspace) — used when
+    /// `active_workspace_id` hasn't been set via `kioku ws <name>`.
+    pub workspace_id: String,
     pub role: String,
+    /// Workspace selected via `kioku ws <name>`, sent as the X-Workspace-Id
+    /// header on every request. `#[serde(default)]` so auth.json files
+    /// written before multi-workspace support still load fine.
+    #[serde(default)]
+    pub active_workspace_id: Option<String>,
 }
 
 impl AuthFile {

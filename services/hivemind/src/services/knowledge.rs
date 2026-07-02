@@ -57,7 +57,7 @@ impl KnowledgeService {
     pub async fn ingest_documents(
         db: &PgPool,
         vector_store: &HivemindVectorStore,
-        company_id: Uuid,
+        workspace_id: Uuid,
         meeting_id: Uuid,
         docs: &[Document],
     ) -> Result<(), AppError> {
@@ -93,7 +93,7 @@ impl KnowledgeService {
         }
 
         vector_store
-            .add_documents_for_company(company_id, docs)
+            .add_documents_for_workspace(workspace_id, docs)
             .await
             .map_err(|e| {
                 AppError::Internal(anyhow::anyhow!(
@@ -109,7 +109,7 @@ impl KnowledgeService {
     pub async fn ingest_pdf_documents(
         db: &PgPool,
         vector_store: &HivemindVectorStore,
-        company_id: Uuid,
+        workspace_id: Uuid,
         document_id: Uuid,
         docs: &[Document],
     ) -> Result<(), AppError> {
@@ -138,7 +138,7 @@ impl KnowledgeService {
         }
 
         vector_store
-            .add_documents_for_company(company_id, docs)
+            .add_documents_for_workspace(workspace_id, docs)
             .await
             .map_err(|e| {
                 AppError::Internal(anyhow::anyhow!(
@@ -155,7 +155,7 @@ impl KnowledgeService {
     pub async fn search(
         db: &PgPool,
         vector_store: &HivemindVectorStore,
-        company_id: Uuid,
+        workspace_id: Uuid,
         query: &str,
         limit: usize,
     ) -> Result<Vec<KnowledgeSearchResult>, AppError> {
@@ -165,18 +165,18 @@ impl KnowledgeService {
                 SELECT 1
                 FROM knowledge_chunks kc
                 JOIN meetings m ON kc.meeting_id = m.id
-                WHERE m.company_id = $1
+                WHERE m.workspace_id = $1
 
                 UNION ALL
 
                 SELECT 1
                 FROM knowledge_chunks kc
                 JOIN knowledge_documents kd ON kc.document_id = kd.id
-                WHERE kd.company_id = $1
+                WHERE kd.workspace_id = $1
             )
             "#,
         )
-        .bind(company_id)
+        .bind(workspace_id)
         .fetch_one(db)
         .await
         .map_err(AppError::from)?;
@@ -186,7 +186,7 @@ impl KnowledgeService {
         }
 
         let docs = vector_store
-            .search_for_company(company_id, query, limit)
+            .search_for_workspace(workspace_id, query, limit)
             .await
             .map_err(|e| AppError::Internal(anyhow::anyhow!("Vector search failed: {}", e)))?;
 
@@ -213,10 +213,10 @@ impl KnowledgeService {
 
             let meeting_json = if let Some(mid) = meeting_id {
                 let row = sqlx::query(
-                    "SELECT id, title, date FROM meetings WHERE id = $1 AND company_id = $2",
+                    "SELECT id, title, date FROM meetings WHERE id = $1 AND workspace_id = $2",
                 )
                 .bind(mid)
-                .bind(company_id)
+                .bind(workspace_id)
                 .fetch_optional(db)
                 .await
                 .ok()
@@ -238,10 +238,10 @@ impl KnowledgeService {
                 }
             } else if let Some(did) = document_id {
                 let row = sqlx::query(
-                    "SELECT id, filename, status FROM knowledge_documents WHERE id = $1 AND company_id = $2",
+                    "SELECT id, filename, status FROM knowledge_documents WHERE id = $1 AND workspace_id = $2",
                 )
                 .bind(did)
-                .bind(company_id)
+                .bind(workspace_id)
                 .fetch_optional(db)
                 .await
                 .ok()

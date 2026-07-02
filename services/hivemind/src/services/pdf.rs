@@ -15,7 +15,7 @@ pub fn extract_text_from_bytes(data: &[u8]) -> anyhow::Result<String> {
 /// Chunk extracted PDF text into knowledge documents with metadata.
 pub fn chunk_pdf_text(
     text: &str,
-    company_id: uuid::Uuid,
+    workspace_id: uuid::Uuid,
     document_id: uuid::Uuid,
     document_name: &str,
 ) -> Vec<langchain_rust::schemas::Document> {
@@ -25,8 +25,8 @@ pub fn chunk_pdf_text(
     for (i, chunk_text) in chunks.into_iter().enumerate() {
         let mut metadata: HashMap<String, serde_json::Value> = HashMap::new();
         metadata.insert(
-            "company_id".to_string(),
-            serde_json::json!(company_id.to_string()),
+            "workspace_id".to_string(),
+            serde_json::json!(workspace_id.to_string()),
         );
         metadata.insert(
             "document_id".to_string(),
@@ -55,10 +55,10 @@ mod tests {
 
     #[test]
     fn test_chunk_pdf_text() {
-        let company_id = uuid::Uuid::new_v4();
+        let workspace_id = uuid::Uuid::new_v4();
         let document_id = uuid::Uuid::new_v4();
         let text = "This is a test document. ".repeat(100);
-        let docs = chunk_pdf_text(&text, company_id, document_id, "test.pdf");
+        let docs = chunk_pdf_text(&text, workspace_id, document_id, "test.pdf");
         assert!(!docs.is_empty());
         for doc in &docs {
             assert_eq!(

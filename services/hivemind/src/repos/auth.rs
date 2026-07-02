@@ -23,12 +23,12 @@ impl AuthRepo {
         .map_err(AppError::from)
     }
 
-    pub async fn find_company_by_slug(
+    pub async fn find_workspace_by_slug(
         &self,
         slug: &str,
-    ) -> Result<Option<CompanyRecord>, AppError> {
-        sqlx::query_as::<_, CompanyRecord>(
-            r#"SELECT id, name, slug, tier FROM companies WHERE slug = $1"#,
+    ) -> Result<Option<WorkspaceRecord>, AppError> {
+        sqlx::query_as::<_, WorkspaceRecord>(
+            r#"SELECT id, name, slug, tier, created_at FROM workspaces WHERE slug = $1"#,
         )
         .bind(slug)
         .fetch_optional(&self.db)
@@ -36,9 +36,9 @@ impl AuthRepo {
         .map_err(AppError::from)
     }
 
-    pub async fn find_company_by_id(&self, id: Uuid) -> Result<CompanyRecord, AppError> {
-        sqlx::query_as::<_, CompanyRecord>(
-            r#"SELECT id, name, slug, tier FROM companies WHERE id = $1"#,
+    pub async fn find_workspace_by_id(&self, id: Uuid) -> Result<WorkspaceRecord, AppError> {
+        sqlx::query_as::<_, WorkspaceRecord>(
+            r#"SELECT id, name, slug, tier, created_at FROM workspaces WHERE id = $1"#,
         )
         .bind(id)
         .fetch_one(&self.db)
@@ -46,11 +46,24 @@ impl AuthRepo {
         .map_err(AppError::from)
     }
 
-    /// Number of members currently in a company. Free tier is capped at 1.
-    pub async fn count_company_members(&self, company_id: Uuid) -> Result<i64, AppError> {
+    pub async fn find_workspaces_by_ids(
+        &self,
+        ids: &[Uuid],
+    ) -> Result<Vec<WorkspaceRecord>, AppError> {
+        sqlx::query_as::<_, WorkspaceRecord>(
+            r#"SELECT id, name, slug, tier, created_at FROM workspaces WHERE id = ANY($1)"#,
+        )
+        .bind(ids)
+        .fetch_all(&self.db)
+        .await
+        .map_err(AppError::from)
+    }
+
+    /// Number of members currently in a workspace. Free tier is capped at 1.
+    pub async fn count_workspace_members(&self, workspace_id: Uuid) -> Result<i64, AppError> {
         let row: (i64,) =
-            sqlx::query_as(r#"SELECT COUNT(*) FROM company_members WHERE company_id = $1"#)
-                .bind(company_id)
+            sqlx::query_as(r#"SELECT COUNT(*) FROM workspace_members WHERE workspace_id = $1"#)
+                .bind(workspace_id)
                 .fetch_one(&self.db)
                 .await
                 .map_err(AppError::from)?;
@@ -60,13 +73,13 @@ impl AuthRepo {
     pub async fn find_invite(
         &self,
         email: &str,
-        company_id: Uuid,
+        workspace_id: Uuid,
     ) -> Result<Option<InviteRecord>, AppError> {
         sqlx::query_as::<_, InviteRecord>(
-            r#"SELECT id, role FROM company_invites WHERE email = $1 AND company_id = $2 AND used_at IS NULL"#,
+            r#"SELECT id, role FROM workspace_invites WHERE email = $1 AND workspace_id = $2 AND used_at IS NULL"#,
         )
         .bind(email)
-        .bind(company_id)
+        .bind(workspace_id)
         .fetch_optional(&self.db)
         .await
         .map_err(AppError::from)
@@ -77,10 +90,22 @@ impl AuthRepo {
         user_id: Uuid,
     ) -> Result<Option<MembershipRecord>, AppError> {
         sqlx::query_as::<_, MembershipRecord>(
-            r#"SELECT company_id, role FROM company_members WHERE user_id = $1 LIMIT 1"#,
+            r#"SELECT workspace_id, role FROM workspace_members WHERE user_id = $1 LIMIT 1"#,
         )
         .bind(user_id)
         .fetch_optional(&self.db)
+        .await
+        .map_err(AppError::from)
+    }
+
+    /// Every workspace a user belongs to, oldest first — the first entry is
+    /// used as the default/active workspace when a token is issued.
+    pub async fn list_memberships(&self, user_id: Uuid) -> Result<Vec<MembershipRecord>, AppError> {
+        sqlx::query_as::<_, MembershipRecord>(
+            r#"SELECT workspace_id, role FROM workspace_members WHERE user_id = $1 ORDER BY joined_at ASC"#,
+        )
+        .bind(user_id)
+        .fetch_all(&self.db)
         .await
         .map_err(AppError::from)
     }
@@ -88,25 +113,25 @@ impl AuthRepo {
     pub async fn find_user_context(
         &self,
         user_id: Uuid,
-        company_id: Uuid,
+        workspace_id: Uuid,
     ) -> Result<Option<UserContextRecord>, AppError> {
         sqlx::query_as::<_, UserContextRecord>(
             r#"
-            SELECT u.email, u.name, c.name AS company_name, c.slug AS company_slug, cm.role
+            SELECT u.email, u.name, c.name AS workspace_name, c.slug AS workspace_slug, cm.role
             FROM users u
-            JOIN companies c ON c.id = $1
-            JOIN company_members cm ON cm.user_id = $2 AND cm.company_id = $1
+            JOIN workspaces c ON c.id = $1
+            JOIN workspace_members cm ON cm.user_id = $2 AND cm.workspace_id = $1
             WHERE u.id = $2
             "#,
         )
-        .bind(company_id)
+        .bind(workspace_id)
         .bind(user_id)
         .fetch_optional(&self.db)
         .await
         .map_err(AppError::from)
     }
 
-    pub async fn create_company(
+    pub async fn create_workspace(
         &self,
         id: Uuid,
         name: &str,
@@ -114,7 +139,7 @@ impl AuthRepo {
         now: i64,
     ) -> Result<(), AppError> {
         sqlx::query(
-            r#"INSERT INTO companies (id, name, slug, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)"#,
+            r#"INSERT INTO workspaces (id, name, slug, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)"#,
         )
         .bind(id)
         .bind(name)
@@ -152,16 +177,16 @@ impl AuthRepo {
     pub async fn create_membership(
         &self,
         id: Uuid,
-        company_id: Uuid,
+        workspace_id: Uuid,
         user_id: Uuid,
         role: &str,
         now: i64,
     ) -> Result<(), AppError> {
         sqlx::query(
-            r#"INSERT INTO company_members (id, company_id, user_id, role, joined_at) VALUES ($1, $2, $3, $4, $5)"#,
+            r#"INSERT INTO workspace_members (id, workspace_id, user_id, role, joined_at) VALUES ($1, $2, $3, $4, $5)"#,
         )
         .bind(id)
-        .bind(company_id)
+        .bind(workspace_id)
         .bind(user_id)
         .bind(role)
         .bind(now)
@@ -171,14 +196,18 @@ impl AuthRepo {
         Ok(())
     }
 
-    pub async fn create_default_config(&self, company_id: Uuid, now: i64) -> Result<(), AppError> {
+    pub async fn create_default_config(
+        &self,
+        workspace_id: Uuid,
+        now: i64,
+    ) -> Result<(), AppError> {
         sqlx::query(
             r#"
-            INSERT INTO company_config (company_id, hivemind_enabled, updated_at)
+            INSERT INTO workspace_config (workspace_id, hivemind_enabled, updated_at)
             VALUES ($1, $2, $3)
             "#,
         )
-        .bind(company_id)
+        .bind(workspace_id)
         .bind(true)
         .bind(now)
         .execute(&self.db)
@@ -191,17 +220,17 @@ impl AuthRepo {
         &self,
         token: &str,
         user_id: Uuid,
-        company_id: Uuid,
+        workspace_id: Uuid,
         now: i64,
         expires_at: i64,
     ) -> Result<(), AppError> {
         sqlx::query(
-            r#"INSERT INTO auth_tokens (token, user_id, company_id, created_at, expires_at) VALUES ($1, $2, $3, $4, $5)
+            r#"INSERT INTO auth_tokens (token, user_id, workspace_id, created_at, expires_at) VALUES ($1, $2, $3, $4, $5)
                ON CONFLICT (token) DO UPDATE SET expires_at = $5, created_at = $4"#,
         )
         .bind(token)
         .bind(user_id)
-        .bind(company_id)
+        .bind(workspace_id)
         .bind(now)
         .bind(expires_at)
         .execute(&self.db)
@@ -213,11 +242,11 @@ impl AuthRepo {
     pub async fn delete_auth_tokens(
         &self,
         user_id: Uuid,
-        company_id: Uuid,
+        workspace_id: Uuid,
     ) -> Result<(), AppError> {
-        sqlx::query(r#"DELETE FROM auth_tokens WHERE user_id = $1 AND company_id = $2"#)
+        sqlx::query(r#"DELETE FROM auth_tokens WHERE user_id = $1 AND workspace_id = $2"#)
             .bind(user_id)
-            .bind(company_id)
+            .bind(workspace_id)
             .execute(&self.db)
             .await
             .map_err(AppError::from)?;
@@ -225,7 +254,7 @@ impl AuthRepo {
     }
 
     pub async fn mark_invite_used(&self, invite_id: Uuid, now: i64) -> Result<(), AppError> {
-        sqlx::query(r#"UPDATE company_invites SET used_at = $1 WHERE id = $2"#)
+        sqlx::query(r#"UPDATE workspace_invites SET used_at = $1 WHERE id = $2"#)
             .bind(now)
             .bind(invite_id)
             .execute(&self.db)
@@ -276,14 +305,15 @@ pub struct UserRecord {
 }
 
 #[derive(Debug, sqlx::FromRow)]
-pub struct CompanyRecord {
+pub struct WorkspaceRecord {
     pub id: Uuid,
     pub name: String,
     pub slug: String,
     pub tier: String,
+    pub created_at: i64,
 }
 
-impl CompanyRecord {
+impl WorkspaceRecord {
     pub fn is_free_tier(&self) -> bool {
         self.tier == "free"
     }
@@ -297,7 +327,7 @@ pub struct InviteRecord {
 
 #[derive(Debug, sqlx::FromRow)]
 pub struct MembershipRecord {
-    pub company_id: Uuid,
+    pub workspace_id: Uuid,
     pub role: String,
 }
 
@@ -305,8 +335,8 @@ pub struct MembershipRecord {
 pub struct UserContextRecord {
     pub email: String,
     pub name: String,
-    pub company_name: String,
-    pub company_slug: String,
+    pub workspace_name: String,
+    pub workspace_slug: String,
     pub role: String,
 }
 
@@ -319,11 +349,16 @@ pub struct VexaLinkRecord {
 
 // ─── JWT helpers ─────────────────────────────────────────────────────────────
 
+/// `memberships` should be every workspace the user belongs to (not just
+/// `workspace_id`/`role`) so `kioku ws <name>` can switch between them without
+/// a network round trip. Pass a single-element slice for brand-new users who
+/// only just got their first membership.
 pub fn create_token(
     secret: &str,
     user_id: Uuid,
-    company_id: Uuid,
+    workspace_id: Uuid,
     role: &str,
+    memberships: &[MembershipRecord],
     ttl_seconds: i64,
 ) -> Result<String, AppError> {
     use jsonwebtoken::{encode, EncodingKey, Header};
@@ -336,8 +371,15 @@ pub fn create_token(
 
     let claims = Claims {
         user_id,
-        company_id,
+        workspace_id,
         role: role.to_string(),
+        memberships: memberships
+            .iter()
+            .map(|m| crate::types::MembershipClaim {
+                workspace_id: m.workspace_id,
+                role: m.role.clone(),
+            })
+            .collect(),
         exp: now + ttl_seconds,
     };
 
@@ -395,9 +437,9 @@ impl AuthSession {
         user_id: Uuid,
         email: String,
         name: String,
-        company_id: Uuid,
-        company_name: String,
-        company_slug: String,
+        workspace_id: Uuid,
+        workspace_name: String,
+        workspace_slug: String,
         role: String,
         token: String,
     ) -> Self {
@@ -405,9 +447,9 @@ impl AuthSession {
             user_id,
             email,
             name,
-            company_id,
-            company_name,
-            company_slug,
+            workspace_id,
+            workspace_name,
+            workspace_slug,
             role,
             token,
         }

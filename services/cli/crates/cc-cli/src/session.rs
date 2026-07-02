@@ -7,5 +7,7 @@ pub fn require_auth() -> Result<AuthFile> {
 }
 
 pub fn make_client(auth: &AuthFile) -> KiokuClient {
-    KiokuClient::with_token(&auth.server_url, &auth.token)
+    let mut client = KiokuClient::with_token(&auth.server_url, &auth.token);
+    client.set_workspace_id(auth.active_workspace_id.clone());
+    client
 }

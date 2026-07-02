@@ -121,9 +121,33 @@ pub enum Commands {
         delete: Option<String>,
     },
 
+    // ── Workspaces ────────────────────────────────────────────────────────────
+    #[command(about = "List your workspaces, switch the active one, or create a new one")]
+    Ws {
+        #[arg(
+            value_name = "NAME",
+            help = "Workspace name or slug to switch to (or, with --invite, to invite into)"
+        )]
+        name: Option<String>,
+        #[arg(
+            long,
+            value_name = "NAME",
+            conflicts_with = "name",
+            help = "Create a new workspace and switch to it"
+        )]
+        create: Option<String>,
+        #[arg(
+            long,
+            value_name = "EMAIL",
+            requires = "name",
+            help = "Invite an email into the workspace given by NAME"
+        )]
+        invite: Option<String>,
+    },
+
     // ── Teammates (Pro/Teams tier) ───────────────────────────────────────────
     #[command(
-        about = "List pending invites, invite a teammate to your company, or revoke an invite"
+        about = "List pending invites, invite a teammate to your workspace, or revoke an invite"
     )]
     Invite {
         #[arg(value_name = "EMAIL", help = "Email address to invite")]
@@ -152,9 +176,9 @@ pub enum Commands {
     #[command(hide = true)]
     RegisterAdmin {
         #[arg(long)]
-        company_name: Option<String>,
+        workspace_name: Option<String>,
         #[arg(long)]
-        company_slug: Option<String>,
+        workspace_slug: Option<String>,
         #[arg(long)]
         email: Option<String>,
         #[arg(long)]
@@ -178,7 +202,7 @@ mod tests {
             "--server",
             "http://localhost:9100",
             "register-admin",
-            "--company-name",
+            "--workspace-name",
             "Kioku",
             "--email",
             "admin@example.com",
@@ -190,8 +214,8 @@ mod tests {
 
         let actual = Cli::parse_from(fixture);
         let expected = Some(Commands::RegisterAdmin {
-            company_name: Some("Kioku".to_string()),
-            company_slug: None,
+            workspace_name: Some("Kioku".to_string()),
+            workspace_slug: None,
             email: Some("admin@example.com".to_string()),
             name: Some("Admin".to_string()),
             password: Some("password123".to_string()),

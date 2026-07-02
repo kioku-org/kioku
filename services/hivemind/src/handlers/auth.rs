@@ -67,7 +67,7 @@ pub async fn sign_out(
     auth: crate::middleware::AuthContext,
 ) -> Result<Json<()>, AppError> {
     let repo = AuthRepo::new(state.db.clone());
-    repo.delete_auth_tokens(auth.user_id, auth.company_id)
+    repo.delete_auth_tokens(auth.user_id, auth.workspace_id)
         .await?;
     Ok(Json(()))
 }
@@ -79,7 +79,7 @@ pub async fn auth_me(
 ) -> Result<Json<AuthSession>, AppError> {
     let repo = AuthRepo::new(state.db.clone());
     let ctx = repo
-        .find_user_context(auth.user_id, auth.company_id)
+        .find_user_context(auth.user_id, auth.workspace_id)
         .await?
         .ok_or_else(|| AppError::NotFound("User context not found".into()))?;
 
@@ -94,9 +94,9 @@ pub async fn auth_me(
         auth.user_id,
         ctx.email,
         ctx.name,
-        auth.company_id,
-        ctx.company_name,
-        ctx.company_slug,
+        auth.workspace_id,
+        ctx.workspace_name,
+        ctx.workspace_slug,
         ctx.role,
         token,
     );

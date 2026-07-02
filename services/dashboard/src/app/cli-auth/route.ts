@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 
   // If the session already carries a hivemindToken, use it directly
   if (hivemindToken) {
-    // Decode the JWT payload to extract user_id / company_id / role
+    // Decode the JWT payload to extract user_id / workspace_id / role
     try {
       const payload = JSON.parse(
         Buffer.from(hivemindToken.split(".")[1], "base64url").toString()
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
         user_id: payload.sub ?? "",
         email: payload.email ?? email,
         name: payload.name ?? name,
-        company_id: payload.company_id ?? "",
+        workspace_id: payload.workspace_id ?? "",
         role: payload.role ?? "member",
       });
       return NextResponse.redirect(`http://localhost:${portNum}/callback?${params}`);
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
       user_id: data.user_id,
       email: data.email,
       name: data.name,
-      company_id: data.company_id,
+      workspace_id: data.workspace_id,
       role: data.role,
     });
     return NextResponse.redirect(`http://localhost:${portNum}/callback?${params}`);

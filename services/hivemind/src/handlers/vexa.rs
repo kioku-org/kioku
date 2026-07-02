@@ -22,15 +22,16 @@ pub async fn get_vexa_token(
         .and_then(|v| v.strip_prefix("Bearer "))
         .ok_or_else(|| AppError::Unauthorized("Missing Authorization header".into()))?;
 
-    let (company_id, user_id) =
+    let (workspace_id, user_id) =
         resolve_claims_from_token(&state.settings.jwt_secret, &state.db, token)
             .await
             .ok_or_else(|| AppError::Unauthorized("Invalid or expired token".into()))?;
 
     let auth = AuthContext {
         user_id,
-        company_id,
+        workspace_id,
         role: "member".into(),
+        memberships: Vec::new(),
     };
     let vexa_api_key = resolve_vexa_api_key(&state, &auth).await;
     Ok(Json(serde_json::json!({ "vexa_api_key": vexa_api_key })))
@@ -69,7 +70,7 @@ async fn provision_vexa_token(
     auth: &AuthContext,
 ) -> Result<String, AppError> {
     let ctx = repo
-        .find_user_context(auth.user_id, auth.company_id)
+        .find_user_context(auth.user_id, auth.workspace_id)
         .await?
         .ok_or_else(|| {
             AppError::Internal(anyhow::anyhow!(
@@ -135,13 +136,13 @@ pub async fn request_bot(
     Json(mut body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     if body.get("bot_name").is_none() {
-        let company_name =
-            sqlx::query_scalar::<_, String>("SELECT name FROM hivemind.companies WHERE id = $1")
-                .bind(auth.company_id)
+        let workspace_name =
+            sqlx::query_scalar::<_, String>("SELECT name FROM hivemind.workspaces WHERE id = $1")
+                .bind(auth.workspace_id)
                 .fetch_one(&state.db)
                 .await
                 .unwrap_or_else(|_| "Kioku".to_string());
-        body["bot_name"] = serde_json::Value::String(format!("{}'s assistant", company_name));
+        body["bot_name"] = serde_json::Value::String(format!("{}'s assistant", workspace_name));
     }
 
     let api_key = resolve_vexa_api_key(&state, &auth).await;

@@ -5,8 +5,8 @@ use axum::{
 use tower_http::cors::CorsLayer;
 
 use crate::handlers::{
-    auth, company, company_api_key, internal, invite, knowledge, meeting, member, message, session,
-    trace, vexa,
+    auth, internal, invite, knowledge, meeting, member, message, session, trace, vexa, workspace,
+    workspace_api_key, workspace_config,
 };
 use crate::mcp::transport::mcp_routes;
 use crate::AppState;
@@ -28,24 +28,41 @@ pub fn build(state: AppState) -> Router {
         .route("/auth/signin", post(auth::sign_in))
         .route("/auth/signout", post(auth::sign_out))
         .route("/auth/me", get(auth::auth_me))
-        .route("/auth/token", post(company_api_key::exchange_api_key))
-        // Company
-        .route("/company/config", get(company::get_config))
-        .route("/company/config", put(company::update_config))
+        .route("/auth/token", post(workspace_api_key::exchange_api_key))
+        // Workspace config (the caller's active workspace)
+        .route("/workspace/config", get(workspace_config::get_config))
+        .route("/workspace/config", put(workspace_config::update_config))
         // Members
-        .route("/company/members", get(member::list))
-        .route("/company/members/:user_id", delete(member::remove))
-        .route("/company/members/:user_id/:role", put(member::update_role))
-        // Invites
-        .route("/company/invites", get(invite::list))
-        .route("/company/invites", post(invite::create))
-        .route("/company/invites/:invite_id", delete(invite::remove))
-        // Company API Keys (CLI auth)
-        .route("/company/auth-keys", get(company_api_key::list_api_keys))
-        .route("/company/auth-keys", post(company_api_key::create_api_key))
+        .route("/workspace/members", get(member::list))
+        .route("/workspace/members/:user_id", delete(member::remove))
         .route(
-            "/company/auth-keys/:key_id",
-            delete(company_api_key::delete_api_key),
+            "/workspace/members/:user_id/:role",
+            put(member::update_role),
+        )
+        // Invites (targets the caller's active workspace)
+        .route("/workspace/invites", get(invite::list))
+        .route("/workspace/invites", post(invite::create))
+        .route("/workspace/invites/:invite_id", delete(invite::remove))
+        // Workspaces (multi-workspace-per-user: list/create/switch, and
+        // inviting into a specific non-active workspace by id or slug)
+        .route("/workspaces", get(workspace::list))
+        .route("/workspaces", post(workspace::create))
+        .route(
+            "/workspaces/:workspace_id/invites",
+            post(workspace::create_invite),
+        )
+        // Workspace API Keys (CLI auth)
+        .route(
+            "/workspace/auth-keys",
+            get(workspace_api_key::list_api_keys),
+        )
+        .route(
+            "/workspace/auth-keys",
+            post(workspace_api_key::create_api_key),
+        )
+        .route(
+            "/workspace/auth-keys/:key_id",
+            delete(workspace_api_key::delete_api_key),
         )
         // Meetings
         .route("/meetings", get(meeting::list))
@@ -103,7 +120,7 @@ async fn knowledge_search(
     let results = crate::services::knowledge::KnowledgeService::search(
         &state.db,
         &state.vector_store,
-        auth.company_id,
+        auth.workspace_id,
         &req.query,
         limit,
     )

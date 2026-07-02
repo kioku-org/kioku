@@ -180,10 +180,10 @@ echo "--- Testing Hivemind API ---"
 HIVEMIND_URL="http://localhost:9100"
 
 ADMIN_EMAIL="smoketest_admin_$(date +%s%N)@example.com"
-COMPANY_SLUG="smoke-$(date +%s)"
+WORKSPACE_SLUG="smoke-$(date +%s)"
 REGISTER_RESP=$(curl -s -X POST "$HIVEMIND_URL/auth/register/admin" \
     -H "Content-Type: application/json" \
-    -d "{\"company_name\":\"$COMPANY_SLUG\",\"email\":\"$ADMIN_EMAIL\",\"name\":\"Admin\",\"password\":\"testpassword123\"}" \
+    -d "{\"workspace_name\":\"$WORKSPACE_SLUG\",\"email\":\"$ADMIN_EMAIL\",\"name\":\"Admin\",\"password\":\"testpassword123\"}" \
     --max-time 10)
 
 TOKEN=$(echo "$REGISTER_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || echo "")
@@ -199,9 +199,9 @@ if [ -n "$TOKEN" ]; then
         -H "Authorization: Bearer $TOKEN" --max-time 10)
     [ "$ME_STATUS" = "200" ] && log "Auth: /me returns 200" || fail "Auth: /me returns $ME_STATUS"
 
-    CFG_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$HIVEMIND_URL/company/config" \
+    CFG_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$HIVEMIND_URL/workspace/config" \
         -H "Authorization: Bearer $TOKEN" --max-time 10)
-    [ "$CFG_STATUS" = "200" ] && log "Company: GET /config returns 200" || fail "Company: GET /config returns $CFG_STATUS"
+    [ "$CFG_STATUS" = "200" ] && log "Workspace: GET /config returns 200" || fail "Workspace: GET /config returns $CFG_STATUS"
 
     SESS_RESP=$(curl -s -X POST "$HIVEMIND_URL/sessions" \
         -H "Authorization: Bearer $TOKEN" \

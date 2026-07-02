@@ -15,7 +15,7 @@ impl InviteRepo {
 
     pub async fn create(
         &self,
-        company_id: Uuid,
+        workspace_id: Uuid,
         req: InviteCreate,
         now: i64,
     ) -> Result<InviteOut, AppError> {
@@ -23,10 +23,10 @@ impl InviteRepo {
         let email = req.email.clone();
         let role = req.role.clone();
         sqlx::query(
-            r#"INSERT INTO company_invites (id, company_id, email, role, created_at) VALUES ($1, $2, $3, $4, $5)"#,
+            r#"INSERT INTO workspace_invites (id, workspace_id, email, role, created_at) VALUES ($1, $2, $3, $4, $5)"#,
         )
         .bind(id)
-        .bind(company_id)
+        .bind(workspace_id)
         .bind(req.email)
         .bind(req.role)
         .bind(now)
@@ -36,7 +36,7 @@ impl InviteRepo {
 
         Ok(InviteOut {
             id,
-            company_id,
+            workspace_id,
             email,
             role,
             created_at: now,
@@ -44,12 +44,12 @@ impl InviteRepo {
         })
     }
 
-    pub async fn list(&self, company_id: Uuid) -> Result<Vec<InviteOut>, AppError> {
+    pub async fn list(&self, workspace_id: Uuid) -> Result<Vec<InviteOut>, AppError> {
         let rows = sqlx::query(
-            r#"SELECT id, company_id, email, role, created_at, used_at
-               FROM company_invites WHERE company_id = $1 ORDER BY created_at DESC"#,
+            r#"SELECT id, workspace_id, email, role, created_at, used_at
+               FROM workspace_invites WHERE workspace_id = $1 ORDER BY created_at DESC"#,
         )
-        .bind(company_id)
+        .bind(workspace_id)
         .fetch_all(&self.db)
         .await
         .map_err(AppError::from)?;
@@ -58,7 +58,7 @@ impl InviteRepo {
             .into_iter()
             .map(|r| InviteOut {
                 id: r.get("id"),
-                company_id: r.get("company_id"),
+                workspace_id: r.get("workspace_id"),
                 email: r.get("email"),
                 role: r.get("role"),
                 created_at: r.get("created_at"),
@@ -67,10 +67,10 @@ impl InviteRepo {
             .collect())
     }
 
-    pub async fn remove(&self, invite_id: Uuid, company_id: Uuid) -> Result<(), AppError> {
-        sqlx::query(r#"DELETE FROM company_invites WHERE id = $1 AND company_id = $2"#)
+    pub async fn remove(&self, invite_id: Uuid, workspace_id: Uuid) -> Result<(), AppError> {
+        sqlx::query(r#"DELETE FROM workspace_invites WHERE id = $1 AND workspace_id = $2"#)
             .bind(invite_id)
-            .bind(company_id)
+            .bind(workspace_id)
             .execute(&self.db)
             .await
             .map_err(AppError::from)?;

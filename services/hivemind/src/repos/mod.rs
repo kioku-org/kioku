@@ -1,6 +1,4 @@
 pub mod auth;
-pub mod company;
-pub mod company_api_key;
 pub mod invite;
 pub mod knowledge;
 pub mod meeting;
@@ -8,3 +6,5 @@ pub mod member;
 pub mod message;
 pub mod session;
 pub mod trace;
+pub mod workspace_api_key;
+pub mod workspace_config;

@@ -9,8 +9,9 @@ fn fixture_auth() -> AuthFile {
         user_id: "user-1".to_string(),
         email: "test@example.com".to_string(),
         name: "Test User".to_string(),
-        company_id: "comp-1".to_string(),
+        workspace_id: "comp-1".to_string(),
         role: "admin".to_string(),
+        active_workspace_id: None,
     }
 }
 
@@ -31,7 +32,7 @@ fn auth_file_roundtrip() {
     assert_eq!(loaded.user_id, auth.user_id);
     assert_eq!(loaded.email, auth.email);
     assert_eq!(loaded.name, auth.name);
-    assert_eq!(loaded.company_id, auth.company_id);
+    assert_eq!(loaded.workspace_id, auth.workspace_id);
     assert_eq!(loaded.role, auth.role);
 }
 
@@ -46,8 +47,9 @@ fn auth_file_serializes_all_fields() {
         "user_id": "user-1",
         "email": "test@example.com",
         "name": "Test User",
-        "company_id": "comp-1",
-        "role": "admin"
+        "workspace_id": "comp-1",
+        "role": "admin",
+        "active_workspace_id": null
     });
 
     assert_eq!(json, expected);
@@ -55,13 +57,16 @@ fn auth_file_serializes_all_fields() {
 
 #[test]
 fn auth_file_deserializes_from_json() {
+    // Deliberately omits `active_workspace_id` — this is what auth.json
+    // files written before multi-workspace support look like, and they
+    // must keep loading fine.
     let json = json!({
         "server_url": "http://localhost:9100",
         "token": "tok-123",
         "user_id": "u-42",
         "email": "dev@kioku.chat",
         "name": "Dev",
-        "company_id": "c-99",
+        "workspace_id": "c-99",
         "role": "member"
     });
 
@@ -72,6 +77,7 @@ fn auth_file_deserializes_from_json() {
     assert_eq!(auth.user_id, "u-42");
     assert_eq!(auth.email, "dev@kioku.chat");
     assert_eq!(auth.name, "Dev");
-    assert_eq!(auth.company_id, "c-99");
+    assert_eq!(auth.workspace_id, "c-99");
     assert_eq!(auth.role, "member");
+    assert_eq!(auth.active_workspace_id, None);
 }

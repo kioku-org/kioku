@@ -17,7 +17,7 @@ impl KnowledgeRepo {
     pub async fn create_document(
         &self,
         id: Uuid,
-        company_id: Uuid,
+        workspace_id: Uuid,
         user_id: Uuid,
         filename: &str,
         file_size: i64,
@@ -25,10 +25,10 @@ impl KnowledgeRepo {
         now: i64,
     ) -> Result<(), AppError> {
         sqlx::query(
-            "INSERT INTO knowledge_documents (id, company_id, user_id, filename, content_type, file_size, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+            "INSERT INTO knowledge_documents (id, workspace_id, user_id, filename, content_type, file_size, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         )
         .bind(id)
-        .bind(company_id)
+        .bind(workspace_id)
         .bind(user_id)
         .bind(filename)
         .bind("application/pdf")
@@ -65,17 +65,17 @@ impl KnowledgeRepo {
         Ok(())
     }
 
-    /// Get a single document by ID, scoped to company.
+    /// Get a single document by ID, scoped to workspace.
     pub async fn get_document(
         &self,
         id: Uuid,
-        company_id: Uuid,
+        workspace_id: Uuid,
     ) -> Result<Option<KnowledgeDocumentOut>, AppError> {
         let row = sqlx::query(
-            "SELECT id, company_id, user_id, filename, content_type, file_size, status, chunk_count, metadata, created_at, updated_at FROM knowledge_documents WHERE id = $1 AND company_id = $2",
+            "SELECT id, workspace_id, user_id, filename, content_type, file_size, status, chunk_count, metadata, created_at, updated_at FROM knowledge_documents WHERE id = $1 AND workspace_id = $2",
         )
         .bind(id)
-        .bind(company_id)
+        .bind(workspace_id)
         .fetch_optional(&self.db)
         .await
         .map_err(AppError::from)?;
@@ -86,15 +86,15 @@ impl KnowledgeRepo {
         }
     }
 
-    /// List all knowledge documents for a company.
+    /// List all knowledge documents for a workspace.
     pub async fn list_documents(
         &self,
-        company_id: Uuid,
+        workspace_id: Uuid,
     ) -> Result<Vec<KnowledgeDocumentOut>, AppError> {
         let rows = sqlx::query(
-            "SELECT id, company_id, user_id, filename, content_type, file_size, status, chunk_count, metadata, created_at, updated_at FROM knowledge_documents WHERE company_id = $1 ORDER BY created_at DESC",
+            "SELECT id, workspace_id, user_id, filename, content_type, file_size, status, chunk_count, metadata, created_at, updated_at FROM knowledge_documents WHERE workspace_id = $1 ORDER BY created_at DESC",
         )
-        .bind(company_id)
+        .bind(workspace_id)
         .fetch_all(&self.db)
         .await
         .map_err(AppError::from)?;
@@ -103,10 +103,10 @@ impl KnowledgeRepo {
     }
 
     /// Delete a knowledge document (cascades to chunks).
-    pub async fn delete_document(&self, id: Uuid, company_id: Uuid) -> Result<(), AppError> {
-        sqlx::query("DELETE FROM knowledge_documents WHERE id = $1 AND company_id = $2")
+    pub async fn delete_document(&self, id: Uuid, workspace_id: Uuid) -> Result<(), AppError> {
+        sqlx::query("DELETE FROM knowledge_documents WHERE id = $1 AND workspace_id = $2")
             .bind(id)
-            .bind(company_id)
+            .bind(workspace_id)
             .execute(&self.db)
             .await
             .map_err(AppError::from)?;
@@ -118,7 +118,7 @@ impl KnowledgeRepo {
         use sqlx::Row;
         KnowledgeDocumentOut {
             id: row.get("id"),
-            company_id: row.get("company_id"),
+            workspace_id: row.get("workspace_id"),
             user_id: row.get("user_id"),
             filename: row.get("filename"),
             content_type: row.get("content_type"),
@@ -131,21 +131,21 @@ impl KnowledgeRepo {
         }
     }
 
-    /// Get all knowledge chunks for a specific meeting, scoped to company.
+    /// Get all knowledge chunks for a specific meeting, scoped to workspace.
     pub async fn get_meeting_chunks(
         &self,
         meeting_id: Uuid,
-        company_id: Uuid,
+        workspace_id: Uuid,
     ) -> Result<Vec<serde_json::Value>, AppError> {
         let rows = sqlx::query(
             r#"SELECT id, meeting_id, text, speaker, timestamp, chunk_type, metadata
                FROM knowledge_chunks
                WHERE meeting_id = $1
-               AND EXISTS (SELECT 1 FROM meetings WHERE meetings.id = $1 AND meetings.company_id = $2)
+               AND EXISTS (SELECT 1 FROM meetings WHERE meetings.id = $1 AND meetings.workspace_id = $2)
                ORDER BY timestamp ASC NULLS LAST, id ASC"#,
         )
         .bind(meeting_id)
-        .bind(company_id)
+        .bind(workspace_id)
         .fetch_all(&self.db)
         .await
         .map_err(AppError::from)?;

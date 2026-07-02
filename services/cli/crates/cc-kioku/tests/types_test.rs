@@ -7,9 +7,9 @@ fn auth_session_roundtrip() {
         "user_id": "u-1",
         "email": "admin@kioku.chat",
         "name": "Admin",
-        "company_id": "c-1",
-        "company_name": "Kioku",
-        "company_slug": "kioku",
+        "workspace_id": "c-1",
+        "workspace_name": "Kioku",
+        "workspace_slug": "kioku",
         "role": "admin",
         "token": "jwt-token-here"
     });
@@ -24,7 +24,7 @@ fn auth_session_roundtrip() {
 fn session_defaults() {
     let json = json!({
         "id": "s-1",
-        "company_id": "c-1",
+        "workspace_id": "c-1",
         "user_id": "u-1",
         "title": "Test Session",
         "status": "active",
@@ -69,7 +69,7 @@ fn meeting_ingest_defaults() {
 }
 
 #[test]
-fn company_auth_key_optional_fields() {
+fn workspace_auth_key_optional_fields() {
     let json = json!({
         "id": "k-1",
         "user_id": "u-1",
@@ -78,7 +78,7 @@ fn company_auth_key_optional_fields() {
         "created_at": 1700000000
     });
 
-    let key: CompanyAuthKeyOut = serde_json::from_value(json).expect("deserialize");
+    let key: WorkspaceApiKeyOut = serde_json::from_value(json).expect("deserialize");
 
     assert_eq!(key.key_prefix, "koku_abc");
     assert_eq!(key.last_used_at, None);
@@ -151,13 +151,13 @@ fn upload_response_fields() {
 }
 
 #[test]
-fn company_config_minimal() {
+fn workspace_config_minimal() {
     let json = json!({
         "hivemind_enabled": true,
         "updated_at": 1700000000
     });
 
-    let config: CompanyConfig = serde_json::from_value(json).expect("deserialize");
+    let config: WorkspaceConfig = serde_json::from_value(json).expect("deserialize");
 
     assert!(config.hivemind_enabled);
     assert_eq!(config.updated_at, 1700000000);

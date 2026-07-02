@@ -17,7 +17,7 @@ async fn setup() -> (KiokuClient, String) {
         .get_or_init(|| async {
             let _ = client
                 .register_admin(
-                    "cli-test-company",
+                    "cli-test-workspace",
                     Some("cli-test"),
                     "cli_test@example.com",
                     "CLI Test User",
@@ -43,10 +43,10 @@ async fn fresh_client(prefix: &str) -> KiokuClient {
     let client = KiokuClient::new(&base);
     let unique = uuid::Uuid::new_v4().to_string();
     let email = format!("{prefix}_{unique}@example.com");
-    let company = format!("{prefix}-{unique}");
+    let workspace = format!("{prefix}-{unique}");
 
     let session = client
-        .register_admin(&company, None, &email, "CLI Test User", "testpassword123")
+        .register_admin(&workspace, None, &email, "CLI Test User", "testpassword123")
         .await
         .expect("fresh admin registration failed");
 

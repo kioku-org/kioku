@@ -19,8 +19,8 @@ pub async fn create(
     }
 
     let auth_repo = AuthRepo::new(state.db.clone());
-    let company = auth_repo.find_company_by_id(auth.company_id).await?;
-    if company.is_free_tier() {
+    let workspace = auth_repo.find_workspace_by_id(auth.workspace_id).await?;
+    if workspace.is_free_tier() {
         return Err(AppError::Forbidden(
             "Free tier is limited to 1 person — upgrade to Pro to invite teammates".into(),
         ));
@@ -28,7 +28,7 @@ pub async fn create(
 
     let repo = InviteRepo::new(state.db.clone());
     let now = crate::util::now_ms();
-    let invite = repo.create(auth.company_id, req, now).await?;
+    let invite = repo.create(auth.workspace_id, req, now).await?;
     Ok(Json(invite))
 }
 
@@ -37,7 +37,7 @@ pub async fn list(
     auth: AuthContext,
 ) -> Result<Json<Vec<InviteOut>>, AppError> {
     let repo = InviteRepo::new(state.db.clone());
-    let invites = repo.list(auth.company_id).await?;
+    let invites = repo.list(auth.workspace_id).await?;
     Ok(Json(invites))
 }
 
@@ -51,6 +51,6 @@ pub async fn remove(
     }
 
     let repo = InviteRepo::new(state.db.clone());
-    repo.remove(invite_id, auth.company_id).await?;
+    repo.remove(invite_id, auth.workspace_id).await?;
     Ok(Json(()))
 }

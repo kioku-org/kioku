@@ -3,7 +3,7 @@ use crate::session::{make_client, require_auth};
 use anyhow::Result;
 
 pub fn resolve_auth_key_delete_target(
-    keys: &[cc_kioku::CompanyAuthKeyOut],
+    keys: &[cc_kioku::WorkspaceApiKeyOut],
     key_prefix_or_id: &str,
 ) -> Result<String> {
     if let Some(key) = keys.iter().find(|key| key.id == key_prefix_or_id) {
@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn resolve_auth_key_delete_target_accepts_prefix() {
-        let fixture = vec![cc_kioku::CompanyAuthKeyOut {
+        let fixture = vec![cc_kioku::WorkspaceApiKeyOut {
             id: "key-uuid-1".to_string(),
             user_id: "user-1".to_string(),
             name: "cli-key".to_string(),
@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn resolve_auth_key_delete_target_accepts_id() {
-        let fixture = vec![cc_kioku::CompanyAuthKeyOut {
+        let fixture = vec![cc_kioku::WorkspaceApiKeyOut {
             id: "key-uuid-1".to_string(),
             user_id: "user-1".to_string(),
             name: "cli-key".to_string(),
@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn resolve_auth_key_delete_target_errors_for_unknown_value() {
-        let fixture = vec![cc_kioku::CompanyAuthKeyOut {
+        let fixture = vec![cc_kioku::WorkspaceApiKeyOut {
             id: "key-uuid-1".to_string(),
             user_id: "user-1".to_string(),
             name: "cli-key".to_string(),

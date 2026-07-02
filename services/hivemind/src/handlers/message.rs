@@ -14,7 +14,7 @@ pub async fn list(
     auth: AuthContext,
     Path(session_id): Path<Uuid>,
 ) -> Result<Json<Vec<MessageOut>>, AppError> {
-    ensure_session_accessible(&state, session_id, auth.company_id, auth.user_id).await?;
+    ensure_session_accessible(&state, session_id, auth.workspace_id, auth.user_id).await?;
 
     let repo = MessageRepo::new(state.db.clone());
     let messages = repo.list_by_session(session_id).await?;
@@ -27,7 +27,7 @@ pub async fn create(
     Path(session_id): Path<Uuid>,
     Json(req): Json<MessageCreateRequest>,
 ) -> Result<Json<MessageOut>, AppError> {
-    ensure_session_accessible(&state, session_id, auth.company_id, auth.user_id).await?;
+    ensure_session_accessible(&state, session_id, auth.workspace_id, auth.user_id).await?;
 
     let repo = MessageRepo::new(state.db.clone());
     let message = repo.create(session_id, req).await?;
@@ -37,11 +37,14 @@ pub async fn create(
 async fn ensure_session_accessible(
     state: &AppState,
     session_id: Uuid,
-    company_id: Uuid,
+    workspace_id: Uuid,
     user_id: Uuid,
 ) -> Result<(), AppError> {
     let repo = SessionRepo::new(state.db.clone());
-    if !repo.is_accessible(session_id, company_id, user_id).await? {
+    if !repo
+        .is_accessible(session_id, workspace_id, user_id)
+        .await?
+    {
         return Err(AppError::NotFound("Session not found".into()));
     }
     Ok(())

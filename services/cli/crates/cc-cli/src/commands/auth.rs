@@ -25,8 +25,9 @@ pub async fn signin(ctx: AppContext, api_key: Option<String>) -> Result<()> {
             user_id: session.user_id,
             email: session.email,
             name: session.name,
-            company_id: session.company_id,
+            workspace_id: session.workspace_id,
             role: session.role,
+            active_workspace_id: None,
         }
         .save()?;
         println!("Signed in via API key.");
@@ -64,8 +65,9 @@ pub async fn signin(ctx: AppContext, api_key: Option<String>) -> Result<()> {
         user_id: result.user_id,
         email: result.email.clone(),
         name: result.name.clone(),
-        company_id: result.company_id,
+        workspace_id: result.workspace_id,
         role: result.role,
+        active_workspace_id: None,
     }
     .save()?;
 
@@ -92,9 +94,9 @@ pub async fn whoami(ctx: AppContext) -> Result<()> {
                 "user_id": me.user_id,
                 "email": me.email,
                 "name": me.name,
-                "company_id": me.company_id,
-                "company_name": me.company_name,
-                "company_slug": me.company_slug,
+                "workspace_id": me.workspace_id,
+                "workspace_name": me.workspace_name,
+                "workspace_slug": me.workspace_slug,
                 "role": me.role,
                 "server": auth.server_url,
             }))?
@@ -116,8 +118,8 @@ pub fn token() -> Result<()> {
 
 pub async fn register_admin(
     ctx: AppContext,
-    company_name: Option<String>,
-    company_slug: Option<String>,
+    workspace_name: Option<String>,
+    workspace_slug: Option<String>,
     email: Option<String>,
     name: Option<String>,
     password: Option<String>,
@@ -130,15 +132,15 @@ pub async fn register_admin(
         );
     }
     let client = KiokuClient::new(&base_url);
-    let company_name = prompt_or(company_name, "Company name: ")?;
+    let workspace_name = prompt_or(workspace_name, "Workspace name: ")?;
     let email = prompt_or(email, "Email: ")?;
     let name = prompt_or(name, "Name: ")?;
     let password = prompt_or(password, "Password: ")?;
 
     let session = client
         .register_admin(
-            &company_name,
-            company_slug.as_deref(),
+            &workspace_name,
+            workspace_slug.as_deref(),
             &email,
             &name,
             &password,
@@ -151,8 +153,9 @@ pub async fn register_admin(
         user_id: session.user_id,
         email: session.email,
         name: session.name,
-        company_id: session.company_id,
+        workspace_id: session.workspace_id,
         role: session.role,
+        active_workspace_id: None,
     }
     .save()?;
     println!("Registered admin and signed in.");

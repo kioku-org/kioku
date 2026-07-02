@@ -2,7 +2,7 @@ use uuid::Uuid;
 
 use crate::config::Settings;
 use crate::errors::AppError;
-use crate::repos::auth::{self, AuthRepo};
+use crate::repos::auth::{self, AuthRepo, MembershipRecord};
 use crate::types::{
     AuthSession, ProvisionRequest, RegisterAdminRequest, RegisterMemberRequest,
     RegisterPersonalRequest, SignInRequest,
@@ -18,8 +18,8 @@ impl AuthService {
         settings: &Settings,
         req: RegisterAdminRequest,
     ) -> Result<AuthSession, AppError> {
-        if req.company_name.trim().is_empty() {
-            return Err(AppError::BadRequest("Company name is required".into()));
+        if req.workspace_name.trim().is_empty() {
+            return Err(AppError::BadRequest("Workspace name is required".into()));
         }
         if !req.email.contains('@') {
             return Err(AppError::BadRequest("Valid email is required".into()));
@@ -35,39 +35,44 @@ impl AuthService {
         }
 
         let now = crate::util::now_ms();
-        let company_id = Uuid::new_v4();
+        let workspace_id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
         let slug = req
-            .company_slug
+            .workspace_slug
             .clone()
-            .unwrap_or_else(|| auth::slugify(&req.company_name));
+            .unwrap_or_else(|| auth::slugify(&req.workspace_name));
         let password_hash = auth::hash_password(&req.password)?;
 
-        repo.create_company(company_id, &req.company_name, &slug, now)
+        repo.create_workspace(workspace_id, &req.workspace_name, &slug, now)
             .await?;
         repo.create_user(user_id, &req.email, &req.name, &password_hash, now)
             .await?;
-        repo.create_membership(Uuid::new_v4(), company_id, user_id, "admin", now)
+        repo.create_membership(Uuid::new_v4(), workspace_id, user_id, "admin", now)
             .await?;
-        repo.create_default_config(company_id, now).await?;
+        repo.create_default_config(workspace_id, now).await?;
 
+        let memberships = [MembershipRecord {
+            workspace_id,
+            role: "admin".to_string(),
+        }];
         let token = auth::create_token(
             &settings.jwt_secret,
             user_id,
-            company_id,
+            workspace_id,
             "admin",
+            &memberships,
             settings.jwt_ttl_seconds,
         )?;
         let expires_at = now + (settings.jwt_ttl_seconds * 1000);
-        repo.create_auth_token(&token, user_id, company_id, now, expires_at)
+        repo.create_auth_token(&token, user_id, workspace_id, now, expires_at)
             .await?;
 
         Ok(AuthSession::new(
             user_id,
             req.email,
             req.name,
-            company_id,
-            req.company_name,
+            workspace_id,
+            req.workspace_name,
             slug,
             "admin".into(),
             token,
@@ -89,13 +94,13 @@ impl AuthService {
             ));
         }
 
-        let company = repo
-            .find_company_by_slug(&req.company_slug)
+        let workspace = repo
+            .find_workspace_by_slug(&req.workspace_slug)
             .await?
-            .ok_or_else(|| AppError::BadRequest("Company not found".into()))?;
+            .ok_or_else(|| AppError::BadRequest("Workspace not found".into()))?;
 
         let invite = repo
-            .find_invite(&req.email, company.id)
+            .find_invite(&req.email, workspace.id)
             .await?
             .ok_or_else(|| AppError::BadRequest("No invitation found".into()))?;
 
@@ -104,9 +109,9 @@ impl AuthService {
         }
 
         // Defense in depth: invite creation is already blocked for free-tier
-        // companies (see invite::create), but re-check here in case tier
+        // workspaces (see invite::create), but re-check here in case tier
         // changed after the invite was issued.
-        if company.is_free_tier() && repo.count_company_members(company.id).await? >= 1 {
+        if workspace.is_free_tier() && repo.count_workspace_members(workspace.id).await? >= 1 {
             return Err(AppError::Forbidden(
                 "Free tier is limited to 1 person — upgrade to Pro to add teammates".into(),
             ));
@@ -118,28 +123,33 @@ impl AuthService {
 
         repo.create_user(user_id, &req.email, &req.name, &password_hash, now)
             .await?;
-        repo.create_membership(Uuid::new_v4(), company.id, user_id, &invite.role, now)
+        repo.create_membership(Uuid::new_v4(), workspace.id, user_id, &invite.role, now)
             .await?;
         repo.mark_invite_used(invite.id, now).await?;
 
+        let memberships = [MembershipRecord {
+            workspace_id: workspace.id,
+            role: invite.role.clone(),
+        }];
         let token = auth::create_token(
             &settings.jwt_secret,
             user_id,
-            company.id,
+            workspace.id,
             &invite.role,
+            &memberships,
             settings.jwt_ttl_seconds,
         )?;
         let expires_at = now + (settings.jwt_ttl_seconds * 1000);
-        repo.create_auth_token(&token, user_id, company.id, now, expires_at)
+        repo.create_auth_token(&token, user_id, workspace.id, now, expires_at)
             .await?;
 
         Ok(AuthSession::new(
             user_id,
             req.email,
             req.name,
-            company.id,
-            company.name,
-            company.slug,
+            workspace.id,
+            workspace.name,
+            workspace.slug,
             invite.role,
             token,
         ))
@@ -165,40 +175,45 @@ impl AuthService {
         }
 
         let now = crate::util::now_ms();
-        let company_id = Uuid::new_v4();
+        let workspace_id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
 
         let email_local = req.email.split('@').next().unwrap_or("user");
         let slug = auth::slugify(&format!("{}-personal", email_local));
-        let company_name = format!("{}'s Workspace", req.name);
+        let workspace_name = format!("{}'s Workspace", req.name);
 
         let password_hash = auth::hash_password(&req.password)?;
 
-        repo.create_company(company_id, &company_name, &slug, now)
+        repo.create_workspace(workspace_id, &workspace_name, &slug, now)
             .await?;
         repo.create_user(user_id, &req.email, &req.name, &password_hash, now)
             .await?;
-        repo.create_membership(Uuid::new_v4(), company_id, user_id, "admin", now)
+        repo.create_membership(Uuid::new_v4(), workspace_id, user_id, "admin", now)
             .await?;
-        repo.create_default_config(company_id, now).await?;
+        repo.create_default_config(workspace_id, now).await?;
 
+        let memberships = [MembershipRecord {
+            workspace_id,
+            role: "admin".to_string(),
+        }];
         let token = auth::create_token(
             &settings.jwt_secret,
             user_id,
-            company_id,
+            workspace_id,
             "admin",
+            &memberships,
             settings.jwt_ttl_seconds,
         )?;
         let expires_at = now + (settings.jwt_ttl_seconds * 1000);
-        repo.create_auth_token(&token, user_id, company_id, now, expires_at)
+        repo.create_auth_token(&token, user_id, workspace_id, now, expires_at)
             .await?;
 
         Ok(AuthSession::new(
             user_id,
             req.email,
             req.name,
-            company_id,
-            company_name,
+            workspace_id,
+            workspace_name,
             slug,
             "admin".into(),
             token,
@@ -214,65 +229,71 @@ impl AuthService {
         let now = crate::util::now_ms();
 
         if let Some(user) = repo.find_user_by_email(&req.email).await? {
-            let membership = repo
-                .find_membership(user.id)
-                .await?
+            let memberships = repo.list_memberships(user.id).await?;
+            let membership = memberships
+                .first()
                 .ok_or_else(|| AppError::Internal(anyhow::anyhow!("User has no membership")))?;
-            let company = repo.find_company_by_id(membership.company_id).await?;
+            let workspace = repo.find_workspace_by_id(membership.workspace_id).await?;
             let token = auth::create_token(
                 &settings.jwt_secret,
                 user.id,
-                company.id,
+                workspace.id,
                 &membership.role,
+                &memberships,
                 settings.jwt_ttl_seconds,
             )?;
             let expires_at = now + (settings.jwt_ttl_seconds * 1000);
-            repo.create_auth_token(&token, user.id, company.id, now, expires_at)
+            repo.create_auth_token(&token, user.id, workspace.id, now, expires_at)
                 .await?;
             return Ok(AuthSession::new(
                 user.id,
                 user.email,
                 user.name,
-                company.id,
-                company.name,
-                company.slug,
-                membership.role,
+                workspace.id,
+                workspace.name,
+                workspace.slug,
+                membership.role.clone(),
                 token,
             ));
         }
 
-        let company_id = Uuid::new_v4();
+        let workspace_id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
         let email_local = req.email.split('@').next().unwrap_or("user");
         let slug = auth::slugify(&format!("{}-personal", email_local));
-        let company_name = format!("{}'s Workspace", req.name);
+        let workspace_name = format!("{}'s Workspace", req.name);
         let password_hash = auth::hash_password(&Uuid::new_v4().to_string())?;
 
-        repo.create_company(company_id, &company_name, &slug, now)
+        repo.create_workspace(workspace_id, &workspace_name, &slug, now)
             .await?;
         repo.create_user(user_id, &req.email, &req.name, &password_hash, now)
             .await?;
-        repo.create_membership(Uuid::new_v4(), company_id, user_id, "admin", now)
+        repo.create_membership(Uuid::new_v4(), workspace_id, user_id, "admin", now)
             .await?;
-        repo.create_default_config(company_id, now).await?;
+        repo.create_default_config(workspace_id, now).await?;
 
+        let memberships = [MembershipRecord {
+            workspace_id,
+            role: "admin".to_string(),
+        }];
         let token = auth::create_token(
             &settings.jwt_secret,
             user_id,
-            company_id,
+            workspace_id,
             "admin",
+            &memberships,
             settings.jwt_ttl_seconds,
         )?;
         let expires_at = now + (settings.jwt_ttl_seconds * 1000);
-        repo.create_auth_token(&token, user_id, company_id, now, expires_at)
+        repo.create_auth_token(&token, user_id, workspace_id, now, expires_at)
             .await?;
 
         Ok(AuthSession::new(
             user_id,
             req.email,
             req.name,
-            company_id,
-            company_name,
+            workspace_id,
+            workspace_name,
             slug,
             "admin".into(),
             token,
@@ -294,33 +315,34 @@ impl AuthService {
             return Err(AppError::Unauthorized("Incorrect password".into()));
         }
 
-        let membership = repo
-            .find_membership(user.id)
-            .await?
-            .ok_or_else(|| AppError::Unauthorized("No company membership found".into()))?;
+        let memberships = repo.list_memberships(user.id).await?;
+        let membership = memberships
+            .first()
+            .ok_or_else(|| AppError::Unauthorized("No workspace membership found".into()))?;
 
-        let company = repo.find_company_by_id(membership.company_id).await?;
+        let workspace = repo.find_workspace_by_id(membership.workspace_id).await?;
 
         let now = crate::util::now_ms();
         let token = auth::create_token(
             &settings.jwt_secret,
             user.id,
-            company.id,
+            workspace.id,
             &membership.role,
+            &memberships,
             settings.jwt_ttl_seconds,
         )?;
         let expires_at = now + (settings.jwt_ttl_seconds * 1000);
-        repo.create_auth_token(&token, user.id, company.id, now, expires_at)
+        repo.create_auth_token(&token, user.id, workspace.id, now, expires_at)
             .await?;
 
         Ok(AuthSession::new(
             user.id,
             user.email,
             user.name,
-            company.id,
-            company.name,
-            company.slug,
-            membership.role,
+            workspace.id,
+            workspace.name,
+            workspace.slug,
+            membership.role.clone(),
             token,
         ))
     }

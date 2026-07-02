@@ -5,9 +5,9 @@ pub struct AuthSession {
     pub user_id: String,
     pub email: String,
     pub name: String,
-    pub company_id: String,
-    pub company_name: String,
-    pub company_slug: String,
+    pub workspace_id: String,
+    pub workspace_name: String,
+    pub workspace_slug: String,
     pub role: String,
     pub token: String,
 }
@@ -27,9 +27,9 @@ pub struct RegisterPersonalRequest {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RegisterAdminRequest {
-    pub company_name: String,
+    pub workspace_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub company_slug: Option<String>,
+    pub workspace_slug: Option<String>,
     pub email: String,
     pub name: String,
     pub password: String,
@@ -49,7 +49,7 @@ fn default_mode() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     pub id: String,
-    pub company_id: String,
+    pub workspace_id: String,
     pub user_id: String,
     pub title: String,
     pub status: String,
@@ -132,7 +132,7 @@ pub struct TranscriptSegment {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Meeting {
     pub id: String,
-    pub company_id: String,
+    pub workspace_id: String,
     pub title: String,
     pub date: i64,
     pub duration_seconds: i32,
@@ -163,7 +163,7 @@ pub struct BotStatusResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct CompanyConfig {
+pub struct WorkspaceConfig {
     pub hivemind_enabled: bool,
     pub updated_at: i64,
 }
@@ -182,7 +182,7 @@ pub struct UploadResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CompanyAuthKeyOut {
+pub struct WorkspaceApiKeyOut {
     pub id: String,
     pub user_id: String,
     pub name: String,
@@ -205,9 +205,32 @@ fn default_invite_role() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InviteOut {
     pub id: String,
-    pub company_id: String,
+    pub workspace_id: String,
     pub email: String,
     pub role: String,
     pub created_at: i64,
     pub used_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceOut {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    pub tier: String,
+    /// The caller's role in this specific workspace.
+    pub role: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WorkspaceCreateRequest {
+    pub name: String,
+    pub slug: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WorkspaceCreateResponse {
+    pub workspace: WorkspaceOut,
+    pub token: String,
 }

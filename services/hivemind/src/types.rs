@@ -9,18 +9,33 @@ pub struct ProvisionRequest {
     pub name: String,
 }
 
+/// A single workspace membership, embedded in the JWT so `kioku ws <name>`
+/// can switch the active workspace locally (via the X-Workspace-Id header)
+/// without a network round trip.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MembershipClaim {
+    pub workspace_id: Uuid,
+    pub role: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     pub user_id: Uuid,
-    pub company_id: Uuid,
+    /// Active workspace at token-issue time — the default when no
+    /// X-Workspace-Id header is sent. Kept alongside `memberships` so every
+    /// existing call site and handler that only cares about "my one
+    /// workspace" keeps working unchanged.
+    pub workspace_id: Uuid,
     pub role: String,
+    #[serde(default)]
+    pub memberships: Vec<MembershipClaim>,
     pub exp: i64,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterAdminRequest {
-    pub company_name: String,
-    pub company_slug: Option<String>,
+    pub workspace_name: String,
+    pub workspace_slug: Option<String>,
     pub email: String,
     pub name: String,
     pub password: String,
@@ -31,7 +46,7 @@ pub struct RegisterMemberRequest {
     pub email: String,
     pub name: String,
     pub password: String,
-    pub company_slug: String,
+    pub workspace_slug: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,24 +67,24 @@ pub struct AuthSession {
     pub user_id: Uuid,
     pub email: String,
     pub name: String,
-    pub company_id: Uuid,
-    pub company_name: String,
-    pub company_slug: String,
+    pub workspace_id: Uuid,
+    pub workspace_name: String,
+    pub workspace_slug: String,
     pub role: String,
     pub token: String,
 }
 
-// ─── Company Config ─────────────────────────────────────────────────────────
+// ─── Workspace Config ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
-pub struct CompanyConfigOut {
-    pub company_id: Uuid,
+pub struct WorkspaceConfigOut {
+    pub workspace_id: Uuid,
     pub hivemind_enabled: bool,
     pub updated_at: i64,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct CompanyConfigPatch {
+pub struct WorkspaceConfigPatch {
     pub hivemind_enabled: Option<bool>,
 }
 
@@ -78,7 +93,7 @@ pub struct CompanyConfigPatch {
 #[derive(Debug, Serialize)]
 pub struct MemberOut {
     pub id: Uuid,
-    pub company_id: Uuid,
+    pub workspace_id: Uuid,
     pub user_id: Uuid,
     pub role: String,
     pub email: String,
@@ -91,7 +106,7 @@ pub struct MemberOut {
 #[derive(Debug, Serialize)]
 pub struct InviteOut {
     pub id: Uuid,
-    pub company_id: Uuid,
+    pub workspace_id: Uuid,
     pub email: String,
     pub role: String,
     pub created_at: i64,
@@ -109,15 +124,44 @@ fn default_member_role() -> String {
     "member".into()
 }
 
-// ─── Company API Keys (CLI auth) ────────────────────────────────────────────
+// ─── Workspaces ─────────────────────────────────────────────────────────────
+// A workspace is the shared knowledge pool for a project. A user can belong
+// to (and switch between) several.
+
+#[derive(Debug, Serialize)]
+pub struct WorkspaceOut {
+    pub id: Uuid,
+    pub name: String,
+    pub slug: String,
+    pub tier: String,
+    /// The caller's role in this specific workspace.
+    pub role: String,
+    pub created_at: i64,
+}
 
 #[derive(Debug, Deserialize)]
-pub struct CompanyApiKeyCreate {
+pub struct WorkspaceCreate {
+    pub name: String,
+    pub slug: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WorkspaceCreateResponse {
+    pub workspace: WorkspaceOut,
+    /// A fresh token whose `memberships` includes the new workspace — the
+    /// old token's membership list is now stale.
+    pub token: String,
+}
+
+// ─── Workspace API Keys (CLI auth) ────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct WorkspaceApiKeyCreate {
     pub name: String,
 }
 
 #[derive(Debug, Serialize)]
-pub struct CompanyApiKeyOut {
+pub struct WorkspaceApiKeyOut {
     pub id: Uuid,
     pub user_id: Uuid,
     pub name: String,
@@ -155,7 +199,7 @@ pub struct MeetingIngestRequest {
 #[derive(Debug, Serialize)]
 pub struct MeetingOut {
     pub id: Uuid,
-    pub company_id: Uuid,
+    pub workspace_id: Uuid,
     pub title: String,
     pub date: i64,
     pub duration_seconds: i32,
@@ -192,7 +236,7 @@ pub struct KnowledgeSearchResult {
 #[derive(Debug, Serialize)]
 pub struct KnowledgeDocumentOut {
     pub id: Uuid,
-    pub company_id: Uuid,
+    pub workspace_id: Uuid,
     pub user_id: Uuid,
     pub filename: String,
     pub content_type: String,
@@ -223,7 +267,7 @@ pub struct SessionPatchRequest {
 #[derive(Debug, Serialize, Clone)]
 pub struct SessionOut {
     pub id: Uuid,
-    pub company_id: Uuid,
+    pub workspace_id: Uuid,
     pub user_id: Uuid,
     pub title: String,
     pub status: String,

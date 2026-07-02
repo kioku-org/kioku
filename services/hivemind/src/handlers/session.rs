@@ -15,7 +15,9 @@ pub async fn create(
 ) -> Result<Json<SessionOut>, AppError> {
     let repo = SessionRepo::new(state.db.clone());
     let now = crate::util::now_ms();
-    let session = repo.create(auth.company_id, auth.user_id, req, now).await?;
+    let session = repo
+        .create(auth.workspace_id, auth.user_id, req, now)
+        .await?;
     Ok(Json(session))
 }
 
@@ -24,7 +26,7 @@ pub async fn list(
     auth: AuthContext,
 ) -> Result<Json<Vec<SessionOut>>, AppError> {
     let repo = SessionRepo::new(state.db.clone());
-    let sessions = repo.list(auth.company_id, auth.user_id).await?;
+    let sessions = repo.list(auth.workspace_id, auth.user_id).await?;
     Ok(Json(sessions))
 }
 
@@ -34,7 +36,7 @@ pub async fn get(
     Path(session_id): Path<Uuid>,
 ) -> Result<Json<SessionOut>, AppError> {
     let repo = SessionRepo::new(state.db.clone());
-    repo.get_by_id(session_id, auth.company_id, auth.user_id)
+    repo.get_by_id(session_id, auth.workspace_id, auth.user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Session not found".into()))
         .map(Json)
@@ -48,7 +50,7 @@ pub async fn update(
 ) -> Result<Json<SessionOut>, AppError> {
     let repo = SessionRepo::new(state.db.clone());
     let now = crate::util::now_ms();
-    repo.update(session_id, auth.company_id, auth.user_id, req, now)
+    repo.update(session_id, auth.workspace_id, auth.user_id, req, now)
         .await?
         .ok_or_else(|| AppError::NotFound("Session not found".into()))
         .map(Json)
@@ -61,7 +63,7 @@ pub async fn delete(
 ) -> Result<Json<()>, AppError> {
     let repo = SessionRepo::new(state.db.clone());
     let affected = repo
-        .delete(session_id, auth.company_id, auth.user_id)
+        .delete(session_id, auth.workspace_id, auth.user_id)
         .await?;
     if affected == 0 {
         return Err(AppError::NotFound("Session not found".into()));

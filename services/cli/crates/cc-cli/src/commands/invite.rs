@@ -19,7 +19,7 @@ pub async fn run(ctx: AppContext, email: Option<String>, revoke: Option<String>)
             return Ok(());
         }
         println!(
-            "Invited {} — they can now sign up to join your company.",
+            "Invited {} — they can now sign up to join your workspace.",
             invite.email
         );
         return Ok(());

@@ -44,7 +44,7 @@ EMAIL="${SLUG}@test.kioku"
 
 REGISTER_RESP=$(curl -sf -X POST "$HIVEMIND_URL/auth/register/admin" \
   -H "Content-Type: application/json" \
-  -d "{\"company_name\":\"$SLUG\",\"email\":\"$EMAIL\",\"name\":\"CI\",\"password\":\"test1234\"}" \
+  -d "{\"workspace_name\":\"$SLUG\",\"email\":\"$EMAIL\",\"name\":\"CI\",\"password\":\"test1234\"}" \
   --max-time 15 2>/dev/null || echo "{}")
 
 TOKEN=$(echo "$REGISTER_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || echo "")
@@ -54,8 +54,8 @@ if [ -n "$TOKEN" ]; then
   STATUS=$(http "$HIVEMIND_URL/auth/me" -H "Authorization: Bearer $TOKEN")
   [ "$STATUS" = "200" ] && log "Auth: /me 200" || fail "Auth: /me $STATUS"
 
-  STATUS=$(http "$HIVEMIND_URL/company/config" -H "Authorization: Bearer $TOKEN")
-  [ "$STATUS" = "200" ] && log "Company: /config 200" || fail "Company: /config $STATUS"
+  STATUS=$(http "$HIVEMIND_URL/workspace/config" -H "Authorization: Bearer $TOKEN")
+  [ "$STATUS" = "200" ] && log "Workspace: /config 200" || fail "Workspace: /config $STATUS"
 
   # ── Sessions ───────────────────────────────────────────────────────────────
   echo ""

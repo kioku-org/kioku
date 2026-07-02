@@ -15,7 +15,7 @@ impl MeetingRepo {
 
     pub async fn create(
         &self,
-        company_id: Uuid,
+        workspace_id: Uuid,
         req: crate::types::MeetingIngestRequest,
         now: i64,
     ) -> Result<MeetingOut, AppError> {
@@ -28,13 +28,13 @@ impl MeetingRepo {
 
         sqlx::query(
             r#"
-            INSERT INTO meetings (id, company_id, title, date, duration_seconds, participants, summary, created_at,
+            INSERT INTO meetings (id, workspace_id, title, date, duration_seconds, participants, summary, created_at,
                                   vexa_meeting_id, vexa_platform, vexa_native_meeting_id)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             "#,
         )
         .bind(id)
-        .bind(company_id)
+        .bind(workspace_id)
         .bind(&req.title)
         .bind(req.date)
         .bind(req.duration_seconds)
@@ -50,7 +50,7 @@ impl MeetingRepo {
 
         Ok(MeetingOut {
             id,
-            company_id,
+            workspace_id,
             title: req.title,
             date: req.date,
             duration_seconds: req.duration_seconds,
@@ -63,13 +63,13 @@ impl MeetingRepo {
         })
     }
 
-    pub async fn list(&self, company_id: Uuid) -> Result<Vec<MeetingOut>, AppError> {
+    pub async fn list(&self, workspace_id: Uuid) -> Result<Vec<MeetingOut>, AppError> {
         let rows = sqlx::query(
-            r#"SELECT id, company_id, title, date, duration_seconds, participants, summary, created_at,
+            r#"SELECT id, workspace_id, title, date, duration_seconds, participants, summary, created_at,
                       vexa_meeting_id, vexa_platform, vexa_native_meeting_id
-               FROM meetings WHERE company_id = $1 ORDER BY date DESC"#,
+               FROM meetings WHERE workspace_id = $1 ORDER BY date DESC"#,
         )
-        .bind(company_id)
+        .bind(workspace_id)
         .fetch_all(&self.db)
         .await
         .map_err(AppError::from)?;
@@ -77,14 +77,14 @@ impl MeetingRepo {
         Ok(rows.into_iter().map(row_to_meeting_out).collect())
     }
 
-    pub async fn get(&self, id: Uuid, company_id: Uuid) -> Result<Option<MeetingOut>, AppError> {
+    pub async fn get(&self, id: Uuid, workspace_id: Uuid) -> Result<Option<MeetingOut>, AppError> {
         let row = sqlx::query(
-            r#"SELECT id, company_id, title, date, duration_seconds, participants, summary, created_at,
+            r#"SELECT id, workspace_id, title, date, duration_seconds, participants, summary, created_at,
                       vexa_meeting_id, vexa_platform, vexa_native_meeting_id
-               FROM meetings WHERE id = $1 AND company_id = $2"#,
+               FROM meetings WHERE id = $1 AND workspace_id = $2"#,
         )
         .bind(id)
-        .bind(company_id)
+        .bind(workspace_id)
         .fetch_optional(&self.db)
         .await
         .map_err(AppError::from)?;
@@ -97,7 +97,7 @@ pub fn row_to_meeting_out(row: sqlx::postgres::PgRow) -> MeetingOut {
     use sqlx::Row;
     MeetingOut {
         id: row.get("id"),
-        company_id: row.get("company_id"),
+        workspace_id: row.get("workspace_id"),
         title: row.get("title"),
         date: row.get("date"),
         duration_seconds: row.get("duration_seconds"),

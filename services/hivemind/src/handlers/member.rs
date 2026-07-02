@@ -13,7 +13,7 @@ pub async fn list(
     auth: AuthContext,
 ) -> Result<Json<Vec<MemberOut>>, AppError> {
     let repo = MemberRepo::new(state.db.clone());
-    let members = repo.list(auth.company_id).await?;
+    let members = repo.list(auth.workspace_id).await?;
     Ok(Json(members))
 }
 
@@ -27,7 +27,7 @@ pub async fn remove(
     }
 
     let repo = MemberRepo::new(state.db.clone());
-    repo.remove(user_id, auth.company_id).await?;
+    repo.remove(user_id, auth.workspace_id).await?;
     Ok(Json(()))
 }
 
@@ -41,6 +41,6 @@ pub async fn update_role(
     }
 
     let repo = MemberRepo::new(state.db.clone());
-    repo.update_role(user_id, auth.company_id, &role).await?;
+    repo.update_role(user_id, auth.workspace_id, &role).await?;
     Ok(Json(()))
 }

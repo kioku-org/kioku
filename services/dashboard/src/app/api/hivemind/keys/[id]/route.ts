@@ -14,7 +14,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   }
 
   const { id } = await params;
-  const res = await fetch(`${hivemindUrl()}/company/auth-keys/${id}`, {
+  const res = await fetch(`${hivemindUrl()}/workspace/auth-keys/${id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });

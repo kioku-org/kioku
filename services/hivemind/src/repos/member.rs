@@ -13,18 +13,18 @@ impl MemberRepo {
         Self { db }
     }
 
-    pub async fn list(&self, company_id: Uuid) -> Result<Vec<MemberOut>, AppError> {
+    pub async fn list(&self, workspace_id: Uuid) -> Result<Vec<MemberOut>, AppError> {
         let rows = sqlx::query(
             r#"
-            SELECT cm.id, cm.company_id, cm.user_id, cm.role, cm.joined_at,
+            SELECT cm.id, cm.workspace_id, cm.user_id, cm.role, cm.joined_at,
                    u.email, u.name
-            FROM company_members cm
+            FROM workspace_members cm
             JOIN users u ON u.id = cm.user_id
-            WHERE cm.company_id = $1
+            WHERE cm.workspace_id = $1
             ORDER BY cm.joined_at DESC
             "#,
         )
-        .bind(company_id)
+        .bind(workspace_id)
         .fetch_all(&self.db)
         .await
         .map_err(AppError::from)?;
@@ -33,7 +33,7 @@ impl MemberRepo {
             .into_iter()
             .map(|r| MemberOut {
                 id: r.get("id"),
-                company_id: r.get("company_id"),
+                workspace_id: r.get("workspace_id"),
                 user_id: r.get("user_id"),
                 role: r.get("role"),
                 email: r.get("email"),
@@ -43,10 +43,10 @@ impl MemberRepo {
             .collect())
     }
 
-    pub async fn remove(&self, user_id: Uuid, company_id: Uuid) -> Result<(), AppError> {
-        sqlx::query(r#"DELETE FROM company_members WHERE user_id = $1 AND company_id = $2"#)
+    pub async fn remove(&self, user_id: Uuid, workspace_id: Uuid) -> Result<(), AppError> {
+        sqlx::query(r#"DELETE FROM workspace_members WHERE user_id = $1 AND workspace_id = $2"#)
             .bind(user_id)
-            .bind(company_id)
+            .bind(workspace_id)
             .execute(&self.db)
             .await
             .map_err(AppError::from)?;
@@ -56,15 +56,15 @@ impl MemberRepo {
     pub async fn update_role(
         &self,
         user_id: Uuid,
-        company_id: Uuid,
+        workspace_id: Uuid,
         role: &str,
     ) -> Result<(), AppError> {
         sqlx::query(
-            r#"UPDATE company_members SET role = $1 WHERE user_id = $2 AND company_id = $3"#,
+            r#"UPDATE workspace_members SET role = $1 WHERE user_id = $2 AND workspace_id = $3"#,
         )
         .bind(role)
         .bind(user_id)
-        .bind(company_id)
+        .bind(workspace_id)
         .execute(&self.db)
         .await
         .map_err(AppError::from)?;
