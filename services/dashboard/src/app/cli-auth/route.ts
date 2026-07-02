@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { CALENDAR_SCOPE, signCalendarState } from "@/lib/google-calendar-cli-state";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -18,80 +19,92 @@ export async function GET(request: NextRequest) {
 
   const session = await getServerSession(authOptions);
 
-  if (!session?.user?.email) {
-    // Not signed in — send to the OAuth provider, come back here after
+  // For the CLI, picking Google always means "and Calendar access too" —
+  // there's no separate `kioku cal` connect step later. GitHub can't grant
+  // Calendar, so it's untouched.
+  const wantsCalendar = provider !== "github";
+
+  const email = session?.user?.email;
+  const hivemindToken: string | undefined = (session as any)?.hivemindToken;
+
+  let identityOk = false;
+  let name = email?.split("@")[0] ?? "";
+  let workspaceId: string | undefined;
+  let role: string | undefined;
+  let userId: string | undefined;
+  if (hivemindToken) {
+    try {
+      const payload = JSON.parse(Buffer.from(hivemindToken.split(".")[1], "base64url").toString());
+      if (payload.user_id && payload.workspace_id) {
+        identityOk = true;
+        userId = payload.user_id;
+        workspaceId = payload.workspace_id;
+        role = payload.role ?? "member";
+        name = payload.name ?? name;
+      }
+    } catch {
+      // Malformed token — treat as unusable, fall through.
+    }
+  }
+
+  // Deliberately anchored to NEXTAUTH_URL rather than `request.url`: behind
+  // this deployment's reverse proxy, `request.url`'s origin resolves to the
+  // container's internal bind address (0.0.0.0:3001) instead of the public
+  // hostname, which produces an unreachable redirect for the browser.
+  const base = process.env.NEXTAUTH_URL || request.url;
+
+  if (!email || !identityOk) {
+    // No usable identity at all — go through normal NextAuth sign-in.
+    // Comes back here once done, at which point identity is established
+    // and (if Google) the branch below picks up the Calendar leg.
     const self = `/cli-auth?port=${port}&state=${encodeURIComponent(state)}&provider=${provider}`;
-    const providerPath = provider === "github" ? "github" : "google";
+    const nextAuthProviderId = provider === "github" ? "github" : "google";
     return NextResponse.redirect(
-      new URL(`/api/auth/signin/${providerPath}?callbackUrl=${encodeURIComponent(self)}`, request.url)
+      new URL(`/api/auth/signin/${nextAuthProviderId}?callbackUrl=${encodeURIComponent(self)}`, base)
     );
   }
 
-  // Signed in — provision (or re-use) the Hivemind JWT
-  const hivemindToken: string | undefined = (session as any).hivemindToken;
-  const email = session.user.email;
-  const name = session.user.name ?? email.split("@")[0];
-
-  // If the session already carries a hivemindToken, use it directly — but
-  // only if it's actually a post-rename token. Sessions cached before the
-  // company->workspace rename carry a JWT with no `workspace_id` claim;
-  // trusting it here would silently redirect the CLI with an empty
-  // workspace_id instead of failing loudly. Falling through re-provisions,
-  // which mints a fresh, current-shape token.
-  if (hivemindToken) {
-    try {
-      const payload = JSON.parse(
-        Buffer.from(hivemindToken.split(".")[1], "base64url").toString()
-      );
-      if (payload.user_id && payload.workspace_id) {
-        const params = new URLSearchParams({
-          token: hivemindToken,
-          state: state!,
-          user_id: payload.user_id,
-          email: payload.email ?? email,
-          name: payload.name ?? name,
-          workspace_id: payload.workspace_id,
-          role: payload.role ?? "member",
-        });
-        return NextResponse.redirect(`http://localhost:${portNum}/callback?${params}`);
-      }
-      // Missing user_id/workspace_id — stale pre-rename token, fall through.
-    } catch {
-      // Malformed token — fall through to re-provision
+  if (wantsCalendar) {
+    // Identity is established, but we still need a Calendar grant on this
+    // browser's Google session. NextAuth's /api/auth/signin/[provider] is
+    // a dead end here: it short-circuits to "already signed in" and skips
+    // re-authentication entirely when a session exists, regardless of
+    // which provider was requested — it can't be used to step up scope on
+    // an existing session. So this talks to Google directly instead,
+    // server-side, using the dashboard's own confidential Google client;
+    // the CLI never sees or holds that client's credentials.
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      return new NextResponse("Google OAuth is not configured.", { status: 500 });
     }
+
+    const cliState = signCalendarState({
+      port: portNum,
+      cliState: state,
+      exp: Math.floor(Date.now() / 1000) + 600,
+    });
+
+    const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+    authUrl.searchParams.set("client_id", clientId);
+    authUrl.searchParams.set("redirect_uri", `${base}/cli-auth/calendar-callback`);
+    authUrl.searchParams.set("response_type", "code");
+    authUrl.searchParams.set("scope", CALENDAR_SCOPE);
+    authUrl.searchParams.set("access_type", "offline");
+    authUrl.searchParams.set("prompt", "consent");
+    authUrl.searchParams.set("login_hint", email);
+    authUrl.searchParams.set("state", cliState);
+    return NextResponse.redirect(authUrl.toString());
   }
 
-  // No cached token: call provision endpoint
-  const hivemindUrl = process.env.HIVEMIND_INTERNAL_URL ?? "http://localhost:9100";
-  const internalSecret = process.env.INTERNAL_API_SECRET;
-  if (!internalSecret) {
-    return new NextResponse("Server configuration error: missing INTERNAL_API_SECRET.", { status: 500 });
-  }
-
-  try {
-    const r = await fetch(`${hivemindUrl}/internal/provision`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Internal-Secret": internalSecret,
-      },
-      body: JSON.stringify({ email, name }),
-    });
-    if (!r.ok) {
-      return new NextResponse(`Backend provision failed (${r.status}).`, { status: 502 });
-    }
-    const data = await r.json();
-    const params = new URLSearchParams({
-      token: data.token,
-      state: state!,
-      user_id: data.user_id,
-      email: data.email,
-      name: data.name,
-      workspace_id: data.workspace_id,
-      role: data.role,
-    });
-    return NextResponse.redirect(`http://localhost:${portNum}/callback?${params}`);
-  } catch {
-    return new NextResponse("Could not reach the Kioku backend.", { status: 502 });
-  }
+  // GitHub, or Calendar not requested — hand off to the CLI loopback now.
+  const params = new URLSearchParams({
+    token: hivemindToken!,
+    state,
+    user_id: userId!,
+    email,
+    name,
+    workspace_id: workspaceId!,
+    role: role!,
+  });
+  return NextResponse.redirect(`http://localhost:${portNum}/callback?${params}`);
 }

@@ -119,7 +119,9 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user, account, profile }) {
       // This callback is called after successful OAuth but before session creation
       if (
-        (account?.provider === "google" || account?.provider === "azure-ad" || account?.provider === "github") &&
+        (account?.provider === "google" ||
+          account?.provider === "azure-ad" ||
+          account?.provider === "github") &&
         user.email
       ) {
         try {

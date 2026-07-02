@@ -34,30 +34,14 @@ pub async fn signin(ctx: AppContext, api_key: Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    // OAuth flow: show provider selector → open browser → wait for callback
+    // OAuth flow: show provider selector → open browser → wait for callback.
+    // Picking Google requests Calendar access in the same round trip (see
+    // signin::run_oauth_flow / the dashboard's `google-calendar` provider)
+    // — no separate `kioku cal` connect step needed afterward. GitHub can't
+    // grant Google Calendar scope, so nothing changes for that path.
     let provider = signin::select_provider()?;
-
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-    let port = listener.local_addr()?.port();
-    let state = uuid::Uuid::new_v4().to_string();
-
     let dashboard_url = config::resolve_dashboard_url(&base_url);
-    let auth_url = format!(
-        "{}/cli-auth?port={}&state={}&provider={}",
-        dashboard_url,
-        port,
-        state,
-        provider.id()
-    );
-
-    println!("Opening browser…");
-    if webbrowser::open(&auth_url).is_err() {
-        println!("Couldn't open browser automatically. Open this URL manually:");
-        println!("  {}", auth_url);
-    }
-    println!("Waiting for sign-in (2 min timeout)…");
-
-    let result = signin::wait_for_callback(listener, &state).await?;
+    let result = signin::run_oauth_flow(&dashboard_url, &provider).await?;
 
     AuthFile {
         server_url: base_url,
@@ -72,6 +56,18 @@ pub async fn signin(ctx: AppContext, api_key: Option<String>) -> Result<()> {
     .save()?;
 
     println!("Signed in as {} ({})", result.name, result.email);
+
+    if let (Some(access_token), Some(refresh_token)) =
+        (result.google_access_token, result.google_refresh_token)
+    {
+        crate::google_calendar::save_from_signin(
+            access_token,
+            refresh_token,
+            result.google_token_expires_at,
+        )?;
+        println!("Also connected Google Calendar access (used by `kioku cal`).");
+    }
+
     Ok(())
 }
 

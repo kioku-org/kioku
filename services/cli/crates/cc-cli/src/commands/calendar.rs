@@ -5,7 +5,7 @@ use anyhow::Result;
 
 pub async fn run(ctx: AppContext, week: bool, date: Option<String>) -> Result<()> {
     // Kioku auth is required first — Calendar access is layered on top of it.
-    require_auth()?;
+    let auth = require_auth()?;
 
     let (time_min, time_max) = if let Some(date_str) = date {
         let parsed = google_calendar::parse_date_ddmmyyyy(&date_str)?;
@@ -16,7 +16,7 @@ pub async fn run(ctx: AppContext, week: bool, date: Option<String>) -> Result<()
         google_calendar::range_today()
     };
 
-    let access_token = google_calendar::ensure_valid_token_or_connect().await?;
+    let access_token = google_calendar::ensure_valid_token_or_connect(&auth).await?;
     let events = google_calendar::list_events(&access_token, time_min, time_max).await?;
 
     if ctx.json {
