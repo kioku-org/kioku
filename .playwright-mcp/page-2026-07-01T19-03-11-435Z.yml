@@ -1,0 +1,65 @@
+- main [ref=f6e2]:
+  - generic [ref=f6e3]:
+    - generic [ref=f6e4]:
+      - link "kioku" [ref=f6e5] [cursor=pointer]:
+        - /url: /
+      - navigation [ref=f6e6]:
+        - link "Docs" [ref=f6e7] [cursor=pointer]:
+          - /url: https://docs.kioku.chat
+        - link "Install" [ref=f6e8] [cursor=pointer]:
+          - /url: "#install"
+        - link "Sign In" [ref=f6e9] [cursor=pointer]:
+          - /url: https://dashboard.kioku.chat
+    - generic [ref=f6e10]:
+      - generic [ref=f6e11]:
+        - paragraph [ref=f6e12]: Open Source - MIT License
+        - heading "a context manager for meetings, coding, and agents." [level=1] [ref=f6e13]:
+          - generic [ref=f6e14]: a context
+          - generic [ref=f6e15]: manager for
+          - generic [ref=f6e16]: meetings,
+          - generic [ref=f6e17]: coding,
+          - generic [ref=f6e18]: and agents.
+      - generic [ref=f6e20]:
+        - paragraph [ref=f6e21]: INSTALL VIA TERMINAL
+        - generic [ref=f6e22]:
+          - button "Linux" [ref=f6e23] [cursor=pointer]
+          - button "Windows" [ref=f6e24] [cursor=pointer]
+        - generic [ref=f6e25]:
+          - paragraph [ref=f6e26]: curl -fsSL https://kioku.chat/install.sh | sh
+          - button "COPY" [ref=f6e27] [cursor=pointer]
+      - img
+      - generic:
+        - img
+    - generic [ref=f6e29]:
+      - paragraph [ref=f6e30]: PRODUCT WALKTHROUGH — COMING SOON
+      - button "Product walkthrough video coming soon" [disabled] [ref=f6e31]:
+        - img [ref=f6e32]
+      - generic [ref=f6e34]:
+        - button "Product walkthrough video coming soon" [disabled] [ref=f6e35]:
+          - img [ref=f6e36]
+        - generic [ref=f6e38]: coming soon
+    - generic [ref=f6e41]:
+      - article [ref=f6e42]:
+        - paragraph [ref=f6e43]: "#1 CAPTURE"
+        - paragraph [ref=f6e44]: 記録
+        - heading "Meetings remembered without asking someone to take perfect notes." [level=2] [ref=f6e45]
+        - paragraph [ref=f6e47]: Capture the discussion, the pivots inside it, and the attached context before it scatters into recaps and chat fragments.
+      - article [ref=f6e48]:
+        - paragraph [ref=f6e49]: "#2 REMEMBER"
+        - paragraph [ref=f6e50]: 記憶
+        - heading "Reasoning stays attached to the decision that came out of it." [level=2] [ref=f6e51]
+        - paragraph [ref=f6e53]: Kioku keeps the why, not just the headline. That makes the next planning cycle start with context instead of reconstruction.
+      - article [ref=f6e54]:
+        - paragraph [ref=f6e55]: "#3 RETURN"
+        - paragraph [ref=f6e56]: 帰還
+        - heading "Work can resume without another meeting just to rebuild the thread." [level=2] [ref=f6e57]
+        - paragraph [ref=f6e59]: The memory becomes something people and tools can return to when momentum picks back up days or weeks later.
+    - generic [ref=f6e60]:
+      - paragraph [ref=f6e61]: PRIVATE BY DEFAULT
+      - heading "context is everything." [level=2] [ref=f6e62]
+      - paragraph [ref=f6e63]: Kioku is for teams that do their hardest thinking together and need that context to stay alive after the call ends.
+      - button "Join the waitlist" [ref=f6e64] [cursor=pointer]
+    - generic [ref=f6e65]:
+      - paragraph [ref=f6e66]: MEETINGS • DOCUMENTS • MEMORY
+      - paragraph [ref=f6e67]: KI0KU.CHAT
+      - paragraph [ref=f6e68]: KIOKU

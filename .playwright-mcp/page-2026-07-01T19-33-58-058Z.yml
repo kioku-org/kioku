@@ -1,0 +1,23 @@
+- generic [active] [ref=f11e1]:
+  - generic [ref=f11e2]:
+    - generic [ref=f11e3]:
+      - img "Kioku Logo" [ref=f11e23]
+      - generic [ref=f11e6]: kioku
+    - generic [ref=f11e14]:
+      - heading "Sign in to continue" [level=2] [ref=f11e25]
+      - paragraph [ref=f11e26]: Choose your provider to get started
+      - generic [ref=f11e27]:
+        - button "Continue with Google" [ref=f11e28]:
+          - img [ref=f11e29]
+          - generic [ref=f11e34]: Continue with Google
+          - img [ref=f11e35]
+        - button "Continue with GitHub" [ref=f11e37]:
+          - img [ref=f11e38]
+          - generic [ref=f11e40]: Continue with GitHub
+          - img [ref=f11e41]
+      - button "Back" [ref=f11e44]:
+        - img [ref=f11e45]
+        - text: Back
+    - paragraph [ref=f11e47]: Open Source · Developer-first · API-first
+  - region "Notifications alt+T"
+  - alert [ref=f11e24]

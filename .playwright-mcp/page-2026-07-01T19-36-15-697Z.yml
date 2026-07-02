@@ -1,0 +1,107 @@
+- generic [active] [ref=f12e1]:
+  - generic [ref=f12e2]:
+    - banner [ref=f12e3]:
+      - generic [ref=f12e4]:
+        - generic [ref=f12e5]:
+          - link "Kioku Logo kioku" [ref=f12e6] [cursor=pointer]:
+            - /url: /
+            - img "Kioku Logo" [ref=f12e8]
+            - generic [ref=f12e9]: kioku
+          - link "0.1.0" [ref=f12e10] [cursor=pointer]:
+            - /url: https://github.com/kioku-org/kioku/releases/tag/v0.1.0
+            - generic [ref=f12e11]: 0.1.0
+        - generic [ref=f12e12]:
+          - link "Full Documentation" [ref=f12e13] [cursor=pointer]:
+            - /url: https://docs.kioku.chat/
+            - img
+            - generic [ref=f12e14]: Full Documentation
+          - button "Toggle theme" [ref=f12e15]:
+            - img
+            - generic [ref=f12e16]: Toggle theme
+          - button "User menu" [ref=f12e17]:
+            - img
+            - generic [ref=f12e18]: User menu
+    - generic [ref=f12e19]:
+      - complementary [ref=f12e20]:
+        - generic [ref=f12e21]:
+          - navigation [ref=f12e25]:
+            - link "Meetings" [ref=f12e26] [cursor=pointer]:
+              - /url: /meetings
+              - img [ref=f12e27]
+              - text: Meetings
+            - button "Join Meeting" [ref=f12e30]:
+              - img [ref=f12e31]
+              - text: Join Meeting
+            - generic [ref=f12e32]:
+              - link "Webhooks" [ref=f12e33] [cursor=pointer]:
+                - /url: /webhooks
+                - img [ref=f12e34]
+                - text: Webhooks
+              - link "MCP MCP Setup" [ref=f12e38] [cursor=pointer]:
+                - /url: /mcp
+                - img "MCP" [ref=f12e40]
+                - text: MCP Setup
+              - link "Profile" [ref=f12e41] [cursor=pointer]:
+                - /url: /profile
+                - img [ref=f12e42]
+                - text: Profile
+            - generic [ref=f12e45]:
+              - generic [ref=f12e47]:
+                - img [ref=f12e48]
+                - generic [ref=f12e50]: Admin
+              - button "Unlock Admin" [ref=f12e51]:
+                - img [ref=f12e52]
+                - generic [ref=f12e55]: Unlock Admin
+          - generic [ref=f12e56]:
+            - link "API Docs" [ref=f12e57] [cursor=pointer]:
+              - /url: https://docs.kioku.chat/
+              - img [ref=f12e58]
+              - text: API Docs
+            - link "Report a Bug" [ref=f12e60] [cursor=pointer]:
+              - /url: https://github.com/kioku-org/kioku/issues/new?labels=bug&title=[Bug]%20&body=%23%23%20Environment%0Adashboard.kioku.chat%0A%0A%23%23%20Description%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%20%0A%0A%23%23%20Expected%20behavior%0A%0A%23%23%20Actual%20behavior
+              - img [ref=f12e61]
+              - text: Report a Bug
+            - generic [ref=f12e71]:
+              - generic [ref=f12e72]: kioku
+              - link "0.1.0" [ref=f12e73] [cursor=pointer]:
+                - /url: https://github.com/kioku-org/kioku/releases/tag/v0.1.0
+                - generic [ref=f12e74]: 0.1.0
+      - main [ref=f12e75]:
+        - generic [ref=f12e76]:
+          - generic [ref=f12e77]:
+            - generic [ref=f12e78]:
+              - generic [ref=f12e79]:
+                - heading "Meetings" [level=1] [ref=f12e81]
+                - paragraph [ref=f12e82]: Browse and search your meeting transcriptions
+              - generic [ref=f12e83]:
+                - button [disabled]:
+                  - img
+                - button "Join Meeting" [ref=f12e85]:
+                  - img
+                  - generic [ref=f12e86]: Join Meeting
+            - generic [ref=f12e87]:
+              - generic [ref=f12e88]:
+                - img [ref=f12e89]
+                - textbox "Search meetings..." [ref=f12e92]
+              - generic [ref=f12e93]:
+                - combobox [ref=f12e94]:
+                  - generic: All Platforms
+                  - img
+                - combobox [ref=f12e95]:
+                  - generic: All Status
+                  - img
+          - table [ref=f12e98]:
+            - rowgroup [ref=f12e99]:
+              - row "Platform Meeting Status Duration Participants Time" [ref=f12e100]:
+                - columnheader "Platform" [ref=f12e101]
+                - columnheader "Meeting" [ref=f12e102]
+                - columnheader "Status" [ref=f12e103]
+                - columnheader "Duration" [ref=f12e104]
+                - columnheader "Participants" [ref=f12e105]
+                - columnheader "Time" [ref=f12e106]
+            - rowgroup [ref=f12e107]:
+              - row [ref=f12e108]:
+                - cell [ref=f12e109]:
+                  - img [ref=f12e110]
+    - region "Notifications alt+T"
+  - alert [ref=f12e112]

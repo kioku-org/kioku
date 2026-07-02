@@ -1,0 +1,162 @@
+- generic [active] [ref=f23e1]:
+  - generic [ref=f23e2]:
+    - banner [ref=f23e3]:
+      - generic [ref=f23e4]:
+        - generic [ref=f23e5]:
+          - link "Kioku Logo kioku" [ref=f23e6] [cursor=pointer]:
+            - /url: /
+            - img "Kioku Logo" [ref=f23e8]
+            - generic [ref=f23e9]: kioku
+          - link "0.1.0" [ref=f23e10] [cursor=pointer]:
+            - /url: https://github.com/kioku-org/kioku/releases/tag/v0.1.0
+            - generic [ref=f23e11]: 0.1.0
+        - generic [ref=f23e12]:
+          - link "Full Documentation" [ref=f23e13] [cursor=pointer]:
+            - /url: https://docs.kioku.chat/
+            - img
+            - generic [ref=f23e14]: Full Documentation
+          - button "Toggle theme" [ref=f23e15]:
+            - img
+            - generic [ref=f23e16]: Toggle theme
+          - button "User menu" [ref=f23e17]:
+            - img
+            - generic [ref=f23e18]: User menu
+    - generic [ref=f23e19]:
+      - complementary [ref=f23e20]:
+        - generic [ref=f23e21]:
+          - navigation [ref=f23e25]:
+            - link "Meetings" [ref=f23e26] [cursor=pointer]:
+              - /url: /meetings
+              - img [ref=f23e27]
+              - text: Meetings
+            - button "Join Meeting" [ref=f23e30]:
+              - img [ref=f23e31]
+              - text: Join Meeting
+            - generic [ref=f23e32]:
+              - link "Webhooks" [ref=f23e33] [cursor=pointer]:
+                - /url: /webhooks
+                - img [ref=f23e34]
+                - text: Webhooks
+              - link "MCP MCP Setup" [ref=f23e38] [cursor=pointer]:
+                - /url: /mcp
+                - img "MCP" [ref=f23e40]
+                - text: MCP Setup
+              - link "Profile" [ref=f23e41] [cursor=pointer]:
+                - /url: /profile
+                - img [ref=f23e42]
+                - text: Profile
+            - generic [ref=f23e45]:
+              - generic [ref=f23e46]:
+                - generic [ref=f23e47]:
+                  - img [ref=f23e48]
+                  - generic [ref=f23e50]: Admin
+                - button "Logout from admin" [ref=f23e119]:
+                  - img
+              - link "Users" [ref=f23e120] [cursor=pointer]:
+                - /url: /admin/users
+                - img [ref=f23e121]
+                - text: Users
+              - link "Bots" [ref=f23e126] [cursor=pointer]:
+                - /url: /admin/bots
+                - img [ref=f23e127]
+                - text: Bots
+              - link "Settings" [ref=f23e130] [cursor=pointer]:
+                - /url: /settings
+                - img [ref=f23e131]
+                - text: Settings
+          - generic [ref=f23e56]:
+            - link "API Docs" [ref=f23e57] [cursor=pointer]:
+              - /url: https://docs.kioku.chat/
+              - img [ref=f23e58]
+              - text: API Docs
+            - link "Report a Bug" [ref=f23e60] [cursor=pointer]:
+              - /url: https://github.com/kioku-org/kioku/issues/new?labels=bug&title=[Bug]%20&body=%23%23%20Environment%0Adashboard.kioku.chat%0A%0A%23%23%20Description%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%20%0A%0A%23%23%20Expected%20behavior%0A%0A%23%23%20Actual%20behavior
+              - img [ref=f23e61]
+              - text: Report a Bug
+            - generic [ref=f23e71]:
+              - generic [ref=f23e72]: kioku
+              - link "0.1.0" [ref=f23e73] [cursor=pointer]:
+                - /url: https://github.com/kioku-org/kioku/releases/tag/v0.1.0
+                - generic [ref=f23e74]: 0.1.0
+      - main [ref=f23e75]:
+        - generic [ref=f23e134]:
+          - generic [ref=f23e135]:
+            - heading "Settings" [level=1] [ref=f23e136]
+            - paragraph [ref=f23e137]: Configure your Kioku Dashboard connection
+          - generic [ref=f23e138]:
+            - generic [ref=f23e139]:
+              - generic [ref=f23e140]:
+                - generic [ref=f23e141]:
+                  - img [ref=f23e142]
+                  - text: Kioku API Configuration
+                - generic [ref=f23e145]: Configure the connection to your Kioku instance. These settings are managed via environment variables.
+              - generic [ref=f23e146]:
+                - generic [ref=f23e147]:
+                  - generic [ref=f23e148]: API URL
+                  - textbox "API URL" [disabled]: https://meetings.kioku.chat
+                  - paragraph [ref=f23e149]:
+                    - text: Set via
+                    - code [ref=f23e150]: VEXA_API_URL
+                    - text: environment variable
+                - generic [ref=f23e151]:
+                  - generic [ref=f23e152]: WebSocket URL
+                  - textbox "WebSocket URL" [disabled]: wss://meetings.kioku.chat/ws
+                  - paragraph [ref=f23e153]:
+                    - text: Auto-derived from
+                    - code [ref=f23e154]: VEXA_API_URL
+                - generic [ref=f23e155]:
+                  - generic [ref=f23e156]: Admin API Key
+                  - generic [ref=f23e157]:
+                    - textbox [disabled]: ••••••••••••••••••••••••••••••••
+                    - generic [ref=f23e158]: Configured
+                  - paragraph [ref=f23e159]:
+                    - text: Set via
+                    - code [ref=f23e160]: VEXA_ADMIN_API_KEY
+                    - text: environment variable
+                - generic [ref=f23e161]:
+                  - generic [ref=f23e162]:
+                    - paragraph [ref=f23e163]: Connection Status
+                    - generic [ref=f23e165]: Not tested
+                  - button "Test Connection" [ref=f23e166]
+            - generic [ref=f23e167]:
+              - generic [ref=f23e168]:
+                - generic [ref=f23e169]:
+                  - img [ref=f23e170]
+                  - text: AI Assistant Configuration
+                - generic [ref=f23e173]: AI settings for meeting transcript analysis. Configure via environment variables.
+              - generic [ref=f23e175]:
+                - img [ref=f23e177]
+                - heading "AI Not Configured" [level=3] [ref=f23e179]
+                - paragraph [ref=f23e180]:
+                  - text: Set
+                  - code [ref=f23e181]: AI_MODEL
+                  - text: and
+                  - code [ref=f23e182]: AI_API_KEY
+                  - text: environment variables to enable AI features.
+            - generic [ref=f23e183]:
+              - generic [ref=f23e184]:
+                - generic [ref=f23e185]: Environment Variables
+                - generic [ref=f23e186]:
+                  - text: To configure the dashboard, create a
+                  - code [ref=f23e187]: .env.local
+                  - text: file with these variables
+              - generic [ref=f23e189]: "# Kioku API Configuration (required) VEXA_API_URL=<your-api-gateway-url> VEXA_ADMIN_API_KEY=your_admin_api_key_here # AI Assistant Configuration (optional) # Format: provider/model AI_MODEL=openai/gpt-4o AI_API_KEY=your_ai_api_key_here"
+            - generic [ref=f23e190]:
+              - generic [ref=f23e192]: About
+              - generic [ref=f23e193]:
+                - generic [ref=f23e194]:
+                  - generic [ref=f23e195]: Version
+                  - generic [ref=f23e196]: 1.0.0
+                - generic [ref=f23e197]:
+                  - paragraph [ref=f23e198]: Kioku Dashboard is an open source web interface for the self-hosted meeting transcription API.
+                  - generic [ref=f23e199]:
+                    - link "Kioku GitHub" [ref=f23e200] [cursor=pointer]:
+                      - /url: https://github.com/kioku-org/kioku
+                      - text: Kioku GitHub
+                      - img [ref=f23e201]
+                    - link "Kioku Website" [ref=f23e205] [cursor=pointer]:
+                      - /url: https://kioku.chat
+                      - text: Kioku Website
+                      - img [ref=f23e206]
+    - region "Notifications alt+T"
+  - alert [ref=f23e80]

@@ -1,0 +1,121 @@
+- generic:
+  - generic:
+    - banner:
+      - generic:
+        - generic:
+          - link:
+            - /url: /
+            - generic:
+              - img
+            - generic: kioku
+          - link:
+            - /url: https://github.com/kioku-org/kioku/releases/tag/v0.1.0
+            - generic: 0.1.0
+        - generic:
+          - link:
+            - /url: https://docs.kioku.chat/
+            - img
+            - generic: Full Documentation
+          - button:
+            - img
+            - generic: Toggle theme
+          - button:
+            - img
+            - generic: User menu
+    - generic:
+      - complementary:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - navigation:
+                  - link:
+                    - /url: /meetings
+                    - img
+                    - text: Meetings
+                  - button:
+                    - img
+                    - text: Join Meeting
+                  - generic:
+                    - link:
+                      - /url: /webhooks
+                      - img
+                      - text: Webhooks
+                    - link:
+                      - /url: /mcp
+                      - generic:
+                        - img
+                      - text: MCP Setup
+                    - link:
+                      - /url: /profile
+                      - img
+                      - text: Profile
+                  - generic:
+                    - generic:
+                      - generic:
+                        - img
+                        - generic: Admin
+                    - button:
+                      - img
+                      - generic: Unlock Admin
+          - generic:
+            - link:
+              - /url: https://docs.kioku.chat/
+              - img
+              - text: API Docs
+            - link:
+              - /url: https://github.com/kioku-org/kioku/issues/new?labels=bug&title=[Bug]%20&body=%23%23%20Environment%0Adashboard.kioku.chat%0A%0A%23%23%20Description%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%20%0A%0A%23%23%20Expected%20behavior%0A%0A%23%23%20Actual%20behavior
+              - img
+              - text: Report a Bug
+            - generic:
+              - generic:
+                - generic: kioku
+                - link:
+                  - /url: https://github.com/kioku-org/kioku/releases/tag/v0.1.0
+                  - generic: 0.1.0
+      - main:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - img
+              - generic:
+                - generic: Admin Access Required
+                - generic: You need to authenticate with an admin token to access this area
+            - generic:
+              - button:
+                - img
+                - text: Enter Admin Token
+              - button:
+                - img
+                - text: Back to Dashboard
+          - paragraph: Admin access allows you to manage users, API tokens, and system settings. Contact your administrator if you need access.
+    - region "Notifications alt+T"
+  - alert
+  - dialog "Admin Authentication" [ref=f23e94]:
+    - generic [ref=f23e95]:
+      - img [ref=f23e97]
+      - generic [ref=f23e99]:
+        - heading "Admin Authentication" [level=2] [ref=f23e100]
+        - paragraph [ref=f23e101]: Enter your admin API token to access the administration panel
+    - generic [ref=f23e102]:
+      - generic [ref=f23e103]:
+        - generic [ref=f23e104]:
+          - img [ref=f23e105]
+          - text: Admin Token
+        - generic [ref=f23e108]:
+          - textbox "Admin Token" [active] [ref=f23e109]:
+            - /placeholder: Enter your admin API token...
+            - text: f6398af4fc4ead2e62e8ceee3ebda44e8c077bc4fcc86e895bbf8400f6bc09e4
+          - button [ref=f23e110]:
+            - img
+        - paragraph [ref=f23e111]: This is the VEXA_ADMIN_API_KEY configured in your environment
+      - generic [ref=f23e112]:
+        - button "Cancel" [ref=f23e113]
+        - button "Authenticate" [ref=f23e118]:
+          - img
+          - text: Authenticate
+    - paragraph [ref=f23e115]: Admin access is required to manage users, tokens, and system settings. Your session will expire after 24 hours.
+    - button "Close" [ref=f23e116]:
+      - img
+      - generic [ref=f23e117]: Close

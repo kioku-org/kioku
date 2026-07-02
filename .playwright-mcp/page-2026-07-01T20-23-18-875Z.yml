@@ -1,0 +1,86 @@
+- generic [active] [ref=f27e1]:
+  - generic [ref=f27e2]:
+    - banner [ref=f27e3]:
+      - generic [ref=f27e4]:
+        - generic [ref=f27e5]:
+          - link "Kioku Logo kioku" [ref=f27e6] [cursor=pointer]:
+            - /url: /
+            - img "Kioku Logo" [ref=f27e8]
+            - generic [ref=f27e9]: kioku
+          - link "0.1.0" [ref=f27e10] [cursor=pointer]:
+            - /url: https://github.com/kioku-org/kioku/releases/tag/v0.1.0
+            - generic [ref=f27e11]: 0.1.0
+        - generic [ref=f27e12]:
+          - link "Full Documentation" [ref=f27e13] [cursor=pointer]:
+            - /url: https://docs.kioku.chat/
+            - img
+            - generic [ref=f27e14]: Full Documentation
+          - button "Toggle theme" [ref=f27e15]:
+            - img
+            - generic [ref=f27e16]: Toggle theme
+          - button "User menu" [ref=f27e17]:
+            - img
+            - generic [ref=f27e18]: User menu
+    - generic [ref=f27e19]:
+      - complementary [ref=f27e20]:
+        - generic [ref=f27e21]:
+          - navigation [ref=f27e25]:
+            - link "Meetings" [ref=f27e26] [cursor=pointer]:
+              - /url: /meetings
+              - img [ref=f27e27]
+              - text: Meetings
+            - button "Join Meeting" [ref=f27e30]:
+              - img [ref=f27e31]
+              - text: Join Meeting
+            - generic [ref=f27e32]:
+              - link "Webhooks" [ref=f27e33] [cursor=pointer]:
+                - /url: /webhooks
+                - img [ref=f27e34]
+                - text: Webhooks
+              - link "MCP MCP Setup" [ref=f27e38] [cursor=pointer]:
+                - /url: /mcp
+                - img "MCP" [ref=f27e40]
+                - text: MCP Setup
+              - link "Profile" [ref=f27e41] [cursor=pointer]:
+                - /url: /profile
+                - img [ref=f27e42]
+                - text: Profile
+            - generic [ref=f27e45]:
+              - generic [ref=f27e46]:
+                - generic [ref=f27e47]:
+                  - img [ref=f27e48]
+                  - generic [ref=f27e50]: Admin
+                - button "Logout from admin" [ref=f27e51]:
+                  - img
+              - link "Users" [ref=f27e52] [cursor=pointer]:
+                - /url: /admin/users
+                - img [ref=f27e53]
+                - text: Users
+              - link "Bots" [ref=f27e58] [cursor=pointer]:
+                - /url: /admin/bots
+                - img [ref=f27e59]
+                - text: Bots
+              - link "Settings" [ref=f27e62] [cursor=pointer]:
+                - /url: /settings
+                - img [ref=f27e63]
+                - text: Settings
+          - generic [ref=f27e66]:
+            - link "API Docs" [ref=f27e67] [cursor=pointer]:
+              - /url: https://docs.kioku.chat/
+              - img [ref=f27e68]
+              - text: API Docs
+            - link "Report a Bug" [ref=f27e70] [cursor=pointer]:
+              - /url: https://github.com/kioku-org/kioku/issues/new?labels=bug&title=[Bug]%20&body=%23%23%20Environment%0Adashboard.kioku.chat%0A%0A%23%23%20Description%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%20%0A%0A%23%23%20Expected%20behavior%0A%0A%23%23%20Actual%20behavior
+              - img [ref=f27e71]
+              - text: Report a Bug
+            - generic [ref=f27e81]:
+              - generic [ref=f27e82]: kioku
+              - link "0.1.0" [ref=f27e83] [cursor=pointer]:
+                - /url: https://github.com/kioku-org/kioku/releases/tag/v0.1.0
+                - generic [ref=f27e84]: 0.1.0
+      - main [ref=f27e85]:
+        - generic [ref=f27e86]:
+          - img [ref=f27e87]
+          - paragraph [ref=f27e89]: Verifying admin access...
+    - region "Notifications alt+T"
+  - alert [ref=f27e90]

@@ -1,0 +1,125 @@
+- generic [active] [ref=f16e1]:
+  - generic [ref=f16e2]:
+    - banner [ref=f16e3]:
+      - generic [ref=f16e4]:
+        - generic [ref=f16e5]:
+          - link "Kioku Logo kioku" [ref=f16e6] [cursor=pointer]:
+            - /url: /
+            - img "Kioku Logo" [ref=f16e8]
+            - generic [ref=f16e9]: kioku
+          - link "0.1.0" [ref=f16e10] [cursor=pointer]:
+            - /url: https://github.com/kioku-org/kioku/releases/tag/v0.1.0
+            - generic [ref=f16e11]: 0.1.0
+        - generic [ref=f16e12]:
+          - link "Full Documentation" [ref=f16e13] [cursor=pointer]:
+            - /url: https://docs.kioku.chat/
+            - img
+            - generic [ref=f16e14]: Full Documentation
+          - button "Toggle theme" [ref=f16e15]:
+            - img
+            - generic [ref=f16e16]: Toggle theme
+          - button "User menu" [ref=f16e17]:
+            - img
+            - generic [ref=f16e18]: User menu
+    - generic [ref=f16e19]:
+      - complementary [ref=f16e20]:
+        - generic [ref=f16e21]:
+          - navigation [ref=f16e25]:
+            - link "Meetings" [ref=f16e26] [cursor=pointer]:
+              - /url: /meetings
+              - img [ref=f16e27]
+              - text: Meetings
+            - button "Join Meeting" [ref=f16e30]:
+              - img [ref=f16e31]
+              - text: Join Meeting
+            - generic [ref=f16e32]:
+              - link "Webhooks" [ref=f16e33] [cursor=pointer]:
+                - /url: /webhooks
+                - img [ref=f16e34]
+                - text: Webhooks
+              - link "MCP MCP Setup" [ref=f16e38] [cursor=pointer]:
+                - /url: /mcp
+                - img "MCP" [ref=f16e40]
+                - text: MCP Setup
+              - link "Profile" [ref=f16e41] [cursor=pointer]:
+                - /url: /profile
+                - img [ref=f16e42]
+                - text: Profile
+            - generic [ref=f16e45]:
+              - generic [ref=f16e47]:
+                - img [ref=f16e48]
+                - generic [ref=f16e50]: Admin
+              - button "Unlock Admin" [ref=f16e51]:
+                - img [ref=f16e52]
+                - generic [ref=f16e55]: Unlock Admin
+          - generic [ref=f16e56]:
+            - link "API Docs" [ref=f16e57] [cursor=pointer]:
+              - /url: https://docs.kioku.chat/
+              - img [ref=f16e58]
+              - text: API Docs
+            - link "Report a Bug" [ref=f16e60] [cursor=pointer]:
+              - /url: https://github.com/kioku-org/kioku/issues/new?labels=bug&title=[Bug]%20&body=%23%23%20Environment%0Adashboard.kioku.chat%0A%0A%23%23%20Description%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%20%0A%0A%23%23%20Expected%20behavior%0A%0A%23%23%20Actual%20behavior
+              - img [ref=f16e61]
+              - text: Report a Bug
+            - generic [ref=f16e71]:
+              - generic [ref=f16e72]: kioku
+              - link "0.1.0" [ref=f16e73] [cursor=pointer]:
+                - /url: https://github.com/kioku-org/kioku/releases/tag/v0.1.0
+                - generic [ref=f16e74]: 0.1.0
+      - main [ref=f16e75]:
+        - generic [ref=f16e76]:
+          - generic [ref=f16e77]:
+            - heading "Join Meeting" [level=1] [ref=f16e78]
+            - paragraph [ref=f16e79]: Send a transcription bot to record and transcribe your meeting in real-time
+          - generic [ref=f16e81]:
+            - generic [ref=f16e82]:
+              - generic [ref=f16e83]: Join a Meeting
+              - generic [ref=f16e84]: Send a transcription bot to record and transcribe your meeting
+            - generic [ref=f16e86]:
+              - group "Platform" [ref=f16e87]:
+                - generic [ref=f16e88]: Platform
+                - radiogroup "Select meeting platform" [ref=f16e89]:
+                  - radio "Google Meet" [checked] [ref=f16e90]:
+                    - img [ref=f16e92]
+                    - img [ref=f16e95]
+                    - generic [ref=f16e98]: Google Meet
+                  - radio "Microsoft Teams" [ref=f16e99]:
+                    - img [ref=f16e101]
+                    - generic [ref=f16e104]: Microsoft Teams
+                  - radio "Zoom" [ref=f16e105]:
+                    - img [ref=f16e107]
+                    - generic [ref=f16e110]: Zoom
+              - generic [ref=f16e111]:
+                - generic [ref=f16e112]: Meeting ID
+                - textbox "Meeting ID" [ref=f16e114]:
+                  - /placeholder: abc-defg-hij
+                - paragraph [ref=f16e115]: Enter the meeting code from the URL (e.g., abc-defg-hij)
+              - generic [ref=f16e116]:
+                - generic [ref=f16e117]: Bot Name (optional)
+                - textbox "Bot Name (optional)" [ref=f16e118]:
+                  - /placeholder: Meeting Assistant
+                  - text: Kioku
+                - paragraph [ref=f16e119]: This name will be displayed in the meeting participant list
+              - generic [ref=f16e121]:
+                - generic [ref=f16e122] [cursor=pointer]:
+                  - img [ref=f16e123]
+                  - text: Real-time Transcription
+                - switch "Real-time Transcription" [checked] [ref=f16e126] [cursor=pointer]
+              - generic [ref=f16e128]:
+                - generic [ref=f16e129] [cursor=pointer]:
+                  - img [ref=f16e130]
+                  - text: Authenticated
+                - switch "Authenticated" [ref=f16e134] [cursor=pointer]
+              - generic [ref=f16e135]:
+                - generic [ref=f16e136]: Transcription Language
+                - combobox [ref=f16e137]:
+                  - generic [ref=f16e138]: Auto-detect
+                  - img
+                - paragraph [ref=f16e139]: "Auto-detect: the service will detect the language automatically."
+              - generic [ref=f16e140]:
+                - button "Start Transcription" [disabled]:
+                  - img
+                  - text: Start Transcription
+              - paragraph [ref=f16e141]: The bot will join your meeting and transcribe in real-time
+    - region "Notifications alt+T"
+  - alert [ref=f16e142]

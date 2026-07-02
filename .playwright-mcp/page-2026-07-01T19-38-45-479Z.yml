@@ -1,0 +1,139 @@
+- generic [active] [ref=f15e1]:
+  - generic [ref=f15e2]:
+    - banner [ref=f15e3]:
+      - generic [ref=f15e4]:
+        - generic [ref=f15e5]:
+          - link "Kioku Logo kioku" [ref=f15e6] [cursor=pointer]:
+            - /url: /
+            - img "Kioku Logo" [ref=f15e8]
+            - generic [ref=f15e9]: kioku
+          - link "0.1.0" [ref=f15e10] [cursor=pointer]:
+            - /url: https://github.com/kioku-org/kioku/releases/tag/v0.1.0
+            - generic [ref=f15e11]: 0.1.0
+        - generic [ref=f15e12]:
+          - link "Full Documentation" [ref=f15e13] [cursor=pointer]:
+            - /url: https://docs.kioku.chat/
+            - img
+            - generic [ref=f15e14]: Full Documentation
+          - button "Toggle theme" [ref=f15e15]:
+            - img
+            - generic [ref=f15e16]: Toggle theme
+          - button "User menu" [ref=f15e17]:
+            - img
+            - generic [ref=f15e18]: User menu
+    - generic [ref=f15e19]:
+      - complementary [ref=f15e20]:
+        - generic [ref=f15e21]:
+          - navigation [ref=f15e25]:
+            - link "Meetings" [ref=f15e26] [cursor=pointer]:
+              - /url: /meetings
+              - img [ref=f15e27]
+              - text: Meetings
+            - button "Join Meeting" [ref=f15e30]:
+              - img [ref=f15e31]
+              - text: Join Meeting
+            - generic [ref=f15e32]:
+              - link "Webhooks" [ref=f15e33] [cursor=pointer]:
+                - /url: /webhooks
+                - img [ref=f15e34]
+                - text: Webhooks
+              - link "MCP MCP Setup" [ref=f15e38] [cursor=pointer]:
+                - /url: /mcp
+                - img "MCP" [ref=f15e40]
+                - text: MCP Setup
+              - link "Profile" [ref=f15e41] [cursor=pointer]:
+                - /url: /profile
+                - img [ref=f15e42]
+                - text: Profile
+            - generic [ref=f15e45]:
+              - generic [ref=f15e47]:
+                - img [ref=f15e48]
+                - generic [ref=f15e50]: Admin
+              - button "Unlock Admin" [ref=f15e51]:
+                - img [ref=f15e52]
+                - generic [ref=f15e55]: Unlock Admin
+          - generic [ref=f15e56]:
+            - link "API Docs" [ref=f15e57] [cursor=pointer]:
+              - /url: https://docs.kioku.chat/
+              - img [ref=f15e58]
+              - text: API Docs
+            - link "Report a Bug" [ref=f15e60] [cursor=pointer]:
+              - /url: https://github.com/kioku-org/kioku/issues/new?labels=bug&title=[Bug]%20&body=%23%23%20Environment%0Adashboard.kioku.chat%0A%0A%23%23%20Description%0A%0A%23%23%20Steps%20to%20reproduce%0A1.%20%0A%0A%23%23%20Expected%20behavior%0A%0A%23%23%20Actual%20behavior
+              - img [ref=f15e61]
+              - text: Report a Bug
+            - generic [ref=f15e71]:
+              - generic [ref=f15e72]: kioku
+              - link "0.1.0" [ref=f15e73] [cursor=pointer]:
+                - /url: https://github.com/kioku-org/kioku/releases/tag/v0.1.0
+                - generic [ref=f15e74]: 0.1.0
+      - main [ref=f15e75]:
+        - generic [ref=f15e76]:
+          - generic [ref=f15e77]:
+            - heading "Webhooks" [level=1] [ref=f15e78]
+            - paragraph [ref=f15e79]: Configure webhook delivery and monitor delivery history
+          - generic [ref=f15e80]:
+            - generic [ref=f15e81]:
+              - generic [ref=f15e82]:
+                - img [ref=f15e83]
+                - text: Configuration
+              - generic [ref=f15e87]: Configure webhook delivery for meeting events
+            - generic [ref=f15e88]:
+              - generic [ref=f15e89]:
+                - generic [ref=f15e90]: Endpoint URL
+                - generic [ref=f15e91]:
+                  - textbox "https://your-server.com/webhook" [ref=f15e92]
+                  - button "Test" [disabled]
+              - generic [ref=f15e93]:
+                - generic [ref=f15e94]: Signing Secret
+                - generic [ref=f15e95]:
+                  - textbox "whsec_... or enter your own secret" [ref=f15e96]
+                  - button [ref=f15e97]:
+                    - img
+                  - button [ref=f15e98]:
+                    - img
+                - paragraph [ref=f15e99]: Use this secret to verify webhook signatures.
+              - generic [ref=f15e100]:
+                - generic [ref=f15e101]: Events
+                - generic [ref=f15e102]:
+                  - button "meeting.completed ✓" [ref=f15e103] [cursor=pointer]
+                  - button "meeting.started" [ref=f15e104] [cursor=pointer]
+                  - button "bot.failed" [ref=f15e105] [cursor=pointer]
+                  - button "meeting.status_change" [ref=f15e106] [cursor=pointer]
+              - button "Save" [ref=f15e108]
+          - generic [ref=f15e109]:
+            - heading "Delivery History" [level=2] [ref=f15e111]
+            - generic [ref=f15e112]:
+              - combobox [ref=f15e113]:
+                - generic: All statuses
+                - img
+              - combobox [ref=f15e114]:
+                - generic: Last 7 days
+                - img
+          - generic [ref=f15e115]:
+            - generic [ref=f15e117]:
+              - paragraph [ref=f15e118]: Total
+              - paragraph [ref=f15e119]: "0"
+            - generic [ref=f15e121]:
+              - paragraph [ref=f15e122]: Delivered
+              - paragraph [ref=f15e123]: "0"
+            - generic [ref=f15e125]:
+              - paragraph [ref=f15e126]: Retrying
+              - paragraph [ref=f15e127]: "0"
+            - generic [ref=f15e129]:
+              - paragraph [ref=f15e130]: Failed
+              - paragraph [ref=f15e131]: "0"
+          - table [ref=f15e134]:
+            - rowgroup [ref=f15e135]:
+              - row "Event Meeting Status Attempts Response Time" [ref=f15e136]:
+                - columnheader "Event" [ref=f15e137]
+                - columnheader "Meeting" [ref=f15e138]
+                - columnheader "Status" [ref=f15e139]
+                - columnheader "Attempts" [ref=f15e140]
+                - columnheader "Response" [ref=f15e141]
+                - columnheader "Time" [ref=f15e142]
+            - rowgroup [ref=f15e143]:
+              - row [ref=f15e144]:
+                - cell [ref=f15e145]:
+                  - img [ref=f15e146]
+    - region "Notifications alt+T"
+  - alert [ref=f15e148]
