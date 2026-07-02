@@ -124,7 +124,7 @@ enum Commands {
 
     // ── API keys ──────────────────────────────────────────────────────────────
     #[command(about = "List API keys, create a new one, or delete one")]
-    Key {
+    Keys {
         #[arg(long, help = "Create a new API key")]
         create: bool,
         #[arg(
@@ -271,7 +271,7 @@ fn resolve_auth_key_delete_target(
     }
 
     Err(anyhow::anyhow!(
-        "auth key `{}` not found — run `kioku key` to inspect valid ids and prefixes",
+        "auth key `{}` not found — run `kioku keys` to inspect valid ids and prefixes",
         key_prefix_or_id
     ))
 }
@@ -627,7 +627,7 @@ async fn run(cmd: Commands, server: Option<String>, json: bool) -> Result<()> {
                 }
             }
         }
-        Commands::Key {
+        Commands::Keys {
             create,
             name,
             delete,
@@ -855,7 +855,7 @@ mod tests {
             .unwrap_err()
             .to_string();
         let expected =
-            "auth key `cmp_missing` not found — run `kioku key` to inspect valid ids and prefixes"
+            "auth key `cmp_missing` not found — run `kioku keys` to inspect valid ids and prefixes"
                 .to_string();
 
         assert_eq!(actual, expected);
