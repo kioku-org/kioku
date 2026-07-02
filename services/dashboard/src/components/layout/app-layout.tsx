@@ -10,7 +10,7 @@ import { AuthProvider } from "@/components/auth/auth-provider";
 import { NotificationBanner } from "@/components/notifications/notification-banner";
 
 // Routes that don't need the full app layout
-const publicRoutes = ["/login", "/auth", "/docs"];
+const publicRoutes = ["/login", "/auth", "/docs", "/privacy", "/terms"];
 
 interface AppLayoutProps {
   children: React.ReactNode;
