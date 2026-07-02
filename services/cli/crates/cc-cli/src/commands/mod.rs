@@ -15,6 +15,10 @@ pub mod upgrade;
 
 pub async fn run(cli: Cli) -> Result<()> {
     if cli.token {
+        anyhow::ensure!(
+            cli.command.is_none(),
+            "--token can't be combined with a subcommand — run `kioku --token` on its own"
+        );
         let auth = session::require_auth()?;
         println!("{}", auth.token);
         return Ok(());
@@ -33,7 +37,7 @@ pub async fn run(cli: Cli) -> Result<()> {
 
         Some(Commands::Signout) => auth::signout(),
 
-        Some(Commands::Whoami) => auth::whoami().await,
+        Some(Commands::Whoami) => auth::whoami(ctx).await,
 
         Some(Commands::AuthToken) => auth::token(),
 

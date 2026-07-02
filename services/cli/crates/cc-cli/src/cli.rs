@@ -1,5 +1,4 @@
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -10,9 +9,6 @@ use std::path::PathBuf;
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
-
-    #[arg(short = 'C', long, global = true)]
-    pub cwd: Option<PathBuf>,
 
     #[arg(long, global = true)]
     pub server: Option<String>,

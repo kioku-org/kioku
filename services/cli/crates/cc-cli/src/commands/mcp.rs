@@ -10,6 +10,13 @@ pub async fn run() -> Result<()> {
 pub fn meeting_mcp_url(server_url: &str) -> String {
     let trimmed = server_url.trim_end_matches('/');
 
+    // The hosted deployment runs the meeting-MCP service on its own
+    // subdomain (see deployment/docker/cloudflared.yml.example), not under
+    // api.kioku.chat.
+    if trimmed.contains("api.kioku.chat") {
+        return "https://mcp.kioku.chat/mcp".to_string();
+    }
+
     if let Some(pos) = trimmed.rfind(':') {
         let after_colon = &trimmed[pos + 1..];
 
@@ -79,8 +86,16 @@ mod tests {
     }
 
     #[test]
-    fn meeting_mcp_url_no_port_returns_placeholder() {
-        let url = meeting_mcp_url("https://api.kioku.chat");
-        assert!(url.contains("mcp"), "should contain mcp in URL: {url}");
+    fn meeting_mcp_url_uses_dedicated_subdomain_for_hosted_deployment() {
+        assert_eq!(
+            meeting_mcp_url("https://api.kioku.chat"),
+            "https://mcp.kioku.chat/mcp"
+        );
+    }
+
+    #[test]
+    fn meeting_mcp_url_falls_back_to_path_for_unknown_no_port_host() {
+        let url = meeting_mcp_url("https://self-hosted.example.com");
+        assert_eq!(url, "https://self-hosted.example.com/meeting-mcp/mcp");
     }
 }

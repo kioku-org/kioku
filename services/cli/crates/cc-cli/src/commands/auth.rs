@@ -79,10 +79,28 @@ pub fn signout() -> Result<()> {
     Ok(())
 }
 
-pub async fn whoami() -> Result<()> {
+pub async fn whoami(ctx: AppContext) -> Result<()> {
     let auth = require_auth()?;
     let client = crate::session::make_client(&auth);
     let me = client.whoami().await?;
+    if ctx.json {
+        // Deliberately omit `me.token` — whoami is a read-only identity
+        // check, not a credential export (use `kioku --token` for that).
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "user_id": me.user_id,
+                "email": me.email,
+                "name": me.name,
+                "company_id": me.company_id,
+                "company_name": me.company_name,
+                "company_slug": me.company_slug,
+                "role": me.role,
+                "server": auth.server_url,
+            }))?
+        );
+        return Ok(());
+    }
     println!("name:    {}", me.name);
     println!("email:   {}", me.email);
     println!("role:    {}", me.role);
