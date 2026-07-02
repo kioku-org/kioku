@@ -5,6 +5,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 use std::path::{Path, PathBuf};
 use tracing_subscriber::{fmt, EnvFilter};
 
+mod google_calendar;
 mod signin;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -46,6 +47,12 @@ enum Commands {
     Signin {
         #[arg(long, help = "Sign in using a long-lived API key instead of OAuth")]
         api_key: Option<String>,
+        #[arg(
+            long,
+            conflicts_with = "api_key",
+            help = "Grant kioku read-only access to your Google Calendar (used by `kioku cal`)"
+        )]
+        calendar: bool,
     },
     #[command(about = "Sign out and clear stored credentials")]
     Signout,
@@ -101,6 +108,18 @@ enum Commands {
             help = "Stop a running meeting bot, by meeting id or id prefix"
         )]
         kill: Option<String>,
+    },
+    #[command(about = "List Google Calendar meetings for today, the coming week, or a date")]
+    Cal {
+        #[arg(long, help = "List the coming week instead of just today")]
+        week: bool,
+        #[arg(
+            long,
+            value_name = "DD/MM/YYYY",
+            conflicts_with = "week",
+            help = "List a specific date instead of today"
+        )]
+        date: Option<String>,
     },
 
     // ── API keys ──────────────────────────────────────────────────────────────
@@ -365,7 +384,10 @@ async fn run(cmd: Commands, server: Option<String>, json: bool) -> Result<()> {
             auth.save()?;
             println!("Registered admin and signed in.");
         }
-        Commands::Signin { api_key } => {
+        Commands::Signin { api_key, calendar } => {
+            if calendar {
+                return google_calendar::signin_calendar().await;
+            }
             let base_url = resolve_server_url(server.as_deref());
             if let Some(key) = api_key {
                 let client = KiokuClient::new(&base_url);
@@ -576,6 +598,32 @@ async fn run(cmd: Commands, server: Option<String>, json: bool) -> Result<()> {
                             .unwrap_or("unknown");
                         println!("{meeting_id} — {platform} ({status})");
                     }
+                }
+            }
+        }
+        Commands::Cal { week, date } => {
+            let (time_min, time_max) = if let Some(date_str) = date {
+                let parsed = google_calendar::parse_date_ddmmyyyy(&date_str)?;
+                google_calendar::range_for_date(parsed)
+            } else if week {
+                google_calendar::range_week()
+            } else {
+                google_calendar::range_today()
+            };
+
+            let access_token = google_calendar::ensure_valid_token().await?;
+            let events = google_calendar::list_events(&access_token, time_min, time_max).await?;
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&events)?);
+            } else {
+                if events.is_empty() {
+                    println!("No meetings.");
+                }
+                for e in &events {
+                    let link = e.link.as_deref().unwrap_or("(no link)");
+                    println!("{} — {}", e.start, e.summary);
+                    println!("  {link}");
                 }
             }
         }

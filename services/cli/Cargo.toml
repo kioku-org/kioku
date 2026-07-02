@@ -32,6 +32,9 @@ rprompt       = "2"
 crossterm     = { version = "0.28", features = ["event-stream"] }
 webbrowser    = "1"
 urlencoding   = "2"
+sha2          = "0.10"
+base64        = "0.22"
+rand          = "0.8"
 
 cc-kioku   = { path = "crates/cc-kioku" }
 cc-auth        = { path = "crates/cc-auth" }
