@@ -195,20 +195,31 @@ async fn respond(stream: &mut tokio::net::TcpStream, status: u16, message: &str)
 
 // ─── Token refresh ──────────────────────────────────────────────────────────
 
-/// Returns a valid access token, refreshing if expired.
-/// Errors with a clear "run kioku signin --calendar" message — never a raw API error.
-pub async fn ensure_valid_token() -> Result<String> {
-    let auth = GoogleCalendarAuth::load()?.ok_or_else(|| {
-        anyhow::anyhow!("not signed in with Google Calendar — run `kioku signin --calendar` first")
-    })?;
-
-    if !auth.is_expired() {
-        return Ok(auth.access_token);
+/// Returns a valid Calendar access token, transparently connecting or
+/// reconnecting Google Calendar access if there's no usable token yet:
+///
+///   - no token saved            → run the consent flow, then use the new token
+///   - token valid                → use it
+///   - token expired              → refresh silently
+///   - refresh fails (revoked)    → run the consent flow again
+pub async fn ensure_valid_token_or_connect() -> Result<String> {
+    if let Some(auth) = GoogleCalendarAuth::load()? {
+        if !auth.is_expired() {
+            return Ok(auth.access_token);
+        }
+        if let Ok(token) = refresh_token(&auth).await {
+            return Ok(token);
+        }
+        // Refresh failed (e.g. access revoked) — fall through and reconnect.
     }
 
-    refresh_token(&auth).await.map_err(|_| {
-        anyhow::anyhow!("not signed in with Google Calendar — run `kioku signin --calendar` again")
-    })
+    println!("Kioku needs read-only Google Calendar access to show your upcoming meetings.");
+    println!("It will not edit, create, or delete events.");
+    signin_calendar().await?;
+
+    let auth = GoogleCalendarAuth::load()?
+        .ok_or_else(|| anyhow::anyhow!("calendar sign-in completed but no token was saved"))?;
+    Ok(auth.access_token)
 }
 
 async fn refresh_token(auth: &GoogleCalendarAuth) -> Result<String> {

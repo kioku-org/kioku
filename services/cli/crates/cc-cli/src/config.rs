@@ -12,10 +12,7 @@ pub fn resolve_server_url(server_override: Option<&str>) -> String {
     )
 }
 
-pub fn resolve_server_url_from(
-    server_override: Option<&str>,
-    env_server: Option<&str>,
-) -> String {
+pub fn resolve_server_url_from(server_override: Option<&str>, env_server: Option<&str>) -> String {
     server_override
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -42,4 +39,35 @@ pub fn resolve_dashboard_url(server_url: &str) -> String {
     }
 
     DEFAULT_DASHBOARD_URL.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn resolve_server_url_prefers_cli_override() {
+        let actual =
+            resolve_server_url_from(Some("https://cli.example"), Some("https://env.example"));
+        let expected = "https://cli.example".to_string();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn resolve_server_url_uses_env_when_cli_missing() {
+        let actual = resolve_server_url_from(None, Some("https://env.example"));
+        let expected = "https://env.example".to_string();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn resolve_server_url_defaults_to_local_hivemind() {
+        let actual = resolve_server_url_from(None, None);
+        let expected = DEFAULT_SERVER_URL.to_string();
+
+        assert_eq!(actual, expected);
+    }
 }
