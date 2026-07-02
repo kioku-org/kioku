@@ -1,6 +1,7 @@
 use crate::types::*;
 use anyhow::{Context, Result};
-use reqwest::{multipart, Client, StatusCode};
+use reqwest::{multipart, Client, RequestBuilder, Response, StatusCode};
+use serde::de::DeserializeOwned;
 use std::path::Path;
 
 pub struct KiokuClient {
@@ -46,7 +47,16 @@ impl KiokuClient {
         self.token.as_ref().map(|t| format!("Bearer {}", t))
     }
 
-    async fn handle_error(resp: reqwest::Response) -> anyhow::Error {
+    /// Attach the `Authorization` header when a token is set; leave the
+    /// request untouched otherwise.
+    fn authed(&self, req: RequestBuilder) -> RequestBuilder {
+        match self.auth_header() {
+            Some(auth) => req.header("Authorization", auth),
+            None => req,
+        }
+    }
+
+    async fn handle_error(resp: Response) -> anyhow::Error {
         let status = resp.status();
         match resp.text().await {
             Ok(body) => {
@@ -58,6 +68,25 @@ impl KiokuClient {
             }
             Err(_) => anyhow::anyhow!("{}", status),
         }
+    }
+
+    /// Decode a successful response as JSON, or turn a non-2xx response into
+    /// an `Err` describing the server's error message.
+    async fn parse<T: DeserializeOwned>(resp: Response, err_context: &str) -> Result<T> {
+        if !resp.status().is_success() {
+            return Err(Self::handle_error(resp).await);
+        }
+        resp.json::<T>()
+            .await
+            .with_context(|| err_context.to_string())
+    }
+
+    /// Assert a successful response, discarding the body.
+    async fn expect_ok(resp: Response) -> Result<()> {
+        if !resp.status().is_success() {
+            return Err(Self::handle_error(resp).await);
+        }
+        Ok(())
     }
 
     pub async fn signin(&self, email: &str, password: &str) -> Result<AuthSession> {
@@ -75,13 +104,7 @@ impl KiokuClient {
         if resp.status() == StatusCode::UNAUTHORIZED {
             return Err(anyhow::anyhow!("invalid email or password"));
         }
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-
-        resp.json::<AuthSession>()
-            .await
-            .context("invalid signin response")
+        Self::parse(resp, "invalid signin response").await
     }
 
     pub async fn register_personal(
@@ -105,13 +128,7 @@ impl KiokuClient {
         if resp.status() == StatusCode::UNAUTHORIZED {
             return Err(anyhow::anyhow!("registration failed"));
         }
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-
-        resp.json::<AuthSession>()
-            .await
-            .context("invalid register personal response")
+        Self::parse(resp, "invalid register personal response").await
     }
 
     pub async fn register_admin(
@@ -139,13 +156,7 @@ impl KiokuClient {
         if resp.status() == StatusCode::UNAUTHORIZED {
             return Err(anyhow::anyhow!("admin registration failed"));
         }
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-
-        resp.json::<AuthSession>()
-            .await
-            .context("invalid register admin response")
+        Self::parse(resp, "invalid register admin response").await
     }
 
     pub async fn signin_api_key(&self, api_key: &str) -> Result<AuthSession> {
@@ -160,65 +171,43 @@ impl KiokuClient {
         if resp.status() == StatusCode::UNAUTHORIZED {
             return Err(anyhow::anyhow!("invalid api key"));
         }
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-
-        resp.json::<AuthSession>()
-            .await
-            .context("invalid api key signin response")
+        Self::parse(resp, "invalid api key signin response").await
     }
 
     pub async fn signout(&self) -> Result<()> {
-        let mut req = self.client.post(self.url("/auth/signout"));
-        if let Some(auth) = self.auth_header() {
-            req = req.header("Authorization", auth);
-        }
-        let resp = req.send().await.context("signout request failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        Ok(())
+        let resp = self
+            .authed(self.client.post(self.url("/auth/signout")))
+            .send()
+            .await
+            .context("signout request failed")?;
+        Self::expect_ok(resp).await
     }
 
     pub async fn whoami(&self) -> Result<AuthSession> {
-        let mut req = self.client.get(self.url("/auth/me"));
-        if let Some(auth) = self.auth_header() {
-            req = req.header("Authorization", auth);
-        }
-        let resp = req.send().await.context("whoami request failed")?;
+        let resp = self
+            .authed(self.client.get(self.url("/auth/me")))
+            .send()
+            .await
+            .context("whoami request failed")?;
+
         if resp.status() == StatusCode::UNAUTHORIZED {
             return Err(anyhow::anyhow!("not authenticated — run `kioku signin`"));
         }
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<AuthSession>()
-            .await
-            .context("invalid whoami response")
+        Self::parse(resp, "invalid whoami response").await
     }
 
     pub async fn list_sessions(&self) -> Result<Vec<Session>> {
         let resp = self
-            .client
-            .get(self.url("/sessions"))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(self.client.get(self.url("/sessions")))
             .send()
             .await
             .context("list sessions failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<Vec<Session>>()
-            .await
-            .context("invalid sessions response")
+        Self::parse(resp, "invalid sessions response").await
     }
 
     pub async fn create_session(&self, title: &str, mode: &str) -> Result<Session> {
         let resp = self
-            .client
-            .post(self.url("/sessions"))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(self.client.post(self.url("/sessions")))
             .json(&SessionCreateRequest {
                 title: title.to_string(),
                 mode: mode.to_string(),
@@ -226,58 +215,37 @@ impl KiokuClient {
             .send()
             .await
             .context("create session failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<Session>()
-            .await
-            .context("invalid session response")
+        Self::parse(resp, "invalid session response").await
     }
 
     pub async fn get_session(&self, id: &str) -> Result<Session> {
         let resp = self
-            .client
-            .get(self.url(&format!("/sessions/{}", id)))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(self.client.get(self.url(&format!("/sessions/{}", id))))
             .send()
             .await
             .context("get session failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<Session>()
-            .await
-            .context("invalid session response")
+        Self::parse(resp, "invalid session response").await
     }
 
     pub async fn delete_session(&self, id: &str) -> Result<()> {
         let resp = self
-            .client
-            .delete(self.url(&format!("/sessions/{}", id)))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(self.client.delete(self.url(&format!("/sessions/{}", id))))
             .send()
             .await
             .context("delete session failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        Ok(())
+        Self::expect_ok(resp).await
     }
 
     pub async fn list_messages(&self, session_id: &str) -> Result<Vec<Message>> {
         let resp = self
-            .client
-            .get(self.url(&format!("/sessions/{}/messages", session_id)))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(
+                self.client
+                    .get(self.url(&format!("/sessions/{}/messages", session_id))),
+            )
             .send()
             .await
             .context("list messages failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<Vec<Message>>()
-            .await
-            .context("invalid messages response")
+        Self::parse(resp, "invalid messages response").await
     }
 
     pub async fn send_message(&self, session_id: &str, text: &str) -> Result<Message> {
@@ -291,19 +259,15 @@ impl KiokuClient {
             timestamp: chrono::Utc::now().timestamp_millis(),
         };
         let resp = self
-            .client
-            .post(self.url(&format!("/sessions/{}/messages", session_id)))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(
+                self.client
+                    .post(self.url(&format!("/sessions/{}/messages", session_id))),
+            )
             .json(&msg)
             .send()
             .await
             .context("send message failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<Message>()
-            .await
-            .context("invalid message response")
+        Self::parse(resp, "invalid message response").await
     }
 
     pub async fn knowledge_search(
@@ -312,9 +276,7 @@ impl KiokuClient {
         limit: u32,
     ) -> Result<Vec<KnowledgeSearchResult>> {
         let resp = self
-            .client
-            .post(self.url("/knowledge/search"))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(self.client.post(self.url("/knowledge/search")))
             .json(&KnowledgeSearchRequest {
                 query: query.to_string(),
                 limit,
@@ -322,12 +284,7 @@ impl KiokuClient {
             .send()
             .await
             .context("knowledge search failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<Vec<KnowledgeSearchResult>>()
-            .await
-            .context("invalid search response")
+        Self::parse(resp, "invalid search response").await
     }
 
     pub async fn upload_document(&self, path: &Path) -> Result<UploadResponse> {
@@ -344,212 +301,143 @@ impl KiokuClient {
         let form = multipart::Form::new().part("file", part);
 
         let resp = self
-            .client
-            .post(self.url("/knowledge/documents"))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(self.client.post(self.url("/knowledge/documents")))
             .multipart(form)
             .send()
             .await
             .context("upload document failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<UploadResponse>()
-            .await
-            .context("invalid upload response")
+        Self::parse(resp, "invalid upload response").await
     }
 
     pub async fn list_documents(&self) -> Result<Vec<serde_json::Value>> {
         let resp = self
-            .client
-            .get(self.url("/knowledge/documents"))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(self.client.get(self.url("/knowledge/documents")))
             .send()
             .await
             .context("list documents failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<Vec<serde_json::Value>>()
-            .await
-            .context("invalid documents response")
+        Self::parse(resp, "invalid documents response").await
     }
 
     pub async fn delete_document(&self, id: &str) -> Result<()> {
         let resp = self
-            .client
-            .delete(self.url(&format!("/knowledge/documents/{}", id)))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(
+                self.client
+                    .delete(self.url(&format!("/knowledge/documents/{}", id))),
+            )
             .send()
             .await
             .context("delete document failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        Ok(())
+        Self::expect_ok(resp).await
     }
 
     pub async fn list_meetings(&self) -> Result<Vec<Meeting>> {
         let resp = self
-            .client
-            .get(self.url("/meetings"))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(self.client.get(self.url("/meetings")))
             .send()
             .await
             .context("list meetings failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<Vec<Meeting>>()
-            .await
-            .context("invalid meetings response")
+        Self::parse(resp, "invalid meetings response").await
     }
 
     pub async fn get_meeting(&self, meeting_id: &str) -> Result<Meeting> {
         let resp = self
-            .client
-            .get(self.url(&format!("/meetings/{meeting_id}")))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(
+                self.client
+                    .get(self.url(&format!("/meetings/{meeting_id}"))),
+            )
             .send()
             .await
             .context("get meeting failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<Meeting>()
-            .await
-            .context("invalid meeting response")
+        Self::parse(resp, "invalid meeting response").await
     }
 
     pub async fn get_transcript(&self, meeting_id: &str) -> Result<Vec<serde_json::Value>> {
         let resp = self
-            .client
-            .get(self.url(&format!("/meetings/{meeting_id}/transcript")))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(
+                self.client
+                    .get(self.url(&format!("/meetings/{meeting_id}/transcript"))),
+            )
             .send()
             .await
             .context("get transcript failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<Vec<serde_json::Value>>()
-            .await
-            .context("invalid transcript response")
+        Self::parse(resp, "invalid transcript response").await
     }
 
     /// Join a meeting given its link (Google Meet, Teams, or Zoom — platform
     /// is auto-detected server-side from the URL).
     pub async fn join_meeting(&self, meeting_url: &str) -> Result<serde_json::Value> {
         let resp = self
-            .client
-            .post(self.url("/vexa/bots"))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(self.client.post(self.url("/vexa/bots")))
             .json(&serde_json::json!({ "meeting_url": meeting_url }))
             .send()
             .await
             .context("join meeting failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<serde_json::Value>()
-            .await
-            .context("invalid join meeting response")
+        Self::parse(resp, "invalid join meeting response").await
     }
 
     pub async fn list_bot_status(&self) -> Result<Vec<BotStatus>> {
         let resp = self
-            .client
-            .get(self.url("/vexa/bots/status"))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(self.client.get(self.url("/vexa/bots/status")))
             .send()
             .await
             .context("list bot status failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<BotStatusResponse>()
+        Self::parse::<BotStatusResponse>(resp, "invalid bot status response")
             .await
             .map(|r| r.running_bots)
-            .context("invalid bot status response")
     }
 
     pub async fn stop_bot(&self, platform: &str, native_meeting_id: &str) -> Result<()> {
         let resp = self
-            .client
-            .delete(self.url(&format!("/vexa/bots/{platform}/{native_meeting_id}")))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(
+                self.client
+                    .delete(self.url(&format!("/vexa/bots/{platform}/{native_meeting_id}"))),
+            )
             .send()
             .await
             .context("stop bot failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        Ok(())
+        Self::expect_ok(resp).await
     }
 
     pub async fn ingest_meeting(&self, req: &MeetingIngestRequest) -> Result<Meeting> {
         let resp = self
-            .client
-            .post(self.url("/meetings"))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(self.client.post(self.url("/meetings")))
             .json(req)
             .send()
             .await
             .context("ingest meeting failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<Meeting>()
-            .await
-            .context("invalid meeting response")
+        Self::parse(resp, "invalid meeting response").await
     }
 
     // ─── Company Auth Keys (CLI API keys) ──────────────────────────────────
 
     pub async fn create_auth_key(&self, name: &str) -> Result<serde_json::Value> {
         let resp = self
-            .client
-            .post(self.url("/company/auth-keys"))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(self.client.post(self.url("/company/auth-keys")))
             .json(&serde_json::json!({ "name": name }))
             .send()
             .await
             .context("create auth key failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<serde_json::Value>()
-            .await
-            .context("invalid auth key response")
+        Self::parse(resp, "invalid auth key response").await
     }
 
     pub async fn list_auth_keys(&self) -> Result<Vec<CompanyAuthKeyOut>> {
         let resp = self
-            .client
-            .get(self.url("/company/auth-keys"))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(self.client.get(self.url("/company/auth-keys")))
             .send()
             .await
             .context("list auth keys failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        resp.json::<Vec<CompanyAuthKeyOut>>()
-            .await
-            .context("invalid auth keys response")
+        Self::parse(resp, "invalid auth keys response").await
     }
 
     pub async fn delete_auth_key(&self, key_id: &str) -> Result<()> {
         let resp = self
-            .client
-            .delete(self.url(&format!("/company/auth-keys/{}", key_id)))
-            .header("Authorization", self.auth_header().unwrap_or_default())
+            .authed(
+                self.client
+                    .delete(self.url(&format!("/company/auth-keys/{}", key_id))),
+            )
             .send()
             .await
             .context("delete auth key failed")?;
-        if !resp.status().is_success() {
-            return Err(Self::handle_error(resp).await);
-        }
-        Ok(())
+        Self::expect_ok(resp).await
     }
 }

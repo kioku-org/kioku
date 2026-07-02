@@ -1,6 +1,40 @@
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+
+fn config_path(file_name: &str) -> PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("kioku")
+        .join(file_name)
+}
+
+fn load_json<T: DeserializeOwned>(path: &Path) -> Result<Option<T>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let content =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    let value =
+        serde_json::from_str(&content).with_context(|| format!("parsing {}", path.display()))?;
+    Ok(Some(value))
+}
+
+fn save_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating directory {}", parent.display()))?;
+    }
+    let content = serde_json::to_string_pretty(value)?;
+    std::fs::write(path, content).with_context(|| format!("writing {}", path.display()))
+}
+
+fn delete_file(path: &Path) -> Result<()> {
+    if path.exists() {
+        std::fs::remove_file(path).with_context(|| format!("removing {}", path.display()))?;
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthFile {
@@ -15,47 +49,27 @@ pub struct AuthFile {
 
 impl AuthFile {
     pub fn path() -> PathBuf {
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("kioku")
-            .join("auth.json")
+        config_path("auth.json")
     }
 
     pub fn load() -> Result<Option<Self>> {
-        let path = Self::path();
-        if !path.exists() {
-            return Ok(None);
-        }
-        let content = std::fs::read_to_string(&path)
-            .with_context(|| format!("reading {}", path.display()))?;
-        let auth: AuthFile = serde_json::from_str(&content)
-            .with_context(|| format!("parsing {}", path.display()))?;
-        Ok(Some(auth))
+        load_json(&Self::path())
     }
 
     pub fn save(&self) -> Result<()> {
-        let path = Self::path();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("creating directory {}", parent.display()))?;
-        }
-        let content = serde_json::to_string_pretty(self)?;
-        std::fs::write(&path, content).with_context(|| format!("writing {}", path.display()))?;
-        Ok(())
+        save_json(&Self::path(), self)
     }
 
     pub fn delete() -> Result<()> {
-        let path = Self::path();
-        if path.exists() {
-            std::fs::remove_file(&path).with_context(|| format!("removing {}", path.display()))?;
-        }
-        Ok(())
+        delete_file(&Self::path())
     }
 }
 
 /// Google Calendar OAuth token — separate from the main Hivemind `AuthFile`.
-/// Obtained via a dedicated direct CLI<->Google OAuth flow (`kioku signin --calendar`),
-/// distinct from the dashboard-mediated main signin flow.
+/// Obtained via `kioku cal`, which transparently runs the Google consent
+/// flow the first time Calendar access is needed (see
+/// `ensure_valid_token_or_connect` in the CLI), distinct from the
+/// dashboard-mediated main signin flow.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GoogleCalendarAuth {
     pub access_token: String,
@@ -66,41 +80,19 @@ pub struct GoogleCalendarAuth {
 
 impl GoogleCalendarAuth {
     pub fn path() -> PathBuf {
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("kioku")
-            .join("google-calendar.json")
+        config_path("google-calendar.json")
     }
 
     pub fn load() -> Result<Option<Self>> {
-        let path = Self::path();
-        if !path.exists() {
-            return Ok(None);
-        }
-        let content = std::fs::read_to_string(&path)
-            .with_context(|| format!("reading {}", path.display()))?;
-        let auth: GoogleCalendarAuth = serde_json::from_str(&content)
-            .with_context(|| format!("parsing {}", path.display()))?;
-        Ok(Some(auth))
+        load_json(&Self::path())
     }
 
     pub fn save(&self) -> Result<()> {
-        let path = Self::path();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("creating directory {}", parent.display()))?;
-        }
-        let content = serde_json::to_string_pretty(self)?;
-        std::fs::write(&path, content).with_context(|| format!("writing {}", path.display()))?;
-        Ok(())
+        save_json(&Self::path(), self)
     }
 
     pub fn delete() -> Result<()> {
-        let path = Self::path();
-        if path.exists() {
-            std::fs::remove_file(&path).with_context(|| format!("removing {}", path.display()))?;
-        }
-        Ok(())
+        delete_file(&Self::path())
     }
 
     pub fn is_expired(&self) -> bool {
