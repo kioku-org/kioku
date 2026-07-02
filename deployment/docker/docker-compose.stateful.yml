@@ -77,6 +77,10 @@ services:
       - AZURE_AD_CLIENT_ID=${AZURE_AD_CLIENT_ID:-}
       - AZURE_AD_CLIENT_SECRET=${AZURE_AD_CLIENT_SECRET:-}
       - AZURE_AD_TENANT_ID=${AZURE_AD_TENANT_ID:-}
+      # kioku cal — Google Calendar OAuth (separate Desktop-app client, calendar.readonly).
+      # Used client-side by the kioku CLI binary, not by the dashboard itself.
+      - KIOKU_GOOGLE_CALENDAR_CLIENT_ID=${KIOKU_GOOGLE_CALENDAR_CLIENT_ID:-}
+      - KIOKU_GOOGLE_CALENDAR_CLIENT_SECRET=${KIOKU_GOOGLE_CALENDAR_CLIENT_SECRET:-}
       - SMTP_HOST=${SMTP_HOST:-}
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASS=${SMTP_PASS:-}
