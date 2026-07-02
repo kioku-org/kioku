@@ -437,6 +437,56 @@ impl KiokuClient {
             .context("invalid transcript response")
     }
 
+    /// Join a meeting given its link (Google Meet, Teams, or Zoom — platform
+    /// is auto-detected server-side from the URL).
+    pub async fn join_meeting(&self, meeting_url: &str) -> Result<serde_json::Value> {
+        let resp = self
+            .client
+            .post(self.url("/vexa/bots"))
+            .header("Authorization", self.auth_header().unwrap_or_default())
+            .json(&serde_json::json!({ "meeting_url": meeting_url }))
+            .send()
+            .await
+            .context("join meeting failed")?;
+        if !resp.status().is_success() {
+            return Err(Self::handle_error(resp).await);
+        }
+        resp.json::<serde_json::Value>()
+            .await
+            .context("invalid join meeting response")
+    }
+
+    pub async fn list_bot_status(&self) -> Result<Vec<BotStatus>> {
+        let resp = self
+            .client
+            .get(self.url("/vexa/bots/status"))
+            .header("Authorization", self.auth_header().unwrap_or_default())
+            .send()
+            .await
+            .context("list bot status failed")?;
+        if !resp.status().is_success() {
+            return Err(Self::handle_error(resp).await);
+        }
+        resp.json::<BotStatusResponse>()
+            .await
+            .map(|r| r.running_bots)
+            .context("invalid bot status response")
+    }
+
+    pub async fn stop_bot(&self, platform: &str, native_meeting_id: &str) -> Result<()> {
+        let resp = self
+            .client
+            .delete(self.url(&format!("/vexa/bots/{platform}/{native_meeting_id}")))
+            .header("Authorization", self.auth_header().unwrap_or_default())
+            .send()
+            .await
+            .context("stop bot failed")?;
+        if !resp.status().is_success() {
+            return Err(Self::handle_error(resp).await);
+        }
+        Ok(())
+    }
+
     pub async fn ingest_meeting(&self, req: &MeetingIngestRequest) -> Result<Meeting> {
         let resp = self
             .client

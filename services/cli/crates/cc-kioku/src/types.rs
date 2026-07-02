@@ -142,6 +142,26 @@ pub struct Meeting {
     pub created_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BotStatus {
+    #[serde(default)]
+    pub platform: Option<String>,
+    #[serde(default)]
+    pub native_meeting_id: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub normalized_status: Option<String>,
+    #[serde(default)]
+    pub meeting_id_from_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BotStatusResponse {
+    #[serde(default)]
+    pub running_bots: Vec<BotStatus>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CompanyConfig {
     pub hivemind_enabled: bool,

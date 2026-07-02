@@ -87,6 +87,21 @@ enum Commands {
         #[arg(value_name = "MEETING_ID")]
         meeting_id: String,
     },
+    #[command(about = "List running meeting bots, join a meeting, or kill a bot")]
+    Meet {
+        #[arg(
+            value_name = "LINK",
+            help = "Meeting link to join (Google Meet, Teams, or Zoom — auto-detected). Pass `ls` to list."
+        )]
+        link: Option<String>,
+        #[arg(
+            long,
+            value_name = "BOT",
+            conflicts_with = "link",
+            help = "Stop a running meeting bot, by meeting id or id prefix"
+        )]
+        kill: Option<String>,
+    },
 
     // ── API keys ──────────────────────────────────────────────────────────────
     #[command(about = "List API keys, create a new one, or delete one")]
@@ -240,6 +255,43 @@ fn resolve_auth_key_delete_target(
         "auth key `{}` not found — run `kioku key` to inspect valid ids and prefixes",
         key_prefix_or_id
     ))
+}
+
+/// Resolve a bot identifier (exact meeting id, or an unambiguous prefix of one)
+/// against the running-bots list, returning (platform, native_meeting_id).
+fn resolve_bot_kill_target(
+    bots: &[cc_kioku::BotStatus],
+    bot_id_or_prefix: &str,
+) -> Result<(String, String)> {
+    let matches: Vec<&cc_kioku::BotStatus> = bots
+        .iter()
+        .filter(|b| {
+            b.native_meeting_id.as_deref() == Some(bot_id_or_prefix)
+                || b.native_meeting_id
+                    .as_deref()
+                    .is_some_and(|id| id.starts_with(bot_id_or_prefix))
+        })
+        .collect();
+
+    match matches.as_slice() {
+        [only] => {
+            let platform = only.platform.clone().ok_or_else(|| {
+                anyhow::anyhow!("bot `{}` has no platform recorded", bot_id_or_prefix)
+            })?;
+            let native_meeting_id = only.native_meeting_id.clone().ok_or_else(|| {
+                anyhow::anyhow!("bot `{}` has no meeting id recorded", bot_id_or_prefix)
+            })?;
+            Ok((platform, native_meeting_id))
+        }
+        [] => Err(anyhow::anyhow!(
+            "bot `{}` not found — run `kioku meet` to inspect running bots",
+            bot_id_or_prefix
+        )),
+        _ => Err(anyhow::anyhow!(
+            "bot id `{}` is ambiguous — matches multiple running bots, use a longer prefix",
+            bot_id_or_prefix
+        )),
+    }
 }
 
 #[tokio::main]
@@ -491,6 +543,42 @@ async fn run(cmd: Commands, server: Option<String>, json: bool) -> Result<()> {
                 }
             }
         }
+        Commands::Meet { link, kill } => {
+            let auth = require_auth()?;
+            let client = make_client(&auth);
+            if let Some(bot_id) = kill {
+                let bots = client.list_bot_status().await?;
+                let (platform, native_meeting_id) = resolve_bot_kill_target(&bots, &bot_id)?;
+                client.stop_bot(&platform, &native_meeting_id).await?;
+                println!("Stopped bot {bot_id}");
+            } else if let Some(target) = link.filter(|l| !l.eq_ignore_ascii_case("ls")) {
+                let result = client.join_meeting(&target).await?;
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                } else {
+                    println!("Joining {target}");
+                }
+            } else {
+                let bots = client.list_bot_status().await?;
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&bots)?);
+                } else {
+                    if bots.is_empty() {
+                        println!("No running bots.");
+                    }
+                    for b in &bots {
+                        let platform = b.platform.as_deref().unwrap_or("?");
+                        let meeting_id = b.native_meeting_id.as_deref().unwrap_or("?");
+                        let status = b
+                            .normalized_status
+                            .as_deref()
+                            .or(b.status.as_deref())
+                            .unwrap_or("unknown");
+                        println!("{meeting_id} — {platform} ({status})");
+                    }
+                }
+            }
+        }
         Commands::Key {
             create,
             name,
@@ -570,8 +658,8 @@ async fn run(cmd: Commands, server: Option<String>, json: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        mcp_config_json, meeting_mcp_url, resolve_auth_key_delete_target, resolve_server_url_from,
-        Cli, Commands, DEFAULT_SERVER_URL,
+        mcp_config_json, meeting_mcp_url, resolve_auth_key_delete_target, resolve_bot_kill_target,
+        resolve_server_url_from, Cli, Commands, DEFAULT_SERVER_URL,
     };
     use cc_kioku::CompanyAuthKeyOut;
     use clap::Parser;
@@ -723,5 +811,58 @@ mod tests {
                 .to_string();
 
         assert_eq!(actual, expected);
+    }
+
+    fn bot_fixture(platform: &str, native_meeting_id: &str) -> cc_kioku::BotStatus {
+        cc_kioku::BotStatus {
+            platform: Some(platform.to_string()),
+            native_meeting_id: Some(native_meeting_id.to_string()),
+            status: Some("running".to_string()),
+            normalized_status: Some("Up".to_string()),
+            meeting_id_from_name: None,
+        }
+    }
+
+    #[test]
+    fn resolve_bot_kill_target_accepts_exact_id() {
+        let bots = vec![bot_fixture("google_meet", "abc-defg-hij")];
+        let (platform, id) = resolve_bot_kill_target(&bots, "abc-defg-hij").unwrap();
+        assert_eq!(platform, "google_meet");
+        assert_eq!(id, "abc-defg-hij");
+    }
+
+    #[test]
+    fn resolve_bot_kill_target_accepts_unambiguous_prefix() {
+        let bots = vec![bot_fixture("google_meet", "abc-defg-hij")];
+        let (platform, id) = resolve_bot_kill_target(&bots, "abc-de").unwrap();
+        assert_eq!(platform, "google_meet");
+        assert_eq!(id, "abc-defg-hij");
+    }
+
+    #[test]
+    fn resolve_bot_kill_target_errors_for_unknown_value() {
+        let bots = vec![bot_fixture("google_meet", "abc-defg-hij")];
+        let err = resolve_bot_kill_target(&bots, "zzz")
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            err,
+            "bot `zzz` not found — run `kioku meet` to inspect running bots"
+        );
+    }
+
+    #[test]
+    fn resolve_bot_kill_target_errors_for_ambiguous_prefix() {
+        let bots = vec![
+            bot_fixture("google_meet", "abc-defg-hij"),
+            bot_fixture("teams", "abc-1234567"),
+        ];
+        let err = resolve_bot_kill_target(&bots, "abc")
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            err,
+            "bot id `abc` is ambiguous — matches multiple running bots, use a longer prefix"
+        );
     }
 }
