@@ -23,14 +23,8 @@ async fn stub_finalize_recording_master(meeting_id: i32) {
     tracing::debug!(meeting_id, "finalize_recording_master not yet ported — skipping");
 }
 
-/// Runs the one post_meeting.py task that's portable so far (completion webhook). The other
-/// three (recording finalization, transcription aggregation, hivemind ingest, custom hooks)
-/// stay stubbed until post_meeting.rs lands — see meeting-api-rs task list.
 async fn run_all_tasks(state: &AppState, meeting_id: i32) {
-    tracing::debug!(meeting_id, "post_meeting: recording finalization / transcription aggregation / hivemind ingest / custom hooks not yet ported — skipping");
-    if let Some(meeting) = refetch(state, meeting_id).await {
-        crate::webhooks::send_completion_webhook(state, &meeting).await;
-    }
+    crate::post_meeting::run_all_tasks(state, meeting_id).await;
 }
 
 async fn find_meeting_by_session(state: &AppState, session_uid: &str) -> Option<Meeting> {

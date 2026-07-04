@@ -7,6 +7,7 @@ mod handlers;
 mod internal_auth;
 mod meeting_status;
 mod models;
+mod post_meeting;
 mod runtime_backend;
 mod schemas;
 mod state;
@@ -86,6 +87,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/recordings", get(handlers::recordings::list_recordings))
         .route("/recordings/:recording_id", get(handlers::recordings::get_recording).delete(handlers::recordings::delete_recording))
         .route("/recordings/:recording_id/media/:media_file_id/download", get(handlers::recordings::download_media_file))
+        .route("/bots/:platform/:native_meeting_id/speak", post(handlers::voice_agent::bot_speak).delete(handlers::voice_agent::bot_speak_stop))
+        .route("/bots/:platform/:native_meeting_id/chat", post(handlers::voice_agent::bot_chat_send).get(handlers::voice_agent::bot_chat_read))
+        .route("/bots/:platform/:native_meeting_id/screen", post(handlers::voice_agent::bot_screen_show).delete(handlers::voice_agent::bot_screen_stop))
+        .route("/bots/:platform/:native_meeting_id/avatar", axum::routing::put(handlers::voice_agent::bot_avatar_set).delete(handlers::voice_agent::bot_avatar_reset))
+        .route("/bots/:platform/:native_meeting_id/events", get(handlers::voice_agent::bot_events))
         .merge(internal_callback_routes)
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
