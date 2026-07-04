@@ -27,6 +27,10 @@ path = "integration_knowledge.rs"
 name = "integration_vexa"
 path = "integration_vexa.rs"
 
+[[test]]
+name = "quality_retrieval"
+path = "quality_retrieval.rs"
+
 [dependencies]
 reqwest = { version = "0.12", features = ["json", "multipart"] }
 tokio = { version = "1", features = ["full"] }
