@@ -13,6 +13,13 @@ async fn root() -> impl IntoResponse {
     Json(serde_json::json!({ "message": "Welcome to the Vexa API Gateway" }))
 }
 
+/// Plain liveness check for the container healthcheck (`docker-compose.stateful.yml` curls
+/// this path) — the Python version never had one, so the healthcheck has been silently
+/// failing in production; this just matches what `cookie`/`router` already do.
+async fn health() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok" }))
+}
+
 fn not_configured(name: &str) -> Response {
     (StatusCode::NOT_IMPLEMENTED, format!("{name} not configured")).into_response()
 }
@@ -174,6 +181,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
 
     let mut router = Router::new()
         .route("/", get(root))
+        .route("/health", get(health))
         .route("/extension/sessions", post(fwd!(meeting, "/extension/sessions")))
         .route("/extension/sessions/end", post(fwd!(meeting, "/extension/sessions/end")))
         .route("/bots", get(fwd!(meeting, "/bots")).post(fwd!(meeting, "/bots")))

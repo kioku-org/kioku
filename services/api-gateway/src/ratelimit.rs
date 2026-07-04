@@ -11,7 +11,7 @@ use std::net::SocketAddr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const WINDOW_SECONDS: i64 = 60;
-const SKIP_PATHS: &[&str] = &["/", "/docs", "/openapi.json", "/redoc"];
+const SKIP_PATHS: &[&str] = &["/", "/health", "/docs", "/openapi.json", "/redoc"];
 
 fn now_unix() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64()
