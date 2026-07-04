@@ -2,13 +2,17 @@
 //!
 //! ponytail: this is a deliberately-scoped MVP slice of meetings.py (2300+ lines with URL
 //! parsing, dedup, webhook config extraction, dry-run mode, Zoom/Teams-specific env, S3/cookie
-//! config, scheduler timeouts, and callback-driven status transitions). Status here is set
-//! synchronously on spawn/stop rather than waiting for bot callbacks, because callbacks.py
-//! (Pack J classifier, exit-callback handling) isn't ported yet — see meeting-api-rs task list.
-//! Do not point production traffic at this until that lands.
+//! config, and scheduler timeouts). Spawn still sets status synchronously (real system waits
+//! for the bot's `joining`/`active` callback) — do not point production traffic at spawn until
+//! that lands. Stop now goes through the real durable outbox + Pack J classifier + state
+//! machine, matching production behavior.
 
+use crate::classifier::classify_stopped_exit;
+use crate::container_stop_outbox::enqueue_stop;
+use crate::meeting_status::{publish_meeting_status_change, update_meeting_status, StatusUpdateOptions};
 use crate::models::Meeting;
 use crate::runtime_backend;
+use crate::schemas::MeetingStatus;
 use crate::state::AppState;
 use axum::{
     extract::{Path, State},
@@ -237,24 +241,61 @@ pub async fn stop_bot(
         return Json(json!({"message": format!("Meeting already {}.", meetings[0].status)})).into_response();
     }
 
-    // ponytail: direct stop, not the durable Redis-outbox + sweep-consumer retry pattern
-    // (container_stop_outbox.py) — a transient runtime-api failure here just fails the
-    // request rather than being retried. Port the outbox before relying on this for prod.
     for meeting in &non_terminal {
-        if let Some(container_name) = &meeting.bot_container_id {
-            let backend_url = runtime_backend::backend_url_for(&state.config, meeting);
-            let _ = state
-                .http
-                .delete(format!("{backend_url}/containers/{container_name}"))
-                .timeout(std::time::Duration::from_secs(30))
-                .send()
-                .await;
+        // Mark stop_requested so the eventual exit-callback's Pack J classifier knows this
+        // was user-initiated (never a failure), and so late bot status_change callbacks that
+        // race the DELETE are ignored instead of failing an "invalid transition".
+        let mut data = meeting.data.clone();
+        data["stop_requested"] = json!(true);
+        let _ = sqlx::query("UPDATE meetings SET data = $1 WHERE id = $2").bind(&data).bind(meeting.id).execute(&state.db).await;
+
+        match &meeting.bot_container_id {
+            Some(container_name) => {
+                // Send leave-via-Redis (best-effort, bot may already be gone) and enqueue a
+                // durable delayed stop through the outbox — the sweep consumer (not yet
+                // wired into this binary's main loop, see task #20) is what actually fires
+                // runtime-api DELETE with retry. Status stays STOPPING; the real terminal
+                // transition happens in the exit_callback once the container is confirmed gone.
+                let mut redis = state.redis.clone();
+                let channel = format!("bot_commands:meeting:{}", meeting.id);
+                let _: Result<(), _> = redis::AsyncCommands::publish(&mut redis, &channel, json!({"action": "leave", "meeting_id": meeting.id}).to_string()).await;
+
+                let backend_url = runtime_backend::backend_url_for(&state.config, meeting).to_string();
+                let stop_delay = if platform == "browser_session" { 0 } else { state.config.bot_stop_delay_seconds };
+                enqueue_stop(&mut redis, container_name, meeting.id, stop_delay, &backend_url).await;
+
+                let old_status = meeting.status.clone();
+                if update_meeting_status(&state.db, meeting.id, MeetingStatus::Stopping, StatusUpdateOptions { transition_reason: Some("User requested stop"), ..Default::default() }).await.unwrap_or(false) {
+                    publish_meeting_status_change(&state, meeting.id, "stopping", &meeting.platform, meeting.platform_specific_id.as_deref().unwrap_or(""), meeting.user_id, None).await;
+                    crate::meeting_status::schedule_status_webhook_task(&state, (*meeting).clone(), old_status, "stopping".to_string(), Some("User requested stop (fast-path)".to_string()), "user_stop");
+                }
+            }
+            None => {
+                // No container on record — classify directly via Pack J rather than assuming
+                // success or failure (mirrors the no-container branch of the Python handler).
+                let (target_status, reason) = classify_stopped_exit(&state.db, meeting.id, &data, meeting.start_time, meeting.end_time, crate::schemas::MeetingCompletionReason::Stopped).await;
+                let old_status = meeting.status.clone();
+                if update_meeting_status(&state.db, meeting.id, target_status, StatusUpdateOptions { completion_reason: Some(reason), transition_reason: Some("User requested stop (no container)"), ..Default::default() }).await.unwrap_or(false) {
+                    publish_meeting_status_change(&state, meeting.id, target_status.as_str(), &meeting.platform, meeting.platform_specific_id.as_deref().unwrap_or(""), meeting.user_id, None).await;
+                    crate::meeting_status::schedule_status_webhook_task(&state, (*meeting).clone(), old_status, target_status.as_str().to_string(), Some("User requested stop".to_string()), "user_stop");
+                }
+            }
         }
-        let _ = sqlx::query("UPDATE meetings SET status = 'completed', end_time = now() WHERE id = $1")
-            .bind(meeting.id)
-            .execute(&state.db)
-            .await;
     }
 
     (StatusCode::ACCEPTED, Json(json!({"message": "Stop request accepted and is being processed."}))).into_response()
+}
+
+/// Stop a container via runtime-api DELETE /containers/{name}. Idempotent (200/404 both count
+/// as success). Shared by the outbox sweep consumer (main.rs's periodic sweep loop) — the only
+/// thing that's actually allowed to call runtime-api DELETE, per container_stop_outbox.py's
+/// "exactly one mechanism" design.
+pub async fn stop_via_runtime_api(http: reqwest::Client, backend_url: String, container_name: String) -> bool {
+    match http.delete(format!("{backend_url}/containers/{container_name}")).timeout(std::time::Duration::from_secs(30)).send().await {
+        Ok(resp) => resp.status().as_u16() == 200 || resp.status().as_u16() == 404,
+        Err(e) => {
+            tracing::warn!(container_name, error = %e, "runtime-api stop failed");
+            false
+        }
+    }
 }

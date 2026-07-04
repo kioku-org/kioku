@@ -1,6 +1,7 @@
 mod auth;
 mod classifier;
 mod config;
+mod container_stop_outbox;
 mod db;
 mod handlers;
 mod internal_auth;
@@ -9,6 +10,7 @@ mod models;
 mod runtime_backend;
 mod schemas;
 mod state;
+mod sweeps;
 mod webhook_delivery;
 mod webhook_url;
 mod webhooks;
@@ -41,6 +43,30 @@ async fn main() -> anyhow::Result<()> {
     let http = reqwest::Client::new();
 
     let state = AppState { db, redis, http, config: config.clone() };
+
+    // Sweep loop: container-stop outbox consumer (the only thing allowed to fire runtime-api
+    // DELETE for a delayed stop) + stale-stopping reconciliation. 60s cadence matches sweeps.py.
+    {
+        let mut redis = state.redis.clone();
+        let http = state.http.clone();
+        let sweep_state = state.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+                let http = http.clone();
+                let result = container_stop_outbox::consume_pending_stops(&mut redis, move |container_name, backend_url| {
+                    let http = http.clone();
+                    async move { handlers::meetings::stop_via_runtime_api(http, backend_url, container_name).await }
+                })
+                .await;
+                if result.processed > 0 {
+                    tracing::info!(processed = result.processed, succeeded = result.succeeded, retried = result.retried, dlq = result.dlq, "[stop-outbox] sweep pass complete");
+                }
+                sweeps::run_sweep_iteration(&sweep_state).await;
+            }
+        });
+    }
 
     let internal_callback_routes = Router::new()
         .route("/bots/internal/callback/started", post(handlers::callbacks::bot_startup_callback))
