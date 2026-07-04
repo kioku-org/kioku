@@ -27,6 +27,7 @@ pub struct Config {
 
     pub api_keys: Vec<String>,
     pub internal_api_secret: String,
+    pub dev_mode: bool,
 
     pub bot_stop_delay_seconds: i64,
     pub cors_origins: Vec<String>,
@@ -95,6 +96,7 @@ impl Config {
                 .map(str::to_string)
                 .collect(),
             internal_api_secret: env_or("INTERNAL_API_SECRET", ""),
+            dev_mode: env_or("DEV_MODE", "false") == "true",
 
             bot_stop_delay_seconds: env_or("BOT_STOP_DELAY_SECONDS", "90").parse().unwrap_or(90),
             cors_origins,

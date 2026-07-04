@@ -1,9 +1,13 @@
 mod auth;
+mod classifier;
 mod config;
 mod db;
 mod handlers;
+mod internal_auth;
+mod meeting_status;
 mod models;
 mod runtime_backend;
+mod schemas;
 mod state;
 
 use axum::{
@@ -35,12 +39,21 @@ async fn main() -> anyhow::Result<()> {
 
     let state = AppState { db, redis, http, config: config.clone() };
 
+    let internal_callback_routes = Router::new()
+        .route("/bots/internal/callback/started", post(handlers::callbacks::bot_startup_callback))
+        .route("/bots/internal/callback/joining", post(handlers::callbacks::bot_joining_callback))
+        .route("/bots/internal/callback/awaiting_admission", post(handlers::callbacks::bot_awaiting_admission_callback))
+        .route("/bots/internal/callback/exited", post(handlers::callbacks::bot_exit_callback))
+        .route("/bots/internal/callback/status_change", post(handlers::callbacks::bot_status_change_callback))
+        .route_layer(axum::middleware::from_fn_with_state(state.clone(), internal_auth::require_internal_secret));
+
     let app = Router::new()
         .route("/health", get(health))
         .route("/bots", post(handlers::meetings::request_bot))
         .route("/bots/status", get(handlers::meetings::get_bots_status))
         .route("/bots/id/:meeting_id", get(handlers::meetings::get_bot_by_id))
         .route("/bots/:platform/:native_meeting_id", delete(handlers::meetings::stop_bot))
+        .merge(internal_callback_routes)
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
         .with_state(state);

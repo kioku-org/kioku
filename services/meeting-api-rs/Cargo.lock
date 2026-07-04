@@ -1817,6 +1817,7 @@ dependencies = [
  "aws-config",
  "aws-sdk-s3",
  "axum",
+ "base64",
  "chrono",
  "dotenvy",
  "futures-util",

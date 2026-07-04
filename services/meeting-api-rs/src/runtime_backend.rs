@@ -73,6 +73,7 @@ mod tests {
             hivemind_url: String::new(),
             api_keys: vec![],
             internal_api_secret: String::new(),
+            dev_mode: false,
             bot_stop_delay_seconds: 90,
             cors_origins: vec![],
         }
