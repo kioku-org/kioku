@@ -198,9 +198,8 @@ stderr_logfile=/var/log/minio-init.err
 # ── Vexa backends ─────────────────────────────────────────────────────────────
 
 [program:api-gateway]
-command=/opt/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8056
-directory=/opt/vexa/services/api-gateway
-environment=ADMIN_API_URL="http://localhost:8001",MEETING_API_URL="http://localhost:8080",TRANSCRIPTION_COLLECTOR_URL="http://localhost:8080",MCP_URL="http://localhost:18888",AGENT_API_URL="http://localhost:8100",REDIS_URL="${REDIS_LOCAL_URL}",PUBLIC_BASE_URL="${VEXA_PUBLIC_URL:-http://localhost:8056}",TRANSCRIPT_SHARE_TTL_SECONDS="900",INTERNAL_API_SECRET="${INTERNAL_API_SECRET:-}",VEXA_ENV="${VEXA_ENV:-production}",CORS_ORIGINS="${CORS_ORIGINS:-*}",LOG_LEVEL="${LOG_LEVEL:-INFO}",DB_HOST="localhost",DB_PORT="5432",DB_NAME="${DB_NAME}",DB_USER="${DB_USER}",DB_PASSWORD="${DB_PASSWORD}",DB_SCHEMA="vexa",DB_SSL_MODE="disable"
+command=/usr/local/bin/kioku-api-gateway
+environment=PORT="8056",ADMIN_API_URL="http://localhost:8001",MEETING_API_URL="http://localhost:8080",TRANSCRIPTION_COLLECTOR_URL="http://localhost:8080",MCP_URL="http://localhost:18888",AGENT_API_URL="http://localhost:8100",REDIS_URL="${REDIS_LOCAL_URL}",PUBLIC_BASE_URL="${VEXA_PUBLIC_URL:-http://localhost:8056}",TRANSCRIPT_SHARE_TTL_SECONDS="900",INTERNAL_API_SECRET="${INTERNAL_API_SECRET:-}",VEXA_ENV="${VEXA_ENV:-production}",CORS_ORIGINS="${CORS_ORIGINS:-*}",RUST_LOG="${LOG_LEVEL:-info}"
 autostart=true
 autorestart=true
 stdout_logfile=/var/log/api-gateway.log

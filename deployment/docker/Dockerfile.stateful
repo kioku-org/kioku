@@ -12,6 +12,15 @@ WORKDIR /app
 COPY services/hivemind/ .
 RUN cargo build --release
 
+# ─── Stage 1b: Build api-gateway (Rust) ───────────────────────────────────────
+FROM rust:1.88-slim AS api-gateway-builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY services/api-gateway-rs/ .
+RUN cargo build --release
+
 # ─── Stage 2: Install Python services into venv ───────────────────────────────
 # python:3.11-slim-bookworm puts Python at /usr/local/bin and stdlib at
 # /usr/local/lib/python3.11. Stage 4 (Ubuntu 22.04 + deadsnakes) puts Python
@@ -45,9 +54,6 @@ COPY services/runtime-api/ /build/services/runtime-api/
 RUN pip install --no-cache-dir /build/services/runtime-api
 
 # Requirements for standalone services
-COPY services/api-gateway/requirements.txt /tmp/api-gateway-req.txt
-RUN pip install --no-cache-dir -r /tmp/api-gateway-req.txt
-
 COPY services/admin-api/requirements.txt /tmp/admin-api-req.txt
 RUN pip install --no-cache-dir -r /tmp/admin-api-req.txt
 
@@ -64,7 +70,6 @@ RUN pip install --no-cache-dir -r /tmp/router-req.txt
 
 # Copy all service source into /opt/vexa/services/
 RUN mkdir -p /opt/vexa/services
-COPY services/api-gateway/   /opt/vexa/services/api-gateway/
 COPY services/admin-api/     /opt/vexa/services/admin-api/
 COPY services/meeting-api/   /opt/vexa/services/meeting-api/
 COPY services/agent-api/     /opt/vexa/services/agent-api/
@@ -165,6 +170,9 @@ RUN curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/downloa
 
 # Hivemind binary
 COPY --from=hivemind-builder /app/target/release/kioku-hivemind /usr/local/bin/kioku-hivemind
+
+# api-gateway binary
+COPY --from=api-gateway-builder /app/target/release/kioku-api-gateway /usr/local/bin/kioku-api-gateway
 
 # Python venv + all service source
 COPY --from=python-builder /opt/venv  /opt/venv
