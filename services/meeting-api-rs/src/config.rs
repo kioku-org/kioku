@@ -31,6 +31,15 @@ pub struct Config {
 
     pub bot_stop_delay_seconds: i64,
     pub cors_origins: Vec<String>,
+
+    pub storage_backend: String,
+    pub minio_endpoint: String,
+    pub minio_public_endpoint: String,
+    pub minio_access_key: String,
+    pub minio_secret_key: String,
+    pub minio_bucket: String,
+    pub minio_secure: bool,
+    pub local_storage_dir: String,
 }
 
 fn env_or(key: &str, default: &str) -> String {
@@ -100,6 +109,15 @@ impl Config {
 
             bot_stop_delay_seconds: env_or("BOT_STOP_DELAY_SECONDS", "90").parse().unwrap_or(90),
             cors_origins,
+
+            storage_backend: env_or("STORAGE_BACKEND", "minio"),
+            minio_endpoint: env_or("MINIO_ENDPOINT", "minio:9000"),
+            minio_public_endpoint: env_or("MINIO_PUBLIC_ENDPOINT", ""),
+            minio_access_key: env_or("MINIO_ACCESS_KEY", "vexa-access-key"),
+            minio_secret_key: env_or("MINIO_SECRET_KEY", "vexa-secret-key"),
+            minio_bucket: env_or("MINIO_BUCKET", "vexa-recordings"),
+            minio_secure: env_or("MINIO_SECURE", "false") == "true",
+            local_storage_dir: env_or("LOCAL_STORAGE_DIR", "/tmp/vexa-recordings"),
         })
     }
 }

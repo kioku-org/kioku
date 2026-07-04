@@ -10,6 +10,7 @@ mod models;
 mod runtime_backend;
 mod schemas;
 mod state;
+mod storage;
 mod sweeps;
 mod webhook_delivery;
 mod webhook_url;
@@ -82,6 +83,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/bots/status", get(handlers::meetings::get_bots_status))
         .route("/bots/id/:meeting_id", get(handlers::meetings::get_bot_by_id))
         .route("/bots/:platform/:native_meeting_id", delete(handlers::meetings::stop_bot))
+        .route("/recordings", get(handlers::recordings::list_recordings))
+        .route("/recordings/:recording_id", get(handlers::recordings::get_recording).delete(handlers::recordings::delete_recording))
+        .route("/recordings/:recording_id/media/:media_file_id/download", get(handlers::recordings::download_media_file))
         .merge(internal_callback_routes)
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())

@@ -76,6 +76,14 @@ mod tests {
             dev_mode: false,
             bot_stop_delay_seconds: 90,
             cors_origins: vec![],
+            storage_backend: "local".to_string(),
+            minio_endpoint: String::new(),
+            minio_public_endpoint: String::new(),
+            minio_access_key: String::new(),
+            minio_secret_key: String::new(),
+            minio_bucket: String::new(),
+            minio_secure: false,
+            local_storage_dir: "/tmp".to_string(),
         }
     }
 
