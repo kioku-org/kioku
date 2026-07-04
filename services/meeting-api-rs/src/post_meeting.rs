@@ -1,10 +1,10 @@
-//! Faithful port of post_meeting.py's portable tasks: transcription aggregation, in-progress
-//! recording finalization, and hivemind ingest. `fire_post_meeting_hooks` is stubbed — it's an
-//! opt-in internal billing/analytics hook (POST_MEETING_HOOKS env var, empty by default for
-//! Kioku's self-hosted deployment) with a no-migration outbound-events ledger not ported.
+//! Faithful port of post_meeting.py's tasks: transcription aggregation, in-progress recording
+//! finalization, hivemind ingest, and internal billing/analytics hooks.
 
 use crate::models::Meeting;
+use crate::outbound_events::{claim_outbound_event, mark_outbound_event};
 use crate::state::AppState;
+use crate::webhook_delivery::{build_envelope, deliver, DeliveryStatus};
 use serde_json::{json, Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -277,6 +277,62 @@ async fn refetch(state: &AppState, meeting_id: i32) -> Option<Meeting> {
     sqlx::query_as("SELECT * FROM meetings WHERE id = $1").bind(meeting_id).fetch_optional(&state.db).await.ok().flatten()
 }
 
+/// Fire POST_MEETING_HOOKS to configured internal services (billing, analytics, etc.) — a
+/// no-op when POST_MEETING_HOOKS is unset (the self-hosted Kioku default). Each destination
+/// gets one outbound_events ledger entry claimed under a row lock before HTTP delivery, so
+/// concurrent callers either see a pending/queued/delivered event and skip, or a future sweep
+/// can recover the narrow crash-after-claim window.
+pub async fn fire_post_meeting_hooks(state: &AppState, meeting: &Meeting) {
+    if state.config.post_meeting_hooks.is_empty() {
+        return;
+    }
+    let (Some(start_time), Some(end_time)) = (meeting.start_time, meeting.end_time) else { return };
+
+    let user: Option<(String,)> = sqlx::query_as("SELECT email FROM users WHERE id = $1").bind(meeting.user_id).fetch_optional(&state.db).await.unwrap_or(None);
+    let Some((user_email,)) = user else {
+        tracing::error!(user_id = meeting.user_id, "cannot resolve email for user — skipping billing hook");
+        return;
+    };
+
+    let duration_seconds = (end_time - start_time).num_milliseconds() as f64 / 1000.0;
+    let event_data = json!({
+        "meeting": {
+            "id": meeting.id,
+            "user_id": meeting.user_id,
+            "user_email": user_email,
+            "platform": meeting.platform,
+            "status": meeting.status,
+            "duration_seconds": duration_seconds,
+            "start_time": start_time.to_rfc3339(),
+            "end_time": end_time.to_rfc3339(),
+            "created_at": meeting.created_at.map(|t| t.to_rfc3339()),
+            "transcription_enabled": meeting.data.get("transcribe_enabled").and_then(Value::as_bool).unwrap_or(false),
+        },
+    });
+
+    for hook_url in &state.config.post_meeting_hooks {
+        let payload = build_envelope("meeting.completed", event_data.clone());
+        let (key, ledger_event, should_deliver) = claim_outbound_event(&state.db, meeting.id, "post_meeting_hooks", "meeting.completed", hook_url, &payload).await;
+        if !should_deliver {
+            tracing::info!(meeting_id = meeting.id, key, status = ?ledger_event.get("status"), "fire_post_meeting_hooks: already claimed; skipping");
+            continue;
+        }
+
+        let mut redis = state.redis.clone();
+        let metadata = json!({"meeting_id": meeting.id, "outbound_event_key": key});
+        let label = format!("post-meeting-hook meeting={}", meeting.id);
+        let result = deliver(&state.http, Some(&mut redis), hook_url, &payload, None, &label, Some(&metadata)).await;
+
+        let attempts = ledger_event.get("attempts").and_then(Value::as_i64).unwrap_or(0) + 1;
+        let (status, status_code, error) = match &result {
+            DeliveryStatus::Delivered { status_code } => ("delivered", Some(*status_code), None),
+            DeliveryStatus::Queued => ("queued", None, None),
+            DeliveryStatus::Failed { error } => ("failed", None, Some(error.as_str())),
+        };
+        mark_outbound_event(&state.db, meeting.id, &key, status, Some(attempts), error, status_code).await;
+    }
+}
+
 /// Run all post-meeting tasks for a meeting_id. Each task re-fetches the meeting so a change
 /// from an earlier task is visible to the next, and each is isolated so one failing doesn't
 /// block the rest — matches the Python original's short-lived-session-per-task structure.
@@ -292,9 +348,9 @@ pub async fn run_all_tasks(state: &AppState, meeting_id: i32) {
     if let Some(meeting) = refetch(state, meeting_id).await {
         crate::webhooks::send_completion_webhook(state, &meeting).await;
     }
-    // ponytail: fire_post_meeting_hooks not ported — opt-in (POST_MEETING_HOOKS env, empty by
-    // default for self-hosted Kioku) internal billing/analytics hook with a ledger dependency
-    // (outbound_events.py) that's out of scope here.
+    if let Some(meeting) = refetch(state, meeting_id).await {
+        fire_post_meeting_hooks(state, &meeting).await;
+    }
     if let Some(meeting) = refetch(state, meeting_id).await {
         push_to_hivemind(state, &meeting).await;
     }

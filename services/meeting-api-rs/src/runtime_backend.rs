@@ -76,6 +76,7 @@ mod tests {
             dev_mode: false,
             bot_stop_delay_seconds: 90,
             cors_origins: vec![],
+            post_meeting_hooks: vec![],
             storage_backend: "local".to_string(),
             minio_endpoint: String::new(),
             minio_public_endpoint: String::new(),

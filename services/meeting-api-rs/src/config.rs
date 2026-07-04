@@ -32,6 +32,10 @@ pub struct Config {
     pub bot_stop_delay_seconds: i64,
     pub cors_origins: Vec<String>,
 
+    /// Internal billing/analytics hook destinations (comma-separated). Empty by default for
+    /// self-hosted Kioku — fire_post_meeting_hooks is a no-op with no destinations configured.
+    pub post_meeting_hooks: Vec<String>,
+
     pub storage_backend: String,
     pub minio_endpoint: String,
     pub minio_public_endpoint: String,
@@ -109,6 +113,8 @@ impl Config {
 
             bot_stop_delay_seconds: env_or("BOT_STOP_DELAY_SECONDS", "90").parse().unwrap_or(90),
             cors_origins,
+
+            post_meeting_hooks: env_or("POST_MEETING_HOOKS", "").split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect(),
 
             storage_backend: env_or("STORAGE_BACKEND", "minio"),
             minio_endpoint: env_or("MINIO_ENDPOINT", "minio:9000"),
