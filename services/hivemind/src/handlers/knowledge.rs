@@ -193,6 +193,84 @@ pub async fn upload_document(
     Ok(Json(doc))
 }
 
+/// Ingest a raw content dump (conversation logs, diffs, notes — anything) into the knowledge
+/// base for semantic search. Was previously reachable only via the (now-consolidated) MCP
+/// server's `session` tool; exposed as a real REST endpoint so that tool is a thin proxy like
+/// every other one, instead of the one place that needed direct DB/vector-store access.
+pub async fn ingest_session(
+    State(state): State<AppState>,
+    auth: AuthContext,
+    Json(req): Json<crate::types::KnowledgeSessionIngestRequest>,
+) -> Result<Json<crate::types::KnowledgeSessionIngestResponse>, AppError> {
+    if req.content.trim().is_empty() {
+        return Err(AppError::BadRequest("content is empty".into()));
+    }
+
+    let session_id = uuid::Uuid::new_v4();
+    let now = crate::util::now_ms();
+    let date = req.date.unwrap_or(now);
+    let tags = serde_json::to_value(&req.tags).unwrap_or(serde_json::json!([]));
+    let preview: String = req.content.chars().take(500).collect();
+
+    sqlx::query(
+        "INSERT INTO coding_sessions (id, workspace_id, user_id, title, summary, decisions, tags, date, created_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+    )
+    .bind(session_id)
+    .bind(auth.workspace_id)
+    .bind(auth.user_id)
+    .bind(&req.title)
+    .bind(&preview)
+    .bind(serde_json::json!([]))
+    .bind(&tags)
+    .bind(date)
+    .bind(now)
+    .execute(&state.db)
+    .await
+    .map_err(AppError::from)?;
+
+    let raw_chunks = crate::services::knowledge::split_text_paragraphs(&req.content, 400);
+    let metadata = serde_json::json!({"chunk_type": "session", "session_id": session_id.to_string(), "timestamp": date});
+
+    for chunk_text in &raw_chunks {
+        sqlx::query(
+            "INSERT INTO knowledge_chunks (id, session_id, text, chunk_type, metadata, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(uuid::Uuid::new_v4())
+        .bind(session_id)
+        .bind(chunk_text)
+        .bind("session")
+        .bind(&metadata)
+        .bind(now)
+        .execute(&state.db)
+        .await
+        .map_err(AppError::from)?;
+    }
+
+    let docs: Vec<langchain_rust::schemas::Document> = raw_chunks
+        .iter()
+        .map(|chunk| langchain_rust::schemas::Document {
+            page_content: chunk.clone(),
+            metadata: {
+                let mut m = std::collections::HashMap::new();
+                m.insert("chunk_type".to_string(), serde_json::json!("session"));
+                m.insert("session_id".to_string(), serde_json::json!(session_id.to_string()));
+                m.insert("timestamp".to_string(), serde_json::json!(date));
+                m
+            },
+            score: 0.0,
+        })
+        .collect();
+
+    state
+        .vector_store
+        .add_documents_for_workspace(auth.workspace_id, &docs)
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!(e.to_string())))?;
+
+    Ok(Json(crate::types::KnowledgeSessionIngestResponse { session_id, chunk_count: raw_chunks.len() }))
+}
+
 /// List all knowledge documents for the workspace.
 pub async fn list_documents(
     State(state): State<AppState>,

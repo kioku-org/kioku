@@ -38,9 +38,3 @@ docx-rs = "0.4"
 zip = "0.6"
 url = "2"
 tempfile = "3"
-
-# MCP protocol
-rmcp = { version = "1.7", features = ["server", "transport-streamable-http-server", "transport-streamable-http-server-session", "macros", "schemars"] }
-tower = "0.5"
-http-body-util = "0.1"
-tokio-util = "0.7"

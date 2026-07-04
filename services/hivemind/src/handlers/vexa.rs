@@ -3,9 +3,8 @@ use axum::http::HeaderMap;
 use axum::response::Json;
 
 use crate::errors::AppError;
-use crate::mcp::handler::resolve_claims_from_token;
 use crate::middleware::AuthContext;
-use crate::repos::auth::AuthRepo;
+use crate::repos::auth::{resolve_claims_from_token, AuthRepo};
 use crate::AppState;
 
 /// Exchange a Kioku credential (JWT or raw `kioku_`/`cmp_` key) for the caller's

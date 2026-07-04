@@ -404,6 +404,47 @@ pub fn validate_token(secret: &str, token: &str) -> Result<Claims, AppError> {
     Ok(token_data.claims)
 }
 
+/// Resolve workspace_id + user_id from a Kioku credential: a JWT, an exchanged API-key session
+/// token (`auth_tokens`), or a raw `kioku_`/`cmp_` API key (`workspace_api_keys`, looked up by
+/// prefix). Tries JWT first (fast, no DB hit). Shared by the `/vexa/token` exchange and
+/// (externally) the consolidated MCP service, which forwards whatever credential its caller
+/// presents.
+pub async fn resolve_claims_from_token(
+    jwt_secret: &str,
+    db: &PgPool,
+    token: &str,
+) -> Option<(Uuid, Uuid)> {
+    if let Ok(claims) = validate_token(jwt_secret, token) {
+        return Some((claims.workspace_id, claims.user_id));
+    }
+
+    if token.starts_with("kioku_") && token.len() >= 14 {
+        let prefix = &token[..14];
+        return sqlx::query_as("SELECT workspace_id, user_id FROM workspace_api_keys WHERE key_prefix = $1 LIMIT 1")
+            .bind(prefix)
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten();
+    }
+    if token.starts_with("cmp_") && token.len() >= 12 {
+        let prefix = &token[..12];
+        return sqlx::query_as("SELECT workspace_id, user_id FROM workspace_api_keys WHERE key_prefix = $1 LIMIT 1")
+            .bind(prefix)
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten();
+    }
+
+    sqlx::query_as("SELECT workspace_id, user_id FROM auth_tokens WHERE token = $1 LIMIT 1")
+        .bind(token)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten()
+}
+
 // ─── Password helpers ────────────────────────────────────────────────────────
 
 pub fn hash_password(password: &str) -> Result<String, AppError> {

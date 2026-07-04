@@ -2,7 +2,6 @@ mod config;
 mod db;
 mod errors;
 mod handlers;
-mod mcp;
 mod middleware;
 mod repos;
 mod router;
