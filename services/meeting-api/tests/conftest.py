@@ -16,6 +16,12 @@ os.environ.setdefault("DB_USER", "test_user")
 os.environ.setdefault("DB_PASSWORD", "test_pass")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
 os.environ.setdefault("ADMIN_TOKEN", "test-admin-secret")
+# Deliberately a non-routable address, not just "unused port on localhost" — a dev stack
+# may legitimately have something bound to a default-looking local port (e.g. a real
+# runtime-api instance on 8091), which would make "unreachable" tests flaky depending on
+# what else happens to be running on the host.
+os.environ.setdefault("LOCAL_BACKEND_URL", "http://127.0.0.1:1")
+os.environ.setdefault("RUNPOD_BACKEND_URL", "http://127.0.0.1:1")
 
 # Ensure libs/admin-models is importable (needed by collector modules)
 _repo = Path(__file__).resolve().parent.parent.parent.parent

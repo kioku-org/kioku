@@ -7,8 +7,15 @@ REDIS_URL = os.environ.get("REDIS_URL")
 if not REDIS_URL:
     raise ValueError("Missing required environment variable: REDIS_URL")
 
-# Runtime API — where we delegate container operations
-RUNTIME_API_URL = os.environ.get("RUNTIME_API_URL", "http://runtime-api:8000")
+# Runtime API — where we delegate container operations.
+# Two backends (local Docker orchestrator vs RunPod), selected per-bot at spawn time and
+# persisted in meeting.data so it survives restarts (see runtime_backend.py). Absorbs what the
+# standalone `router` service used to do — its "sticky" routing was dead code (nothing ever
+# called its /bots routes; real traffic went through a static, non-adaptive proxy instead).
+LOCAL_BACKEND_URL = os.environ.get("LOCAL_BACKEND_URL", "http://localhost:8091")
+RUNPOD_BACKEND_URL = os.environ.get("RUNPOD_BACKEND_URL", "http://localhost:8092")
+USE_LOCAL_RESOURCE = os.environ.get("USE_LOCAL_RESOURCE", "true").lower() == "true"
+LOCAL_BOT_THRESHOLD = int(os.environ.get("LOCAL_BOT_THRESHOLD", "3"))
 RUNTIME_API_TOKEN = os.environ.get("RUNTIME_API_TOKEN", "")
 
 # Self URL — used for callback_url in container creation

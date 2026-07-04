@@ -9,8 +9,17 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 # Redis
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 
-# Runtime API (container lifecycle)
-RUNTIME_API_URL = os.getenv("RUNTIME_API_URL", "http://runtime-api:8090")
+# Runtime API (container lifecycle).
+# Was routed through the standalone `router` service (RUNTIME_API_URL pointed at it); router's
+# only real behavior (nothing ever hit its sticky /bots routes) was picking one of these two
+# backends based on a static flag, so we do that directly now instead of through an extra hop.
+_USE_LOCAL_RESOURCE = os.getenv("USE_LOCAL_RESOURCE", "true").lower() == "true"
+RUNTIME_API_URL = os.getenv(
+    "RUNTIME_API_URL",
+    os.getenv("LOCAL_BACKEND_URL", "http://localhost:8091")
+    if _USE_LOCAL_RESOURCE
+    else os.getenv("RUNPOD_BACKEND_URL", "http://localhost:8092"),
+)
 
 # Admin API (user data, config)
 ADMIN_API_URL = os.getenv("ADMIN_API_URL", "http://admin-api:8001")

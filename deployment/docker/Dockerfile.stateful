@@ -21,6 +21,15 @@ WORKDIR /app
 COPY services/api-gateway/ .
 RUN cargo build --release
 
+# ─── Stage 1c: Build mcp (Rust) ────────────────────────────────────────────────
+FROM rust:1.88-slim AS mcp-builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY services/mcp/ .
+RUN cargo build --release
+
 # ─── Stage 2: Install Python services into venv ───────────────────────────────
 # python:3.11-slim-bookworm puts Python at /usr/local/bin and stdlib at
 # /usr/local/lib/python3.11. Stage 4 (Ubuntu 22.04 + deadsnakes) puts Python
@@ -57,14 +66,8 @@ RUN pip install --no-cache-dir /build/services/runtime-api
 COPY services/admin-api/requirements.txt /tmp/admin-api-req.txt
 RUN pip install --no-cache-dir -r /tmp/admin-api-req.txt
 
-COPY services/mcp/requirements.txt /tmp/mcp-req.txt
-RUN pip install --no-cache-dir -r /tmp/mcp-req.txt
-
 COPY services/tts-service/requirements.txt /tmp/tts-req.txt
 RUN pip install --no-cache-dir -r /tmp/tts-req.txt
-
-COPY services/router/requirements.txt /tmp/router-req.txt
-RUN pip install --no-cache-dir -r /tmp/router-req.txt
 
 # python-pptx for hivemind's PPTX text extraction (services/hivemind/scripts/extract_pptx.py) —
 # no mature native-Rust PPTX parser exists, so hivemind shells out to this.
@@ -77,11 +80,9 @@ RUN mkdir -p /opt/vexa/services
 COPY services/admin-api/     /opt/vexa/services/admin-api/
 COPY services/meeting-api/   /opt/vexa/services/meeting-api/
 COPY services/agent-api/     /opt/vexa/services/agent-api/
-COPY services/mcp/           /opt/vexa/services/mcp/
 COPY services/tts-service/   /opt/vexa/services/tts-service/
 COPY services/runtime-api/   /opt/vexa/services/runtime-api/
 COPY services/cookie/        /opt/vexa/services/cookie/
-COPY services/router/        /opt/vexa/services/router/
 
 # ─── Stage 3: Build dashboard (Next.js standalone) ────────────────────────────
 FROM node:20-alpine AS dashboard-builder
@@ -179,6 +180,9 @@ COPY services/hivemind/scripts/extract_pptx.py /opt/hivemind/scripts/extract_ppt
 
 # api-gateway binary
 COPY --from=api-gateway-builder /app/target/release/kioku-api-gateway /usr/local/bin/kioku-api-gateway
+
+# mcp binary (consolidates the old Python services/mcp + hivemind's embedded MCP server)
+COPY --from=mcp-builder /app/target/release/kioku-mcp /usr/local/bin/kioku-mcp
 
 # Python venv + all service source
 COPY --from=python-builder /opt/venv  /opt/venv

@@ -89,6 +89,7 @@ async def enqueue_stop(
     container_name: str,
     meeting_id: int,
     delay_seconds: int,
+    backend_url: str,
 ) -> Optional[str]:
     """Push a delayed container-stop intent onto the outbox stream.
 
@@ -109,6 +110,7 @@ async def enqueue_stop(
     payload = {
         "container_name": container_name,
         "meeting_id": str(meeting_id),
+        "backend_url": backend_url,
         "fire_at": f"{fire_at:.0f}",
         "enqueued_at": f"{time.time():.0f}",
         "attempts": "0",
@@ -177,13 +179,13 @@ def _decode_payload(raw: Any) -> dict:
 
 async def consume_pending_stops(
     redis: aioredis.Redis,
-    stop_callable: Callable[[str], Awaitable[bool]],
+    stop_callable: Callable[[str, str], Awaitable[bool]],
 ) -> dict:
     """One sweep pass: process all stream entries due (fire_at <= now).
 
     Args:
         redis: meeting-api's redis async client.
-        stop_callable: async fn(container_name) -> bool (truthy on success);
+        stop_callable: async fn(container_name, backend_url) -> bool (truthy on success);
             normally meetings._stop_via_runtime_api. Injected so the
             outbox module is decoupled from meetings.py + testable.
 
@@ -238,6 +240,10 @@ async def consume_pending_stops(
         processed += 1
         container_name = payload.get("container_name", "")
         meeting_id_str = payload.get("meeting_id", "?")
+        # Entries enqueued before this field existed have no backend_url — fall back to
+        # the local backend (matches runtime_backend.py's own pre-field default).
+        from .runtime_backend import LOCAL_BACKEND_URL
+        backend_url = payload.get("backend_url") or LOCAL_BACKEND_URL
         try:
             attempts = int(payload.get("attempts", "0"))
         except (TypeError, ValueError):
@@ -261,7 +267,7 @@ async def consume_pending_stops(
 
         success = False
         try:
-            success = bool(await stop_callable(container_name))
+            success = bool(await stop_callable(container_name, backend_url))
         except Exception as e:
             logger.warning(
                 f"[stop-outbox] stop_callable raised for {container_name}: {e}",
