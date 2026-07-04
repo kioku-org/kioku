@@ -35,7 +35,7 @@ mod auth_tests {
         let resp = c
             .post(format!("{}/auth/register/admin", base_url()))
             .json(&json!({
-                "company_name": "Test Company",
+                "workspace_name": "Test Company",
                 "email": email,
                 "name": "Test Admin",
                 "password": "testpassword123"
@@ -60,7 +60,7 @@ mod auth_tests {
         let resp = c
             .post(format!("{}/auth/register/admin", base_url()))
             .json(&json!({
-                "company_name": "Test Co",
+                "workspace_name": "Test Co",
                 "email": "short@example.com",
                 "name": "Test",
                 "password": "abc"
@@ -76,7 +76,7 @@ mod auth_tests {
         let c = client();
         let email = format!("dup_{}@example.com", uuid::Uuid::new_v4());
         let body = json!({
-            "company_name": "Dup Co",
+            "workspace_name": "Dup Co",
             "email": &email,
             "name": "Dup User",
             "password": "testpassword123"
@@ -107,7 +107,7 @@ mod auth_tests {
         let reg = c
             .post(format!("{}/auth/register/admin", base_url()))
             .json(&json!({
-                "company_name": "Signin Co",
+                "workspace_name": "Signin Co",
                 "email": &email,
                 "name": "Signin User",
                 "password": "testpassword123"
@@ -157,7 +157,7 @@ mod auth_tests {
         let reg = c
             .post(format!("{}/auth/register/admin", base_url()))
             .json(&json!({
-                "company_name": "Me Co",
+                "workspace_name": "Me Co",
                 "email": &email,
                 "name": "Me User",
                 "password": "testpassword123"
@@ -197,7 +197,7 @@ mod auth_tests {
         let reg = c
             .post(format!("{}/auth/register/admin", base_url()))
             .json(&json!({
-                "company_name": "Out Co",
+                "workspace_name": "Out Co",
                 "email": &email,
                 "name": "Out User",
                 "password": "testpassword123"

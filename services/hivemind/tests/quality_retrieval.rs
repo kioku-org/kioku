@@ -45,7 +45,7 @@ async fn register_and_get_token(suffix: &str) -> String {
     let resp = c
         .post(format!("{}/auth/register/admin", base_url()))
         .json(&json!({
-            "company_name": format!("{} Company", suffix),
+            "workspace_name": format!("{} Company", suffix),
             "email": &email,
             "name": format!("{} User", suffix),
             "password": "testpassword123"
