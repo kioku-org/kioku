@@ -50,7 +50,7 @@ import { TranscriptViewer } from "@/components/transcript/transcript-viewer";
 import { BotStatusIndicator, BotFailedIndicator } from "@/components/meetings/bot-status-indicator";
 import { WsEventLog, RestTranscriptsPreview, RestRecordingsPreview } from "@/components/meetings/ws-event-log";
 // ChatPanel removed — chat messages now render inline in TranscriptViewer
-import { AIChatPanel } from "@/components/ai";
+import { AIChatPanel } from "@/components/ai/ai-chat-panel";
 import { useMeetingsStore } from "@/stores/meetings-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { useLiveTranscripts } from "@/hooks/use-live-transcripts";
