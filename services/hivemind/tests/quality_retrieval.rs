@@ -5,8 +5,14 @@
 //! k in {1, 3, 5} and top-1 "source accuracy". This is the actual TKT4 "lab result" artifact:
 //! a measured number, not just a pass/fail smoke test.
 //!
-//! Run with: `cargo test --test quality_retrieval -- --nocapture` (needs a live embedding
-//! service, same as the other embedding-dependent tests in this crate — skips otherwise).
+//! Needs a live embedding service reachable at `EMBEDDING_API_URL` (skips otherwise, same as
+//! the other embedding-dependent tests in this crate) and `HIVEMIND_URL` pointing at a running
+//! hivemind instance.
+//!
+//! Reproducible run (no local Rust toolchain needed, no state left behind): see
+//! `quality-eval.Dockerfile` in this directory for a one-command Docker runner. Plain
+//! `cargo test --test quality_retrieval -- --nocapture` also works if you already have Rust
+//! installed and both services reachable from your shell.
 
 use reqwest::Client;
 use serde_json::json;
