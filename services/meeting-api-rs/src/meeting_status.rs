@@ -175,9 +175,23 @@ pub async fn publish_meeting_status_change(
     }
 }
 
-/// ponytail: webhook delivery (webhooks.py/webhook_delivery.py/outbound_events.py) isn't
-/// ported yet. Status transitions and Redis pub/sub already work correctly without it —
-/// this just means webhook subscribers don't get notified until that lands.
-pub async fn schedule_status_webhook_task(meeting_id: i32, old_status: &str, new_status: &str) {
-    tracing::debug!(meeting_id, old_status, new_status, "webhook delivery not yet ported — skipping");
+/// Fire-and-forget status-change webhook delivery — matches Python's
+/// `background_tasks.add_task(...)` semantics (doesn't block the callback response).
+pub fn schedule_status_webhook_task(
+    state: &AppState,
+    meeting: Meeting,
+    old_status: String,
+    new_status: String,
+    reason: Option<String>,
+    transition_source: &'static str,
+) {
+    let state = state.clone();
+    tokio::spawn(async move {
+        crate::webhooks::send_status_webhook(
+            &state,
+            &meeting,
+            Some(crate::webhooks::StatusChangeInfo { old_status: &old_status, new_status: &new_status, reason: reason.as_deref(), transition_source }),
+        )
+        .await;
+    });
 }

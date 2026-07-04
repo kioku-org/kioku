@@ -1,11 +1,10 @@
 //! Internal callback handlers — /bots/internal/callback/*. Faithful port of callbacks.py's
-//! status-transition logic (the Pack J classifier, the state machine, forensic-field capture).
+//! status-transition logic (the Pack J classifier, the state machine, forensic-field capture,
+//! and now status/completion webhook delivery).
 //!
-//! ponytail: `finalize_recording_master` (recording_finalizer.py) and `run_all_tasks`
-//! (post_meeting.py) are stubbed — those subsystems aren't ported yet (see meeting-api-rs task
-//! list). Every status transition here is real and correct; the recording-file finalization
-//! and post-meeting hooks (webhook delivery, hivemind ingest, transcription aggregation) don't
-//! run yet as a result.
+//! ponytail: `finalize_recording_master` (recording_finalizer.py) and the rest of
+//! post_meeting.py's run_all_tasks (transcription aggregation, hivemind ingest, custom hooks)
+//! are still stubbed — those subsystems aren't ported yet (see meeting-api-rs task list).
 
 use crate::classifier::classify_stopped_exit;
 use crate::meeting_status::{publish_meeting_status_change, schedule_status_webhook_task, update_meeting_status, StatusUpdateOptions};
@@ -24,8 +23,14 @@ async fn stub_finalize_recording_master(meeting_id: i32) {
     tracing::debug!(meeting_id, "finalize_recording_master not yet ported — skipping");
 }
 
-async fn stub_run_all_tasks(meeting_id: i32) {
-    tracing::debug!(meeting_id, "post_meeting run_all_tasks not yet ported — skipping");
+/// Runs the one post_meeting.py task that's portable so far (completion webhook). The other
+/// three (recording finalization, transcription aggregation, hivemind ingest, custom hooks)
+/// stay stubbed until post_meeting.rs lands — see meeting-api-rs task list.
+async fn run_all_tasks(state: &AppState, meeting_id: i32) {
+    tracing::debug!(meeting_id, "post_meeting: recording finalization / transcription aggregation / hivemind ingest / custom hooks not yet ported — skipping");
+    if let Some(meeting) = refetch(state, meeting_id).await {
+        crate::webhooks::send_completion_webhook(state, &meeting).await;
+    }
 }
 
 async fn find_meeting_by_session(state: &AppState, session_uid: &str) -> Option<Meeting> {
@@ -101,7 +106,7 @@ pub async fn bot_startup_callback(State(state): State<AppState>, Json(payload): 
     };
     if fresh.status == "active" && old_status != "active" {
         publish_meeting_status_change(&state, fresh.id, "active", &fresh.platform, fresh.platform_specific_id.as_deref().unwrap_or(""), fresh.user_id, None).await;
-        schedule_status_webhook_task(fresh.id, &old_status, "active").await;
+        schedule_status_webhook_task(&state, fresh.clone(), old_status, "active".to_string(), None, "bot_callback");
     }
 
     Json(json!({"status": "startup processed", "meeting_id": fresh.id, "meeting_status": fresh.status})).into_response()
@@ -118,9 +123,11 @@ pub async fn bot_joining_callback(State(state): State<AppState>, Json(payload): 
     let success = update_meeting_status(&state.db, meeting.id, MeetingStatus::Joining, StatusUpdateOptions::default()).await.unwrap_or(false);
     if success {
         publish_meeting_status_change(&state, meeting.id, "joining", &meeting.platform, meeting.platform_specific_id.as_deref().unwrap_or(""), meeting.user_id, None).await;
-        schedule_status_webhook_task(meeting.id, &old_status, "joining").await;
     }
     let fresh = refetch(&state, meeting.id).await.unwrap_or(meeting);
+    if success {
+        schedule_status_webhook_task(&state, fresh.clone(), old_status, "joining".to_string(), None, "bot_callback");
+    }
     Json(json!({"status": "joining processed", "meeting_id": fresh.id, "meeting_status": fresh.status})).into_response()
 }
 
@@ -135,9 +142,11 @@ pub async fn bot_awaiting_admission_callback(State(state): State<AppState>, Json
     let success = update_meeting_status(&state.db, meeting.id, MeetingStatus::AwaitingAdmission, StatusUpdateOptions::default()).await.unwrap_or(false);
     if success {
         publish_meeting_status_change(&state, meeting.id, "awaiting_admission", &meeting.platform, meeting.platform_specific_id.as_deref().unwrap_or(""), meeting.user_id, None).await;
-        schedule_status_webhook_task(meeting.id, &old_status, "awaiting_admission").await;
     }
     let fresh = refetch(&state, meeting.id).await.unwrap_or(meeting);
+    if success {
+        schedule_status_webhook_task(&state, fresh.clone(), old_status, "awaiting_admission".to_string(), None, "bot_callback");
+    }
     Json(json!({"status": "awaiting_admission processed", "meeting_id": fresh.id, "meeting_status": fresh.status})).into_response()
 }
 
@@ -281,9 +290,9 @@ pub async fn bot_exit_callback(State(state): State<AppState>, Json(payload): Jso
 
     if let Some(ns) = &new_status {
         publish_meeting_status_change(&state, fresh.id, ns, &fresh.platform, fresh.platform_specific_id.as_deref().unwrap_or(""), fresh.user_id, None).await;
-        schedule_status_webhook_task(fresh.id, &old_status, ns).await;
+        schedule_status_webhook_task(&state, fresh.clone(), old_status, ns.clone(), payload.reason.clone(), "bot_callback");
     }
-    stub_run_all_tasks(fresh.id).await;
+    run_all_tasks(&state, fresh.id).await;
 
     Json(json!({"status": "callback processed", "meeting_id": fresh.id, "final_status": fresh.status})).into_response()
 }
@@ -313,7 +322,8 @@ pub async fn bot_status_change_callback(State(state): State<AppState>, Json(payl
     };
 
     if stop_requested(&meeting) && !matches!(new_status, MeetingStatus::Completed | MeetingStatus::Failed) {
-        schedule_status_webhook_task(meeting.id, &meeting.status, new_status.as_str()).await;
+        let old = meeting.status.clone();
+        schedule_status_webhook_task(&state, meeting.clone(), old, new_status.as_str().to_string(), payload.reason.clone(), "bot_callback_post_stop");
         return Json(json!({"status": "ignored", "detail": "stop requested"})).into_response();
     }
 
@@ -380,7 +390,7 @@ pub async fn bot_status_change_callback(State(state): State<AppState>, Json(payl
         .unwrap_or(false);
         success = Some(ok);
         if ok {
-            stub_run_all_tasks(meeting.id).await;
+            run_all_tasks(&state, meeting.id).await;
         }
     } else if new_status == MeetingStatus::Failed {
         let error_details_owned = payload.error_details.as_ref().map(|v| v.to_string());
@@ -399,7 +409,7 @@ pub async fn bot_status_change_callback(State(state): State<AppState>, Json(payl
         .unwrap_or(false);
         success = Some(ok);
         if ok {
-            stub_run_all_tasks(meeting.id).await;
+            run_all_tasks(&state, meeting.id).await;
         }
     } else if new_status == MeetingStatus::Active {
         if matches!(current_status, MeetingStatus::Requested | MeetingStatus::Joining | MeetingStatus::AwaitingAdmission | MeetingStatus::Failed | MeetingStatus::NeedsHumanHelp) {
@@ -473,7 +483,7 @@ pub async fn bot_status_change_callback(State(state): State<AppState>, Json(payl
     }
 
     if success == Some(true) {
-        schedule_status_webhook_task(fresh.id, &old_status, new_status.as_str()).await;
+        schedule_status_webhook_task(&state, fresh.clone(), old_status, new_status.as_str().to_string(), payload.reason.clone(), "bot_callback");
     }
 
     Json(json!({"status": "processed", "meeting_id": fresh.id, "meeting_status": fresh.status})).into_response()
