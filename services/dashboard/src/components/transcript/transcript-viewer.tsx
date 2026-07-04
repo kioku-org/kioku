@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import Image from "next/image";
-import { AIChatPanel } from "@/components/ai";
+import { AIChatPanel } from "@/components/ai/ai-chat-panel";
 import { getCookie, setCookie } from "@/lib/cookies";
 import {
   DropdownMenu,
