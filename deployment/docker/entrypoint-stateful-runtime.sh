@@ -263,7 +263,7 @@ stderr_logfile=/var/log/runtime-api-runpod.err
 
 [program:hivemind]
 command=/usr/local/bin/kioku-hivemind
-environment=DB_HOST="localhost",DB_PORT="5432",DB_NAME="${DB_NAME}",DB_USER="${DB_USER}",DB_PASSWORD="${DB_PASSWORD}",DB_MAX_CONNECTIONS="10",DB_SCHEMA="hivemind",JWT_SECRET="${HIVEMIND_JWT_SECRET}",JWT_TTL_SECONDS="2592000",ENCRYPTION_SECRET="${HIVEMIND_ENCRYPTION_SECRET}",INTERNAL_SECRET="${INTERNAL_API_SECRET:-}",VEXA_API_URL="http://localhost:8056",VEXA_ADMIN_API_URL="http://localhost:8001",VEXA_ADMIN_TOKEN="${VEXA_ADMIN_API_TOKEN}",HOST="0.0.0.0",PORT="9100",EMBEDDING_API_URL="http://localhost:11434",EMBEDDING_MODEL="nomic-embed-text-v2-moe",QDRANT_URL="http://localhost:6335",QDRANT_API_KEY="${QDRANT_API_KEY:-}"
+environment=DB_HOST="localhost",DB_PORT="5432",DB_NAME="${DB_NAME}",DB_USER="${DB_USER}",DB_PASSWORD="${DB_PASSWORD}",DB_MAX_CONNECTIONS="10",DB_SCHEMA="hivemind",JWT_SECRET="${HIVEMIND_JWT_SECRET}",JWT_TTL_SECONDS="2592000",ENCRYPTION_SECRET="${HIVEMIND_ENCRYPTION_SECRET}",INTERNAL_SECRET="${INTERNAL_API_SECRET:-}",VEXA_API_URL="http://localhost:8056",VEXA_ADMIN_API_URL="http://localhost:8001",VEXA_ADMIN_TOKEN="${VEXA_ADMIN_API_TOKEN}",HOST="0.0.0.0",PORT="9100",EMBEDDING_API_URL="http://localhost:11434",EMBEDDING_MODEL="nomic-embed-text-v2-moe",QDRANT_URL="http://localhost:6335",QDRANT_API_KEY="${QDRANT_API_KEY:-}",PPTX_EXTRACT_SCRIPT="/opt/hivemind/scripts/extract_pptx.py"
 autostart=true
 autorestart=true
 stdout_logfile=/var/log/hivemind.log
@@ -299,7 +299,7 @@ stderr_logfile=/var/log/cookie.err
 [program:dashboard]
 command=node server.js
 directory=/opt/dashboard
-environment=NODE_ENV="production",PORT="3001",HOSTNAME="0.0.0.0",VEXA_API_URL="http://localhost:8056",VEXA_PUBLIC_API_URL="${VEXA_PUBLIC_API_URL:-https://meetings.kioku.chat}",VEXA_ADMIN_API_KEY="${VEXA_ADMIN_API_TOKEN:-}",VEXA_ADMIN_API_URL="http://localhost:8001",VEXA_ALLOW_DIRECT_LOGIN="${VEXA_ALLOW_DIRECT_LOGIN:-true}",NEXTAUTH_URL="${NEXTAUTH_URL:-https://dashboard.kioku.chat}",NEXTAUTH_SECRET="${NEXTAUTH_SECRET:-}",GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}",GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET:-}",AZURE_AD_CLIENT_ID="${AZURE_AD_CLIENT_ID:-}",AZURE_AD_CLIENT_SECRET="${AZURE_AD_CLIENT_SECRET:-}",AZURE_AD_TENANT_ID="${AZURE_AD_TENANT_ID:-}",SMTP_HOST="${SMTP_HOST:-}",SMTP_USER="${SMTP_USER:-}",SMTP_PASS="${SMTP_PASS:-}",NEXT_PUBLIC_DOCS_URL="${NEXT_PUBLIC_DOCS_URL:-https://docs.kioku.chat}"
+environment=NODE_ENV="production",PORT="3001",HOSTNAME="0.0.0.0",VEXA_API_URL="http://localhost:8056",VEXA_PUBLIC_API_URL="${VEXA_PUBLIC_API_URL:-https://meetings.kioku.chat}",VEXA_ADMIN_API_KEY="${VEXA_ADMIN_API_TOKEN:-}",VEXA_ADMIN_API_URL="http://localhost:8001",VEXA_ALLOW_DIRECT_LOGIN="${VEXA_ALLOW_DIRECT_LOGIN:-true}",NEXTAUTH_URL="${NEXTAUTH_URL:-https://dashboard.kioku.chat}",NEXTAUTH_SECRET="${NEXTAUTH_SECRET:-}",GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}",GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET:-}",AZURE_AD_CLIENT_ID="${AZURE_AD_CLIENT_ID:-}",AZURE_AD_CLIENT_SECRET="${AZURE_AD_CLIENT_SECRET:-}",AZURE_AD_TENANT_ID="${AZURE_AD_TENANT_ID:-}",SMTP_HOST="${SMTP_HOST:-}",SMTP_USER="${SMTP_USER:-}",SMTP_PASS="${SMTP_PASS:-}",NEXT_PUBLIC_DOCS_URL="${NEXT_PUBLIC_DOCS_URL:-https://docs.kioku.chat}",AI_MODEL="${AI_MODEL:-anthropic/claude-sonnet-5}",AI_API_KEY="${AI_API_KEY:-}"
 autostart=true
 autorestart=true
 stdout_logfile=/var/log/dashboard.log

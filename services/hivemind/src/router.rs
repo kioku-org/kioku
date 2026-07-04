@@ -72,7 +72,7 @@ pub fn build(state: AppState) -> Router {
         // Knowledge
         .route("/knowledge/search", post(knowledge_search))
         .route("/knowledge/documents", get(knowledge::list_documents))
-        .route("/knowledge/documents", post(knowledge::upload_pdf))
+        .route("/knowledge/documents", post(knowledge::upload_document))
         .route(
             "/knowledge/documents/:document_id",
             delete(knowledge::delete_document),

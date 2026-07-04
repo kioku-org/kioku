@@ -66,6 +66,10 @@ RUN pip install --no-cache-dir -r /tmp/tts-req.txt
 COPY services/router/requirements.txt /tmp/router-req.txt
 RUN pip install --no-cache-dir -r /tmp/router-req.txt
 
+# python-pptx for hivemind's PPTX text extraction (services/hivemind/scripts/extract_pptx.py) —
+# no mature native-Rust PPTX parser exists, so hivemind shells out to this.
+RUN pip install --no-cache-dir python-pptx
+
 # cookie uses only fastapi + uvicorn — already installed above
 
 # Copy all service source into /opt/vexa/services/
@@ -133,6 +137,7 @@ RUN apt-get update \
         ca-certificates curl gnupg wget zstd \
         openssh-server redis-server supervisor sudo \
         libicu70 libxml2 \
+        tesseract-ocr poppler-utils \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && install -d -m 0755 /etc/apt/keyrings \
@@ -168,8 +173,9 @@ RUN curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/downloa
         -o /usr/local/bin/cloudflared \
     && chmod +x /usr/local/bin/cloudflared
 
-# Hivemind binary
+# Hivemind binary + its PPTX-extraction helper script
 COPY --from=hivemind-builder /app/target/release/kioku-hivemind /usr/local/bin/kioku-hivemind
+COPY services/hivemind/scripts/extract_pptx.py /opt/hivemind/scripts/extract_pptx.py
 
 # api-gateway binary
 COPY --from=api-gateway-builder /app/target/release/kioku-api-gateway /usr/local/bin/kioku-api-gateway

@@ -105,13 +105,14 @@ impl KnowledgeService {
         Ok(())
     }
 
-    /// Ingest PDF document chunks into Postgres and Qdrant.
-    pub async fn ingest_pdf_documents(
+    /// Ingest document chunks (PDF, plain text, markdown, ...) into Postgres and Qdrant.
+    pub async fn ingest_document_chunks(
         db: &PgPool,
         vector_store: &HivemindVectorStore,
         workspace_id: Uuid,
         document_id: Uuid,
         docs: &[Document],
+        chunk_type: &str,
     ) -> Result<(), AppError> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -129,7 +130,7 @@ impl KnowledgeService {
             .bind(Uuid::new_v4())
             .bind(document_id)
             .bind(&doc.page_content)
-            .bind("pdf_document")
+            .bind(chunk_type)
             .bind(&metadata_json)
             .bind(now)
             .execute(db)
@@ -142,7 +143,7 @@ impl KnowledgeService {
             .await
             .map_err(|e| {
                 AppError::Internal(anyhow::anyhow!(
-                    "Failed to add PDF documents to vector store: {}",
+                    "Failed to add documents to vector store: {}",
                     e
                 ))
             })?;

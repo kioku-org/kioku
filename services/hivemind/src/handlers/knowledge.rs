@@ -5,20 +5,104 @@ use crate::errors::AppError;
 use crate::middleware::AuthContext;
 use crate::repos::knowledge::KnowledgeRepo;
 use crate::services::knowledge::KnowledgeService;
-use crate::services::pdf;
+use crate::services::{docx, ocr, pdf, pptx};
 use crate::types::KnowledgeDocumentOut;
 use crate::AppState;
 
-const MAX_PDF_SIZE: usize = 50 * 1024 * 1024; // 50MB
+const MAX_UPLOAD_SIZE: usize = 50 * 1024 * 1024; // 50MB
 
-/// Upload a PDF document to the knowledge base.
+/// Supported upload formats: extension -> chunk_type label.
+const SUPPORTED_EXTENSIONS: &[(&str, &str)] = &[
+    (".pdf", "pdf_document"),
+    (".docx", "docx_document"),
+    (".pptx", "pptx_document"),
+    (".txt", "text_document"),
+    (".md", "text_document"),
+];
+
+fn chunk_type_for_filename(filename: &str) -> Option<&'static str> {
+    let lower = filename.to_lowercase();
+    SUPPORTED_EXTENSIONS
+        .iter()
+        .find(|(ext, _)| lower.ends_with(ext))
+        .map(|(_, chunk_type)| *chunk_type)
+}
+
+/// DOCX/PPTX are zip containers; neither docx-rs nor python-pptx cap uncompressed size, so an
+/// untrusted upload could be a zip bomb (small compressed file, huge decompressed footprint).
+/// Reject before decompression if the archive *claims* more than this — read from the zip
+/// central directory, doesn't actually decompress anything.
+const MAX_UNCOMPRESSED_SIZE: u64 = 300 * 1024 * 1024; // 300MB
+
+/// Sums the *uncompressed* size of every entry from the zip central directory, without
+/// decompressing any of them.
+fn total_uncompressed_size(file_data: &[u8]) -> Result<u64, AppError> {
+    let cursor = std::io::Cursor::new(file_data);
+    let mut archive = zip::ZipArchive::new(cursor)
+        .map_err(|e| AppError::BadRequest(format!("Not a valid Office document: {}", e)))?;
+    let mut total: u64 = 0;
+    for i in 0..archive.len() {
+        if let Ok(f) = archive.by_index_raw(i) {
+            total += f.size();
+        }
+    }
+    Ok(total)
+}
+
+fn check_zip_bomb(file_data: &[u8]) -> Result<(), AppError> {
+    let total = total_uncompressed_size(file_data)?;
+    if total > MAX_UNCOMPRESSED_SIZE {
+        return Err(AppError::BadRequest(format!(
+            "Document expands to {} bytes uncompressed (max {} bytes)",
+            total, MAX_UNCOMPRESSED_SIZE
+        )));
+    }
+    Ok(())
+}
+
+/// Extract plain text from uploaded document bytes based on its detected format. PDFs whose
+/// text layer looks too thin (scanned/image-only) fall back to OCR.
+fn extract_text(chunk_type: &str, file_data: &[u8]) -> Result<String, AppError> {
+    match chunk_type {
+        "pdf_document" => {
+            let text = pdf::extract_text_from_bytes(file_data)
+                .map_err(|e| AppError::Internal(anyhow::anyhow!("PDF extraction failed: {}", e)))?;
+            if ocr::should_ocr(&text) {
+                match ocr::ocr_pdf_bytes(file_data) {
+                    Ok(ocr_text) if !ocr_text.trim().is_empty() => Ok(format!("{text}\n{ocr_text}")),
+                    Ok(_) => Ok(text),
+                    Err(e) => {
+                        tracing::warn!("PDF OCR fallback failed, keeping text-layer only: {}", e);
+                        Ok(text)
+                    }
+                }
+            } else {
+                Ok(text)
+            }
+        }
+        "docx_document" => {
+            check_zip_bomb(file_data)?;
+            docx::extract_text_from_bytes(file_data)
+                .map_err(|e| AppError::Internal(anyhow::anyhow!("DOCX extraction failed: {}", e)))
+        }
+        "pptx_document" => {
+            check_zip_bomb(file_data)?;
+            pptx::extract_text_from_bytes(file_data)
+                .map_err(|e| AppError::Internal(anyhow::anyhow!("PPTX extraction failed: {}", e)))
+        }
+        _ => String::from_utf8(file_data.to_vec())
+            .map_err(|e| AppError::BadRequest(format!("File is not valid UTF-8 text: {}", e))),
+    }
+}
+
+/// Upload a document (PDF, DOCX, PPTX, plain text, or markdown) to the knowledge base.
 /// Extracts text, chunks it, embeds vectors into Qdrant, and persists metadata.
-pub async fn upload_pdf(
+pub async fn upload_document(
     State(state): State<AppState>,
     auth: AuthContext,
     mut multipart: Multipart,
 ) -> Result<Json<KnowledgeDocumentOut>, AppError> {
-    let mut filename = String::from("unknown.pdf");
+    let mut filename = String::from("unknown");
     let mut file_data = Vec::new();
 
     while let Some(field) = multipart
@@ -38,11 +122,11 @@ pub async fn upload_pdf(
                 .map_err(|e| AppError::BadRequest(format!("Failed to read file bytes: {}", e)))?
                 .to_vec();
 
-            if file_data.len() > MAX_PDF_SIZE {
+            if file_data.len() > MAX_UPLOAD_SIZE {
                 return Err(AppError::BadRequest(format!(
                     "File too large: {} bytes (max {} bytes)",
                     file_data.len(),
-                    MAX_PDF_SIZE
+                    MAX_UPLOAD_SIZE
                 )));
             }
         }
@@ -52,9 +136,11 @@ pub async fn upload_pdf(
         return Err(AppError::BadRequest("No file uploaded".into()));
     }
 
-    if !filename.to_lowercase().ends_with(".pdf") {
-        return Err(AppError::BadRequest("Only PDF files are supported".into()));
-    }
+    let Some(chunk_type) = chunk_type_for_filename(&filename) else {
+        return Err(AppError::BadRequest(
+            "Unsupported file type. Supported: .pdf, .txt, .md".into(),
+        ));
+    };
 
     let now = crate::util::now_ms();
     let doc_id = uuid::Uuid::new_v4();
@@ -72,26 +158,25 @@ pub async fn upload_pdf(
     )
     .await?;
 
-    // Extract text from PDF
-    let text = pdf::extract_text_from_bytes(&file_data)
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("PDF extraction failed: {}", e)))?;
+    let text = extract_text(chunk_type, &file_data)?;
 
     if text.trim().is_empty() {
         repo.update_document_status(doc_id, "empty", 0, now).await?;
-        return Err(AppError::BadRequest("No text content found in PDF".into()));
+        return Err(AppError::BadRequest("No text content found in file".into()));
     }
 
     // Chunk the text
-    let docs = pdf::chunk_pdf_text(&text, auth.workspace_id, doc_id, &filename);
+    let docs = pdf::chunk_document_text(&text, auth.workspace_id, doc_id, &filename, chunk_type);
     let chunk_count = docs.len() as i32;
 
     // Ingest into Postgres + Qdrant
-    KnowledgeService::ingest_pdf_documents(
+    KnowledgeService::ingest_document_chunks(
         &state.db,
         &state.vector_store,
         auth.workspace_id,
         doc_id,
         &docs,
+        chunk_type,
     )
     .await?;
 
@@ -150,4 +235,40 @@ pub async fn delete_document(
     );
 
     Ok(Json(()))
+}
+
+#[cfg(test)]
+mod zip_guard_tests {
+    use super::*;
+
+    fn build_test_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let mut writer = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+            for (name, content) in entries {
+                writer.start_file(*name, zip::write::FileOptions::default()).unwrap();
+                std::io::Write::write_all(&mut writer, content).unwrap();
+            }
+            writer.finish().unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn sums_uncompressed_size_across_entries() {
+        let zip = build_test_zip(&[("a.xml", &[0u8; 100]), ("b.xml", &[0u8; 250])]);
+        assert_eq!(total_uncompressed_size(&zip).unwrap(), 350);
+    }
+
+    #[test]
+    fn small_zip_passes_the_bomb_check() {
+        let zip = build_test_zip(&[("word/document.xml", b"<xml>hello</xml>")]);
+        assert!(check_zip_bomb(&zip).is_ok());
+    }
+
+    #[test]
+    fn garbage_bytes_are_rejected_as_invalid_archive() {
+        let err = total_uncompressed_size(b"not a zip file at all");
+        assert!(err.is_err());
+    }
 }
