@@ -13,6 +13,22 @@ pub trait StorageClient: Send + Sync {
     async fn file_exists(&self, path: &str) -> anyhow::Result<bool>;
     /// Sorted ascending — callers rely on zero-padded chunk_seq lexicographic ordering.
     async fn list_objects_bounded(&self, prefix: &str, max_keys: usize) -> anyhow::Result<Vec<String>>;
+
+    /// Stream-download to a local path. Default falls back to download_file + write (bytes
+    /// pass through memory); MinIO overrides with a true streamed copy for bounded memory
+    /// regardless of file size — used by recording_finalizer for chunk assembly.
+    async fn download_file_to_path(&self, key: &str, dest_path: &Path) -> anyhow::Result<()> {
+        let data = self.download_file(key).await?;
+        tokio::fs::write(dest_path, data).await?;
+        Ok(())
+    }
+
+    /// Stream-upload from a local path. Default falls back to read + upload_file; MinIO
+    /// overrides with ByteStream::from_path so large masters don't round-trip through memory.
+    async fn upload_file_path(&self, key: &str, src_path: &Path, content_type: &str) -> anyhow::Result<String> {
+        let data = tokio::fs::read(src_path).await?;
+        self.upload_file(key, data, content_type).await
+    }
 }
 
 pub struct MinioStorageClient {
@@ -109,6 +125,25 @@ impl StorageClient for MinioStorageClient {
         }
         keys.sort();
         Ok(keys)
+    }
+
+    async fn download_file_to_path(&self, key: &str, dest_path: &Path) -> anyhow::Result<()> {
+        use tokio::io::AsyncWriteExt;
+        let resp = self.client.get_object().bucket(&self.bucket).key(key).send().await?;
+        let mut body = resp.body;
+        let mut file = tokio::fs::File::create(dest_path).await?;
+        while let Some(chunk) = body.try_next().await? {
+            file.write_all(&chunk).await?;
+        }
+        Ok(())
+    }
+
+    async fn upload_file_path(&self, key: &str, src_path: &Path, content_type: &str) -> anyhow::Result<String> {
+        let body = aws_sdk_s3::primitives::ByteStream::from_path(src_path).await?;
+        self.client.put_object().bucket(&self.bucket).key(key).body(body).content_type(content_type).send().await?;
+        let size = tokio::fs::metadata(src_path).await.map(|m| m.len()).unwrap_or(0);
+        tracing::info!(bytes = size, bucket = %self.bucket, key, "uploaded (streamed from path)");
+        Ok(key.to_string())
     }
 }
 

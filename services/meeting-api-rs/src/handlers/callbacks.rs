@@ -1,10 +1,6 @@
 //! Internal callback handlers — /bots/internal/callback/*. Faithful port of callbacks.py's
 //! status-transition logic (the Pack J classifier, the state machine, forensic-field capture,
-//! and now status/completion webhook delivery).
-//!
-//! ponytail: `finalize_recording_master` (recording_finalizer.py) and the rest of
-//! post_meeting.py's run_all_tasks (transcription aggregation, hivemind ingest, custom hooks)
-//! are still stubbed — those subsystems aren't ported yet (see meeting-api-rs task list).
+//! status/completion webhook delivery, and recording master finalization).
 
 use crate::classifier::classify_stopped_exit;
 use crate::meeting_status::{publish_meeting_status_change, schedule_status_webhook_task, update_meeting_status, StatusUpdateOptions};
@@ -19,8 +15,10 @@ fn json_error(status: StatusCode, detail: &str) -> Response {
     (status, Json(json!({"detail": detail}))).into_response()
 }
 
-async fn stub_finalize_recording_master(meeting_id: i32) {
-    tracing::debug!(meeting_id, "finalize_recording_master not yet ported — skipping");
+async fn finalize_recording_master(state: &AppState, meeting_id: i32) {
+    if let Err(e) = crate::recording_finalizer::finalize_recording_master(&state.db, &state.config, meeting_id).await {
+        tracing::error!(meeting_id, error = %e, "finalize_recording_master failed — continuing with status update (master may be absent; operator can re-trigger)");
+    }
 }
 
 async fn run_all_tasks(state: &AppState, meeting_id: i32) {
@@ -182,7 +180,7 @@ pub async fn bot_exit_callback(State(state): State<AppState>, Json(payload): Jso
         if let Some(e) = &payload.platform_specific_error {
             meta["platform_specific_error"] = json!(e);
         }
-        stub_finalize_recording_master(meeting_id).await;
+        finalize_recording_master(&state, meeting_id).await;
         let success = update_meeting_status(
             &state.db,
             meeting_id,
@@ -215,7 +213,7 @@ pub async fn bot_exit_callback(State(state): State<AppState>, Json(payload): Jso
         };
 
         let meta = json!({"exit_code": payload.exit_code, "original_reason": payload.reason, "pack_j_classification": classified_reason.as_str()});
-        stub_finalize_recording_master(meeting_id).await;
+        finalize_recording_master(&state, meeting_id).await;
         let success = update_meeting_status(
             &state.db,
             meeting_id,
@@ -265,7 +263,7 @@ pub async fn bot_exit_callback(State(state): State<AppState>, Json(payload): Jso
             error_details_owned = format!("Bot exited with code {}{}", payload.exit_code, payload.reason.as_deref().map(|r| format!("; reason: {r}")).unwrap_or_default());
             opts.error_details = Some(&error_details_owned);
         }
-        stub_finalize_recording_master(meeting_id).await;
+        finalize_recording_master(&state, meeting_id).await;
         let success = update_meeting_status(&state.db, meeting_id, target_status, opts).await.unwrap_or(false);
         new_status = success.then(|| target_status.as_str().to_string());
     }

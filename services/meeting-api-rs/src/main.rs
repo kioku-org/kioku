@@ -11,6 +11,7 @@ mod meeting_status;
 mod models;
 mod outbound_events;
 mod post_meeting;
+mod recording_finalizer;
 mod runtime_backend;
 mod schemas;
 mod state;
@@ -94,6 +95,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/bots/status", get(handlers::meetings::get_bots_status))
         .route("/bots/id/:meeting_id", get(handlers::meetings::get_bot_by_id))
         .route("/bots/:platform/:native_meeting_id", delete(handlers::meetings::stop_bot))
+        .route("/internal/recordings/upload", post(handlers::recordings::upload_recording))
         .route("/recordings", get(handlers::recordings::list_recordings))
         .route("/recordings/:recording_id", get(handlers::recordings::get_recording).delete(handlers::recordings::delete_recording))
         .route("/recordings/:recording_id/media/:media_file_id/download", get(handlers::recordings::download_media_file))

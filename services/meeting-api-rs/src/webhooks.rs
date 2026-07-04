@@ -106,6 +106,24 @@ pub async fn send_completion_webhook(state: &AppState, meeting: &Meeting) {
     write_delivery_status(&state.db, meeting, recorded).await;
 }
 
+/// Fire-and-forget webhook for recording/transcription events — faithful port of
+/// webhooks.py's `send_event_webhook`. Unlike send_completion_webhook/send_status_webhook,
+/// this is not gated by `is_event_enabled` (Python doesn't gate it either) and doesn't
+/// persist a delivery-status record onto meeting.data.
+pub async fn send_event_webhook(state: &AppState, meeting_id: i32, event_type: &str, data: Value) {
+    let meeting: Option<Meeting> = sqlx::query_as("SELECT * FROM meetings WHERE id = $1").bind(meeting_id).fetch_optional(&state.db).await.unwrap_or(None);
+    let Some(meeting) = meeting else { return };
+    let (Some(webhook_url), webhook_secret) = webhook_config(&meeting) else { return };
+    if validate_webhook_url(&webhook_url).await.is_err() {
+        return;
+    }
+
+    let payload = build_envelope(event_type, data);
+    let mut redis = state.redis.clone();
+    let label = format!("event-webhook {event_type} meeting={meeting_id}");
+    deliver(&state.http, Some(&mut redis), &webhook_url, &payload, webhook_secret.as_deref(), &label, None).await;
+}
+
 pub struct StatusChangeInfo<'a> {
     pub old_status: &'a str,
     pub new_status: &'a str,
