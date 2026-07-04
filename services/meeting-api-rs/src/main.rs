@@ -76,6 +76,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/bots/internal/callback/awaiting_admission", post(handlers::callbacks::bot_awaiting_admission_callback))
         .route("/bots/internal/callback/exited", post(handlers::callbacks::bot_exit_callback))
         .route("/bots/internal/callback/status_change", post(handlers::callbacks::bot_status_change_callback))
+        .route("/internal/transcripts/:meeting_id", get(handlers::collector::get_transcript_internal))
         .route_layer(axum::middleware::from_fn_with_state(state.clone(), internal_auth::require_internal_secret));
 
     let app = Router::new()
@@ -92,6 +93,12 @@ async fn main() -> anyhow::Result<()> {
         .route("/bots/:platform/:native_meeting_id/screen", post(handlers::voice_agent::bot_screen_show).delete(handlers::voice_agent::bot_screen_stop))
         .route("/bots/:platform/:native_meeting_id/avatar", axum::routing::put(handlers::voice_agent::bot_avatar_set).delete(handlers::voice_agent::bot_avatar_reset))
         .route("/bots/:platform/:native_meeting_id/events", get(handlers::voice_agent::bot_events))
+        .route("/meetings", get(handlers::collector::get_meetings))
+        .route(
+            "/meetings/:platform/:native_meeting_id",
+            axum::routing::patch(handlers::collector::update_meeting_data).delete(handlers::collector::delete_meeting),
+        )
+        .route("/transcripts/:platform/:native_meeting_id", get(handlers::collector::get_transcript_by_native_id))
         .merge(internal_callback_routes)
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
