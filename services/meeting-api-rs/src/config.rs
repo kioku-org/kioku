@@ -36,6 +36,21 @@ pub struct Config {
     /// self-hosted Kioku — fire_post_meeting_hooks is a no-op with no destinations configured.
     pub post_meeting_hooks: Vec<String>,
 
+    pub admin_token: String,
+    pub redis_stream_name: String,
+    pub redis_consumer_group: String,
+    pub consumer_name: String,
+    pub pending_msg_timeout_ms: i64,
+    pub redis_stream_read_count: usize,
+    pub redis_stream_block_ms: usize,
+    pub redis_speaker_events_stream_name: String,
+    pub redis_speaker_events_consumer_group: String,
+    pub redis_speaker_event_key_prefix: String,
+    pub redis_speaker_event_ttl: i64,
+    pub background_task_interval_secs: u64,
+    pub immutability_threshold_secs: i64,
+    pub redis_segment_ttl: i64,
+
     pub storage_backend: String,
     pub minio_endpoint: String,
     pub minio_public_endpoint: String,
@@ -115,6 +130,24 @@ impl Config {
             cors_origins,
 
             post_meeting_hooks: env_or("POST_MEETING_HOOKS", "").split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect(),
+
+            admin_token: {
+                let t = env::var("ADMIN_TOKEN").unwrap_or_default();
+                if t.is_empty() { env::var("ADMIN_API_TOKEN").unwrap_or_default() } else { t }
+            },
+            redis_stream_name: env_or("REDIS_STREAM_NAME", "transcription_segments"),
+            redis_consumer_group: env_or("REDIS_CONSUMER_GROUP", "collector_group"),
+            consumer_name: env::var("POD_NAME").unwrap_or_else(|_| "collector-main".to_string()),
+            pending_msg_timeout_ms: 60000,
+            redis_stream_read_count: env_or("REDIS_STREAM_READ_COUNT", "10").parse().unwrap_or(10),
+            redis_stream_block_ms: env_or("REDIS_STREAM_BLOCK_MS", "2000").parse().unwrap_or(2000),
+            redis_speaker_events_stream_name: env_or("REDIS_SPEAKER_EVENTS_STREAM_NAME", "speaker_events_relative"),
+            redis_speaker_events_consumer_group: env_or("REDIS_SPEAKER_EVENTS_CONSUMER_GROUP", "collector_speaker_group"),
+            redis_speaker_event_key_prefix: env_or("REDIS_SPEAKER_EVENT_KEY_PREFIX", "speaker_events"),
+            redis_speaker_event_ttl: env_or("REDIS_SPEAKER_EVENT_TTL", "86400").parse().unwrap_or(86400),
+            background_task_interval_secs: env_or("BACKGROUND_TASK_INTERVAL", "10").parse().unwrap_or(10),
+            immutability_threshold_secs: env_or("IMMUTABILITY_THRESHOLD", "30").parse().unwrap_or(30),
+            redis_segment_ttl: env_or("REDIS_SEGMENT_TTL", "3600").parse().unwrap_or(3600),
 
             storage_backend: env_or("STORAGE_BACKEND", "minio"),
             minio_endpoint: env_or("MINIO_ENDPOINT", "minio:9000"),

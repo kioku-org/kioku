@@ -1,5 +1,6 @@
 mod auth;
 mod classifier;
+mod collector_pipeline;
 mod config;
 mod container_stop_outbox;
 mod db;
@@ -47,6 +48,12 @@ async fn main() -> anyhow::Result<()> {
     let http = reqwest::Client::new();
 
     let state = AppState { db, redis, http, config: config.clone() };
+
+    // Collector: real-time transcription ingestion pipeline. Three supervised background
+    // tasks, matching main.py's startup wiring exactly.
+    tokio::spawn(collector_pipeline::process_redis_to_postgres(state.clone()));
+    tokio::spawn(collector_pipeline::consume_redis_stream(state.clone()));
+    tokio::spawn(collector_pipeline::consume_speaker_events_stream(state.clone()));
 
     // Sweep loop: container-stop outbox consumer (the only thing allowed to fire runtime-api
     // DELETE for a delayed stop) + stale-stopping reconciliation. 60s cadence matches sweeps.py.
