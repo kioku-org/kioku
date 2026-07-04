@@ -3,6 +3,11 @@ name = "kioku-hivemind"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+# tests/ is its own crate (tests/Cargo.toml, its own deps) for the HIVEMIND_URL-based
+# integration suite — without this, `cargo test`/`clippy --all-targets` from this directory
+# auto-discovers those .rs files as integration tests of *this* package and fails to resolve
+# their dependencies (they're declared in tests/Cargo.toml, not here).
+autotests = false
 
 [dependencies]
 axum = { version = "0.7", features = ["macros", "multipart"] }
@@ -27,9 +32,12 @@ qdrant-client = "=1.10.1"
 ollama-rs = "0.2.0"
 async-trait = "0.1"
 
-# PDF parsing
+# Document parsing
 pdf-extract = "0.7"
+docx-rs = "0.4"
+zip = "0.6"
 url = "2"
+tempfile = "3"
 
 # MCP protocol
 rmcp = { version = "1.7", features = ["server", "transport-streamable-http-server", "transport-streamable-http-server-session", "macros", "schemars"] }

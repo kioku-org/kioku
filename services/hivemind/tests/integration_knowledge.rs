@@ -102,7 +102,7 @@ async fn knowledge_search_missing_query_rejected() {
 }
 
 #[tokio::test]
-async fn knowledge_upload_non_pdf_rejected() {
+async fn knowledge_upload_unsupported_extension_rejected() {
     let c = client();
     let (token, _) = register_and_get_token("knn_upload").await;
 
@@ -111,12 +111,128 @@ async fn knowledge_upload_non_pdf_rejected() {
         .header("Authorization", auth_header(&token))
         .multipart(reqwest::multipart::Form::new().part(
             "file",
-            reqwest::multipart::Part::text("not a pdf").file_name("test.txt"),
+            reqwest::multipart::Part::text("not a supported format").file_name("test.xyz"),
         ))
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), 400, "Non-PDF upload should be rejected");
+    assert_eq!(
+        resp.status(),
+        400,
+        "Unsupported extension upload should be rejected"
+    );
+}
+
+#[tokio::test]
+async fn knowledge_upload_txt_accepted() {
+    if !embedding_available().await {
+        eprintln!("SKIP: embedding service not available");
+        return;
+    }
+    let c = client();
+    let (token, _) = register_and_get_token("knn_upload_txt").await;
+
+    let resp = c
+        .post(format!("{}/knowledge/documents", base_url()))
+        .header("Authorization", auth_header(&token))
+        .multipart(reqwest::multipart::Form::new().part(
+            "file",
+            reqwest::multipart::Part::text(
+                "This is a plain text knowledge document about quarterly planning.",
+            )
+            .file_name("notes.txt"),
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp.status().is_success(), "txt upload should succeed, got {}", resp.status());
+    let doc: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(doc["status"], "completed");
+}
+
+#[tokio::test]
+async fn knowledge_upload_markdown_accepted() {
+    if !embedding_available().await {
+        eprintln!("SKIP: embedding service not available");
+        return;
+    }
+    let c = client();
+    let (token, _) = register_and_get_token("knn_upload_md").await;
+
+    let resp = c
+        .post(format!("{}/knowledge/documents", base_url()))
+        .header("Authorization", auth_header(&token))
+        .multipart(reqwest::multipart::Form::new().part(
+            "file",
+            reqwest::multipart::Part::text("# Roadmap\n\n- Ship the gateway rewrite\n- Ship multi-format ingest")
+                .file_name("roadmap.md"),
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp.status().is_success(), "markdown upload should succeed, got {}", resp.status());
+}
+
+#[tokio::test]
+async fn knowledge_upload_docx_accepted() {
+    if !embedding_available().await {
+        eprintln!("SKIP: embedding service not available");
+        return;
+    }
+    let c = client();
+    let (token, _) = register_and_get_token("knn_upload_docx").await;
+
+    let docx_bytes = build_test_docx();
+
+    let resp = c
+        .post(format!("{}/knowledge/documents", base_url()))
+        .header("Authorization", auth_header(&token))
+        .multipart(reqwest::multipart::Form::new().part(
+            "file",
+            reqwest::multipart::Part::bytes(docx_bytes).file_name("report.docx"),
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp.status().is_success(), "docx upload should succeed, got {}", resp.status());
+}
+
+#[tokio::test]
+async fn knowledge_upload_pptx_accepted() {
+    if !embedding_available().await {
+        eprintln!("SKIP: embedding service not available");
+        return;
+    }
+    let c = client();
+    let (token, _) = register_and_get_token("knn_upload_pptx").await;
+
+    // No Rust pptx writer exists to build this in-process (unlike docx-rs for .docx), so this
+    // is a small checked-in fixture generated once via python-pptx.
+    let pptx_bytes = include_bytes!("fixtures/sample.pptx");
+
+    let resp = c
+        .post(format!("{}/knowledge/documents", base_url()))
+        .header("Authorization", auth_header(&token))
+        .multipart(reqwest::multipart::Form::new().part(
+            "file",
+            reqwest::multipart::Part::bytes(pptx_bytes.to_vec()).file_name("deck.pptx"),
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp.status().is_success(), "pptx upload should succeed, got {}", resp.status());
+}
+
+/// Builds a minimal valid .docx in-memory via docx-rs's own writer — no checked-in binary
+/// fixture needed.
+fn build_test_docx() -> Vec<u8> {
+    use docx_rs::{Docx, Paragraph, Run};
+    let docx = Docx::new().add_paragraph(
+        Paragraph::new().add_run(Run::new().add_text("Q3 revenue grew 12% quarter over quarter.")),
+    );
+    let mut buf = Vec::new();
+    docx.build().pack(&mut std::io::Cursor::new(&mut buf)).unwrap();
+    buf
 }
 
 #[tokio::test]
