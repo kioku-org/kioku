@@ -95,6 +95,7 @@ services:
       # expose both cards: only the NVIDIA Vulkan ICD is registered in
       # /etc/vulkan/icd.d/, so Vulkan can't pick the Intel one by mistake.
       - /dev/dri:/dev/dri
+      - /dev/nvidia-modeset:/dev/nvidia-modeset
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - postgres-data:/data/postgresql
