@@ -4,7 +4,7 @@
 # ==============================================================================
 
 # ─── Stage 1: Build hivemind (Rust) ───────────────────────────────────────────
-FROM rust:1.88-slim AS hivemind-builder
+FROM rust:1.94-slim AS hivemind-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev libfontconfig1-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -13,7 +13,7 @@ COPY services/hivemind/ .
 RUN cargo build --release
 
 # ─── Stage 1b: Build api-gateway (Rust) ───────────────────────────────────────
-FROM rust:1.88-slim AS api-gateway-builder
+FROM rust:1.94-slim AS api-gateway-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -22,7 +22,7 @@ COPY services/api-gateway/ .
 RUN cargo build --release
 
 # ─── Stage 1c: Build mcp (Rust) ────────────────────────────────────────────────
-FROM rust:1.88-slim AS mcp-builder
+FROM rust:1.94-slim AS mcp-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -31,7 +31,7 @@ COPY services/mcp/ .
 RUN cargo build --release
 
 # ─── Stage 1d: Build meeting-api (Rust) ────────────────────────────────────────
-FROM rust:1.88-slim AS meeting-api-builder
+FROM rust:1.94-slim AS meeting-api-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
