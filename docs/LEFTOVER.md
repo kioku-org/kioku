@@ -1,6 +1,6 @@
 # LEFTOVER
 
-Last updated: 2026-07-05 (rev 15)
+Last updated: 2026-07-05 (rev 16)
 
 ## Current Status
 
@@ -16,7 +16,9 @@ Not yet merged to main — needs final testing pass before PR.
 pipeline, and **mcp** from Python to Rust, and cut the deploy over: `services/meeting-api` is the
 Rust binary (`kioku-meeting-api`), the Python FastAPI app is deleted, and `Dockerfile.stateful` /
 `entrypoint-stateful-runtime.sh` build and run the Rust binary directly (see rev 15 section below).
-**Not yet deployed to the dev server or e2e-tested live** — that's the immediate next step.
+**Deploy is mid-flight and the dev server is currently in a degraded state** — see the rev 16 Open
+Items entry below for exactly what's broken and the precise next steps before doing anything else
+with `kioku-stateful` on the dev server.
 
 ## Architecture
 
@@ -221,15 +223,53 @@ applies to `curl`, not the piped `sh` (see #62). Plain `curl ... | sh` with no
 
 ## Open Items
 
-### Deploy + e2e test meeting-api Rust cutover (feat/rs-rewrite, rev 15)
+### Deploy + e2e test meeting-api Rust cutover (feat/rs-rewrite, rev 16 — 2026-07-05, IN PROGRESS)
 
-- [ ] Build `kioku-stateful` from source on the dev server with the new Dockerfile.stateful
-      (adds the meeting-api Rust build stage) and redeploy.
-- [ ] Full e2e pass using the local `kioku` CLI against the dev server: signin, `kioku meet` join
-      (unauthenticated Google Meet — real bot join, real transcription via the collector
-      pipeline, real recording chunk upload + master finalization), `kioku transcript`,
-      `kioku meetings`, recordings list/download, `kioku mcp` tool calls (including the newly
-      fixed `get_meeting_bundle`/`get_recording_media_download`/idempotent `request_meeting_bot`).
+**Current state of the dev server as of this write-up — read this before touching it again:**
+`~/ws/kioku` on the dev server is checked out at commit `0d4de71` (fetched + `git reset --hard`
+already done), but **the running `kioku-stateful` container has NOT been rebuilt from that commit
+yet** — it's still running an image built from an earlier, broken commit (`ac6358c`). That image
+has **`hivemind` and `meeting-api` both crashlooping in supervisor's FATAL state** (confirmed via
+`docker logs kioku-stateful` and `/var/log/{hivemind,meeting-api}.err` showing
+`GLIBC_2.38/2.39 not found`). Everything else in the container (api-gateway, mcp, dashboard,
+admin-api, postgres, redis, etc.) is up and healthy. **Do not treat "container is Up (healthy)" as
+a signal here** — Docker's healthcheck only covers a port that isn't meeting-api/hivemind; the
+container can show healthy while both of those are down.
+
+**How this happened (read before changing Dockerfile.stateful's Rust image pins again):**
+1. First deploy attempt of the meeting-api cutover failed to build: `aws-sdk-s3`'s transitive deps
+   (`aws-smithy-types` 1.5.0, `crc-fast` 1.10.0) need rustc ≥1.91.1, but all 4 Rust builder stages
+   were pinned to `rust:1.88-slim`.
+2. Fix attempt #1 (commit `ac6358c`): bumped all 4 stages to `rust:1.94-slim`. This *built*
+   successfully and got deployed — but `rust:X-slim` is Debian-based with a newer glibc than the
+   runtime stage (`nvidia/cuda:...-ubuntu22.04`, glibc 2.35). Binaries built against it crash at
+   startup with `GLIBC_2.3x not found`. This broke hivemind too, even though hivemind never needed
+   the rustc bump — confirmed live, this is the currently-running broken state described above.
+3. Fix attempt #2 (commit `0d4de71`, current HEAD): reverted hivemind/api-gateway/mcp back to
+   `rust:1.88-slim` (their original working pin). `meeting-api` now builds directly on
+   `ubuntu:22.04` via rustup (`curl https://sh.rustup.rs | sh -s -- ... --default-toolchain
+   1.94.0`) so its glibc matches the runtime stage by construction. **Not yet built or deployed —
+   this is the very next step.**
+
+**Immediate next steps, in order:**
+- [ ] On the dev server: `cd ~/ws/kioku/deployment/docker && docker compose -f
+      docker-compose.stateful.yml build kioku-stateful` (rebuild with the `0d4de71` fix).
+      Previous full-monolith builds took roughly 10-20 min from a cold cache; this one should be
+      mostly cached except the meeting-api-builder stage (new base image, no cache to reuse).
+- [ ] `docker compose -f docker-compose.stateful.yml up -d` to recreate the container, then
+      `docker image prune -a -f && docker builder prune -f` (disk was at 89%/25G free before the
+      last prune pass; now ~74%/55G free — keep pruning after every rebuild, per standing habit).
+- [ ] Verify **both** `hivemind` and `meeting-api` specifically — not just "container healthy":
+      `docker exec kioku-stateful supervisorctl status` should show both RUNNING, and
+      `docker exec kioku-stateful curl -s localhost:8080/health` /
+      `docker exec kioku-stateful curl -s localhost:9100/health` should both respond.
+- [ ] Full e2e pass using the local `kioku` CLI against the dev server (blocked on: the user
+      running `kioku signin` locally — was not signed in as of this write-up — and providing a
+      live meeting link/code for the bot-join test): `kioku meet <link>` join (unauthenticated
+      Google Meet — real bot join, real transcription via the collector pipeline, real recording
+      chunk upload + master finalization), `kioku meet --transcript`, `kioku meet ls`, recordings
+      list/download, `kioku mcp` tool calls (including the newly fixed
+      `get_meeting_bundle`/`get_recording_media_download`/idempotent `request_meeting_bot`).
 - [ ] Iterate on any bugs the live e2e pass surfaces (this is genuinely first-time live traffic
       for `handlers/meetings.rs`'s golden path and the collector pipeline).
 - [ ] Deliberately deferred, not blocking this pass: browser_session mode, agent-only mode,
