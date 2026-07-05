@@ -87,6 +87,14 @@ services:
       - PUBLIC_KEY=${PUBLIC_KEY:-}
       # ── GPU (Ollama + Qdrant GPU indexing) ────────────────────────────────────
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
+    devices:
+      # nvidia-container-toolkit's own DRM render-node auto-injection doesn't
+      # work on this host (hybrid Intel/NVIDIA GPU setup) despite the
+      # "graphics" capability above, so /dev/dri needs to be passed through
+      # directly for Qdrant's Vulkan GPU indexing to find a device. Safe to
+      # expose both cards: only the NVIDIA Vulkan ICD is registered in
+      # /etc/vulkan/icd.d/, so Vulkan can't pick the Intel one by mistake.
+      - /dev/dri:/dev/dri
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - postgres-data:/data/postgresql
