@@ -46,6 +46,12 @@ WORKDIR /app
 COPY services/meeting-api/ .
 RUN cargo build --release
 
+# ─── Stage 1e: Qdrant GPU binary (prebuilt, not compiled here) ─────────────────
+# Same Ubuntu 22.04 / glibc 2.35 base as the runtime stage — verified via
+# `docker run --rm --entrypoint sh qdrant/qdrant:gpu-nvidia-latest -c 'cat /etc/os-release'`
+# before pinning, so no GLIBC mismatch risk like meeting-api hit above.
+FROM qdrant/qdrant:v1.18.2-gpu-nvidia AS qdrant-gpu
+
 # ─── Stage 2: Install Python services into venv ───────────────────────────────
 # python:3.11-slim-bookworm puts Python at /usr/local/bin and stdlib at
 # /usr/local/lib/python3.11. Stage 4 (Ubuntu 22.04 + deadsnakes) puts Python
@@ -164,12 +170,11 @@ RUN apt-get update \
         postgresql-16 postgresql-16-pgvector postgresql-client-16 \
     && rm -rf /var/lib/apt/lists/*
 
-# Qdrant
-RUN curl -fsSL https://github.com/qdrant/qdrant/releases/download/v1.10.1/qdrant-x86_64-unknown-linux-gnu.tar.gz \
-        -o /tmp/qdrant.tar.gz \
-    && tar xzf /tmp/qdrant.tar.gz -C /usr/local/bin qdrant \
-    && rm -f /tmp/qdrant.tar.gz \
-    && chmod +x /usr/local/bin/qdrant
+# Qdrant (GPU-enabled binary, see qdrant-gpu stage above)
+RUN apt-get update && apt-get install -y --no-install-recommends libvulkan1 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=qdrant-gpu /qdrant/qdrant /usr/local/bin/qdrant
+COPY --from=qdrant-gpu /etc/vulkan/icd.d/nvidia_icd.json /etc/vulkan/icd.d/nvidia_icd.json
 
 # Ollama
 RUN curl -fsSL https://ollama.com/install.sh | sh

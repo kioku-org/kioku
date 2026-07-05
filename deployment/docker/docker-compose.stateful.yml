@@ -85,6 +85,8 @@ services:
       - NEXT_PUBLIC_DOCS_URL=${NEXT_PUBLIC_DOCS_URL:-https://docs.kioku.chat}
       # ── SSH (optional, for RunPod terminal access) ────────────────────────────
       - PUBLIC_KEY=${PUBLIC_KEY:-}
+      # ── GPU (Ollama + Qdrant GPU indexing) ────────────────────────────────────
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - postgres-data:/data/postgresql

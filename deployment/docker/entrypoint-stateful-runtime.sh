@@ -88,6 +88,8 @@ service:
   grpc_port: 6335
 storage:
   storage_path: /data/qdrant
+gpu:
+  indexing: true
 QDRANT
 
 # ─── One-shot helper scripts ──────────────────────────────────────────────────
