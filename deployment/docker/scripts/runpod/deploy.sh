@@ -132,7 +132,7 @@ CMD=(
     --container-disk-in-gb "$CONTAINER_DISK"
     --volume-in-gb "$VOLUME_SIZE"
     --volume-mount-path "/data"
-    --ports "22/tcp,6379/tcp,8080/http,8090/http,9100/http,8056/http"
+    --ports "22/tcp,6379/tcp,8080/http,9100/http,8056/http"
     --env "$ENV_JSON"
 )
 

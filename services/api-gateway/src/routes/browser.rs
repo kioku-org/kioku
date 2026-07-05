@@ -50,7 +50,7 @@ fn guessable_token_rejected(token: &str) -> Option<Response> {
     None
 }
 
-async fn fire_touch(state: &AppState, container_name: &str) {
+async fn fire_touch(state: &AppState, container_name: &str, backend_url: &str) {
     if !container_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
         tracing::warn!("Suspicious container_name in touch: {}", &container_name[..container_name.len().min(20)]);
         return;
@@ -64,7 +64,7 @@ async fn fire_touch(state: &AppState, container_name: &str) {
         }
         debounce.insert(container_name.to_string(), Instant::now());
     }
-    let url = format!("{}/containers/{}/touch", state.config.runtime_api_url, container_name);
+    let url = format!("{backend_url}/containers/{container_name}/touch");
     if let Err(e) = state.http.post(&url).timeout(Duration::from_secs(5)).send().await {
         tracing::debug!("touch failed for {container_name}: {e}");
     }
@@ -79,16 +79,25 @@ async fn resolve_session(state: &AppState, token: &str) -> Option<Value> {
     };
     let mut session: Value = serde_json::from_str(&raw?).ok()?;
 
+    // Which runtime-api instance this session's container actually lives on (set by
+    // meeting-api at spawn time). Absent for sessions created before this field existed —
+    // falls back to the local backend, same as meeting-api's own resolver does.
+    let backend_url = state
+        .config
+        .runtime_backend_url(session.get("runtime_backend").and_then(|v| v.as_str()))
+        .to_string();
+
     let container_name = session.get("container_name").and_then(|v| v.as_str()).map(str::to_string);
     if let Some(name) = &container_name {
         let state = state.clone();
         let name = name.clone();
-        tokio::spawn(async move { fire_touch(&state, &name).await });
+        let backend_url = backend_url.clone();
+        tokio::spawn(async move { fire_touch(&state, &name, &backend_url).await });
     }
 
     if session.get("container_ip").and_then(|v| v.as_str()).is_none() {
         if let Some(name) = &container_name {
-            let url = format!("{}/containers/{}", state.config.runtime_api_url, name);
+            let url = format!("{backend_url}/containers/{name}");
             if let Ok(resp) = state.http.get(&url).timeout(Duration::from_secs(5)).send().await {
                 if resp.status() == StatusCode::OK {
                     if let Ok(info) = resp.json::<Value>().await {
@@ -281,15 +290,19 @@ async fn vnc_ws_proxy(
     };
     let vnc_host = state.config.vnc_host_override.clone().unwrap_or_else(|| session_container(&session));
     let upstream_url = format!("ws://{vnc_host}:6080/websockify");
+    let backend_url = state
+        .config
+        .runtime_backend_url(session.get("runtime_backend").and_then(|v| v.as_str()))
+        .to_string();
 
     ws.protocols(["binary"]).on_upgrade(move |socket| async move {
-        relay_binary_websocket(&state, socket, &upstream_url, &vnc_host).await;
+        relay_binary_websocket(&state, socket, &upstream_url, &vnc_host, &backend_url).await;
     })
 }
 
 /// Bidirectional byte-proxy shared by VNC and (conceptually) similar raw WS tunnels: relays
 /// client<->upstream frames verbatim and fires a keep-alive touch every 60s while connected.
-async fn relay_binary_websocket(state: &AppState, socket: WebSocket, upstream_url: &str, container: &str) {
+async fn relay_binary_websocket(state: &AppState, socket: WebSocket, upstream_url: &str, container: &str, backend_url: &str) {
     let mut req = match upstream_url.into_client_request() {
         Ok(r) => r,
         Err(e) => {
@@ -337,7 +350,7 @@ async fn relay_binary_websocket(state: &AppState, socket: WebSocket, upstream_ur
     let periodic_touch = async {
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
-            fire_touch(state, container).await;
+            fire_touch(state, container, backend_url).await;
         }
     };
 
@@ -489,13 +502,17 @@ async fn cdp_upgrade(ws: WebSocketUpgrade, state: AppState, token: String, heade
     }
     let re = Regex::new(r"ws://(localhost|127\.0\.0\.1)(:\d+)?/").unwrap();
     let cdp_ws_url = re.replace(raw_ws_url, format!("ws://{container}:9223/")).into_owned();
+    let backend_url = state
+        .config
+        .runtime_backend_url(session.get("runtime_backend").and_then(|v| v.as_str()))
+        .to_string();
 
     ws.on_upgrade(move |socket| async move {
-        relay_cdp_websocket(&state, socket, &cdp_ws_url, &container).await;
+        relay_cdp_websocket(&state, socket, &cdp_ws_url, &container, &backend_url).await;
     })
 }
 
-async fn relay_cdp_websocket(state: &AppState, socket: WebSocket, upstream_url: &str, container: &str) {
+async fn relay_cdp_websocket(state: &AppState, socket: WebSocket, upstream_url: &str, container: &str, backend_url: &str) {
     let mut req = match upstream_url.into_client_request() {
         Ok(r) => r,
         Err(e) => {
@@ -542,7 +559,7 @@ async fn relay_cdp_websocket(state: &AppState, socket: WebSocket, upstream_url: 
     let periodic_touch = async {
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
-            fire_touch(state, container).await;
+            fire_touch(state, container, backend_url).await;
         }
     };
 

@@ -1,6 +1,6 @@
 # LEFTOVER
 
-Last updated: 2026-07-02 (rev 14)
+Last updated: 2026-07-05 (rev 16)
 
 ## Current Status
 
@@ -11,6 +11,14 @@ to GHCR on every push to master.
 
 `feat/hivemind` branch is active with Hivemind MCP integration, CLI OAuth signin, and GitHub OAuth.
 Not yet merged to main — needs final testing pass before PR.
+
+`feat/rs-rewrite` (this branch) has now ported **meeting-api**, the transcription-collector
+pipeline, and **mcp** from Python to Rust, and cut the deploy over: `services/meeting-api` is the
+Rust binary (`kioku-meeting-api`), the Python FastAPI app is deleted, and `Dockerfile.stateful` /
+`entrypoint-stateful-runtime.sh` build and run the Rust binary directly (see rev 15 section below).
+**Deploy is mid-flight and the dev server is currently in a degraded state** — see the rev 16 Open
+Items entry below for exactly what's broken and the precise next steps before doing anything else
+with `kioku-stateful` on the dev server.
 
 ## Architecture
 
@@ -35,6 +43,63 @@ kioku-stateless (ephemeral per-meeting pod, spawned by runtime-api-local)
 Bot containers run on `kioku-network` and reach stateful services by container name (`kioku-stateful`).
 
 ## What Is Done
+
+### meeting-api + mcp Rust rewrite and cutover (feat/rs-rewrite, rev 15 — 2026-07-05)
+
+**meeting-api**: the whole Python FastAPI service (`services/meeting-api`) has been ported to
+Rust across this branch — meeting lifecycle (`handlers/meetings.rs`), the real-time transcription
+collector pipeline (`collector_pipeline.rs`: Redis Stream consumer + Postgres flush loop),
+recording chunk upload + WebM/WAV master-file assembly (`handlers/recordings.rs`,
+`recording_finalizer.rs`), bot lifecycle callbacks (`handlers/callbacks.rs`), webhooks
+(`webhooks.rs`, `webhook_delivery.rs`, `webhook_url.rs`), the container-stop outbox + sweep loop,
+and the opt-in `dispatch_check`/`POST_MEETING_HOOKS` billing hooks.
+
+Before wiring it into deployment, audited `request_bot` (flagged in its own code as an MVP slice)
+against the Python original and found gaps serious enough to break the golden path outright, not
+just feature-parity nits — fixed all of them:
+- `BOT_CONFIG` never included `meetingUrl`/`botName` (or used the wrong key casing throughout).
+  vexa-bot's zod schema requires these — every bot spawn would have crashed on startup.
+- No `MeetingToken` was ever minted, so the bot had nothing valid to present when posting
+  transcription segments — the whole collector pipeline could never authenticate.
+- `meeting.data` never got `webhook_url`/`webhook_secret`/`webhook_events`, so webhooks could
+  never fire for any Rust-spawned meeting.
+- `recording_enabled`/`captureModes`/cookie-backend config were never forwarded to the bot.
+- Status was set to `active` synchronously at spawn time — a stand-in from before
+  `callbacks.rs` existed. Removed; real callbacks now drive the state machine.
+- No `meeting_sessions` row was pre-registered with the bot's `connectionId`, so recording/
+  transcript session_uid lookups had nothing to resolve against before the bot's first
+  `session_start` event.
+
+Deliberately still deferred (documented in `handlers/meetings.rs`'s module doc comment):
+browser_session mode, agent-only mode, Zoom/Teams native-SDK env vars, `dry_run` test mode, and
+per-user automatic-leave timeout overrides.
+
+**mcp**: `services/mcp` was already fully rewritten to Rust (consolidating the old Python
+meeting-MCP + Hivemind's embedded knowledge MCP into one `kioku-mcp` binary) before this session.
+Audited it against the original Python `services/mcp/main.py` on `master` and fixed three real
+regressions: `get_meeting_bundle`'s `include_recordings`/`include_share_link` args silently
+defaulted to `false` instead of Python's `true`; `include_media_download_urls` and the standalone
+`get_recording_media_download` tool were missing entirely (no MCP path to recording media at all);
+`request_meeting_bot` surfaced a duplicate-meeting 409 as a hard error instead of Python's
+idempotent "already_exists" lookup (despite the ported prompt text promising idempotency). Also
+added the `X-API-Key` header auth fallback Python has. Everything else — all 17 meeting/bot tools,
+the 8 hivemind knowledge tools, `parse_meeting_link`'s URL parsing, prompts — checked out clean.
+
+**Cutover**: extracted the 3 files admin-api actually depends on from the Python meeting-api
+(`models.py`/`schemas.py`/`webhook_url.py` — a self-contained subgraph, no imports from the rest
+of the package) into a new shared lib, `services/libs/meeting-models`, following the existing
+`schema-sync`/`admin-models` pattern. Deleted the rest of `services/meeting-api` (Python), renamed
+`services/meeting-api-rs` → `services/meeting-api`, added a Rust build stage to
+`Dockerfile.stateful` (same pattern as hivemind/api-gateway/mcp), and updated
+`entrypoint-stateful-runtime.sh`'s `[program:meeting-api]` to run the compiled binary directly.
+Also fixed `services/admin-api/Dockerfile` (same package-source swap) and two pre-existing broken
+`sys.path` entries in `services/admin-api/tests/conftest.py` (missing `services/` prefix and a
+`packages/` vs `services/` typo — neither ever pointed at a real directory, so those tests could
+never have run).
+
+**Status**: builds clean (`cargo build`/`test`/`clippy` on both `meeting-api` and `mcp`, 55 + 12
+tests passing, no new warnings). **Not yet deployed to the dev server or e2e-tested against a real
+meeting join** — see Open Items below.
 
 ### Hivemind MCP integration (feat/hivemind, issue #47)
 
@@ -157,6 +222,59 @@ applies to `curl`, not the piped `sh` (see #62). Plain `curl ... | sh` with no
 - Stale build-path env vars removed from `.env.example`
 
 ## Open Items
+
+### Deploy + e2e test meeting-api Rust cutover (feat/rs-rewrite, rev 16 — 2026-07-05, IN PROGRESS)
+
+**Current state of the dev server as of this write-up — read this before touching it again:**
+`~/ws/kioku` on the dev server is checked out at commit `0d4de71` (fetched + `git reset --hard`
+already done), but **the running `kioku-stateful` container has NOT been rebuilt from that commit
+yet** — it's still running an image built from an earlier, broken commit (`ac6358c`). That image
+has **`hivemind` and `meeting-api` both crashlooping in supervisor's FATAL state** (confirmed via
+`docker logs kioku-stateful` and `/var/log/{hivemind,meeting-api}.err` showing
+`GLIBC_2.38/2.39 not found`). Everything else in the container (api-gateway, mcp, dashboard,
+admin-api, postgres, redis, etc.) is up and healthy. **Do not treat "container is Up (healthy)" as
+a signal here** — Docker's healthcheck only covers a port that isn't meeting-api/hivemind; the
+container can show healthy while both of those are down.
+
+**How this happened (read before changing Dockerfile.stateful's Rust image pins again):**
+1. First deploy attempt of the meeting-api cutover failed to build: `aws-sdk-s3`'s transitive deps
+   (`aws-smithy-types` 1.5.0, `crc-fast` 1.10.0) need rustc ≥1.91.1, but all 4 Rust builder stages
+   were pinned to `rust:1.88-slim`.
+2. Fix attempt #1 (commit `ac6358c`): bumped all 4 stages to `rust:1.94-slim`. This *built*
+   successfully and got deployed — but `rust:X-slim` is Debian-based with a newer glibc than the
+   runtime stage (`nvidia/cuda:...-ubuntu22.04`, glibc 2.35). Binaries built against it crash at
+   startup with `GLIBC_2.3x not found`. This broke hivemind too, even though hivemind never needed
+   the rustc bump — confirmed live, this is the currently-running broken state described above.
+3. Fix attempt #2 (commit `0d4de71`, current HEAD): reverted hivemind/api-gateway/mcp back to
+   `rust:1.88-slim` (their original working pin). `meeting-api` now builds directly on
+   `ubuntu:22.04` via rustup (`curl https://sh.rustup.rs | sh -s -- ... --default-toolchain
+   1.94.0`) so its glibc matches the runtime stage by construction. **Not yet built or deployed —
+   this is the very next step.**
+
+**Immediate next steps, in order:**
+- [ ] On the dev server: `cd ~/ws/kioku/deployment/docker && docker compose -f
+      docker-compose.stateful.yml build kioku-stateful` (rebuild with the `0d4de71` fix).
+      Previous full-monolith builds took roughly 10-20 min from a cold cache; this one should be
+      mostly cached except the meeting-api-builder stage (new base image, no cache to reuse).
+- [ ] `docker compose -f docker-compose.stateful.yml up -d` to recreate the container, then
+      `docker image prune -a -f && docker builder prune -f` (disk was at 89%/25G free before the
+      last prune pass; now ~74%/55G free — keep pruning after every rebuild, per standing habit).
+- [ ] Verify **both** `hivemind` and `meeting-api` specifically — not just "container healthy":
+      `docker exec kioku-stateful supervisorctl status` should show both RUNNING, and
+      `docker exec kioku-stateful curl -s localhost:8080/health` /
+      `docker exec kioku-stateful curl -s localhost:9100/health` should both respond.
+- [ ] Full e2e pass using the local `kioku` CLI against the dev server (blocked on: the user
+      running `kioku signin` locally — was not signed in as of this write-up — and providing a
+      live meeting link/code for the bot-join test): `kioku meet <link>` join (unauthenticated
+      Google Meet — real bot join, real transcription via the collector pipeline, real recording
+      chunk upload + master finalization), `kioku meet --transcript`, `kioku meet ls`, recordings
+      list/download, `kioku mcp` tool calls (including the newly fixed
+      `get_meeting_bundle`/`get_recording_media_download`/idempotent `request_meeting_bot`).
+- [ ] Iterate on any bugs the live e2e pass surfaces (this is genuinely first-time live traffic
+      for `handlers/meetings.rs`'s golden path and the collector pipeline).
+- [ ] Deliberately deferred, not blocking this pass: browser_session mode, agent-only mode,
+      Zoom/Teams native-SDK env vars, `dry_run` test mode (all documented in
+      `handlers/meetings.rs`'s module doc comment) — revisit only if e2e testing needs them.
 
 ### PR feat/hivemind → main (issue #47)
 

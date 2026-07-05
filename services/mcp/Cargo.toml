@@ -1,0 +1,28 @@
+[package]
+name = "kioku-mcp"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+axum = { version = "0.7", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["json"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenvy = "0.15"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+tower = "0.5"
+anyhow = "1"
+
+# MCP protocol — same version/transport hivemind already uses in production
+rmcp = { version = "1.7", features = ["server", "transport-streamable-http-server", "transport-streamable-http-server-session", "macros", "schemars"] }
+http-body-util = "0.1"
+tokio-util = "0.7"
+
+regex = "1"
+sha2 = "0.10"
+hex = "0.4"
+url = "2"

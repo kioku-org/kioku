@@ -1,0 +1,17 @@
+[project]
+name = "meeting-models"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.29",
+    "pydantic>=2.4.0",
+    "pydantic[email]>=2.4.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["meeting_api"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

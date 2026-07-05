@@ -7,7 +7,13 @@ pub struct Config {
     pub mcp_url: String,
     pub calendar_service_url: Option<String>,
     pub agent_api_url: Option<String>,
-    pub runtime_api_url: String,
+    /// Two runtime-api instances meeting-api load-balances bot spawns across (local Docker vs
+    /// RunPod). Which one a given container is on is resolved per-session from Redis (the
+    /// `runtime_backend` field meeting-api stores alongside `container_name`), not a single
+    /// static URL — this used to go through a standalone `router` proxy that didn't actually
+    /// do that resolution for real traffic, just a static env-var switch.
+    pub local_backend_url: String,
+    pub runpod_backend_url: String,
 
     pub public_base_url: Option<String>,
     pub transcript_share_ttl_seconds: i64,
@@ -61,8 +67,10 @@ impl Config {
             mcp_url: env::var("MCP_URL").unwrap(),
             calendar_service_url: env::var("CALENDAR_SERVICE_URL").ok(),
             agent_api_url: env::var("AGENT_API_URL").ok(),
-            runtime_api_url: env::var("RUNTIME_API_URL")
-                .unwrap_or_else(|_| "http://runtime-api:8090".to_string()),
+            local_backend_url: env::var("LOCAL_BACKEND_URL")
+                .unwrap_or_else(|_| "http://localhost:8091".to_string()),
+            runpod_backend_url: env::var("RUNPOD_BACKEND_URL")
+                .unwrap_or_else(|_| "http://localhost:8092".to_string()),
 
             public_base_url: env::var("PUBLIC_BASE_URL").ok(),
             transcript_share_ttl_seconds: env_i64("TRANSCRIPT_SHARE_TTL_SECONDS", 900),
@@ -78,6 +86,15 @@ impl Config {
             vnc_host_override: env::var("VNC_HOST").ok(),
             is_production: env::var("VEXA_ENV").unwrap_or_else(|_| "development".to_string()) == "production",
         })
+    }
+
+    /// Resolve "local" | "runpod" (or anything else, defaulting to local) to a backend URL.
+    pub fn runtime_backend_url(&self, backend: Option<&str>) -> &str {
+        if backend == Some("runpod") {
+            &self.runpod_backend_url
+        } else {
+            &self.local_backend_url
+        }
     }
 }
 

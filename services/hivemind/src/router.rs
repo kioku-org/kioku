@@ -8,7 +8,6 @@ use crate::handlers::{
     auth, internal, invite, knowledge, meeting, member, message, session, trace, vexa, workspace,
     workspace_api_key, workspace_config,
 };
-use crate::mcp::transport::mcp_routes;
 use crate::AppState;
 
 /// Build the application router with all routes and middleware.
@@ -77,6 +76,7 @@ pub fn build(state: AppState) -> Router {
             "/knowledge/documents/:document_id",
             delete(knowledge::delete_document),
         )
+        .route("/knowledge/sessions", post(knowledge::ingest_session))
         // Sessions
         .route("/sessions", get(session::list))
         .route("/sessions", post(session::create))
@@ -102,8 +102,6 @@ pub fn build(state: AppState) -> Router {
         )
         .route("/vexa/meetings", get(vexa::get_meetings))
         .route("/vexa/token", get(vexa::get_vexa_token))
-        // MCP
-        .merge(mcp_routes(&state))
         .with_state(state)
         .layer(CorsLayer::permissive())
 }

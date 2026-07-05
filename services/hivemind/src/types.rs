@@ -248,6 +248,24 @@ pub struct KnowledgeDocumentOut {
     pub updated_at: i64,
 }
 
+/// Dump arbitrary raw content (conversation logs, diffs, notes) into the knowledge base for
+/// later semantic search — distinct from `SessionCreateRequest` below, which tracks live
+/// coding-agent sessions (title/cwd/mode) and has nothing to do with knowledge ingestion.
+#[derive(Debug, Deserialize)]
+pub struct KnowledgeSessionIngestRequest {
+    pub title: String,
+    pub content: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub date: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KnowledgeSessionIngestResponse {
+    pub session_id: Uuid,
+    pub chunk_count: usize,
+}
+
 // ─── Sessions ───────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]

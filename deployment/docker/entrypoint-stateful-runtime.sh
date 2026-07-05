@@ -15,6 +15,12 @@ BOT_IMAGE="${BOT_IMAGE:-ghcr.io/kioku-org/kioku-stateless:latest}"
 
 echo "[KIOKU] Preparing stateful runtime..."
 
+# nvidia-container-toolkit bind-mounts the host driver's shared libraries (incl.
+# the Vulkan ICD, libGLX_nvidia.so.0) into the container at creation time but
+# never refreshes ld.so.cache, so dlopen-based lookups (Qdrant's Vulkan loader)
+# fail to find them until this runs.
+ldconfig
+
 # ─── Detect public IP (used for bot pod callbacks on RunPod) ──────────────────
 PUBLIC_IP=$(curl -s --max-time 5 http://ifconfig.me 2>/dev/null || echo localhost)
 echo "[KIOKU] Public IP: $PUBLIC_IP"
@@ -88,6 +94,8 @@ service:
   grpc_port: 6335
 storage:
   storage_path: /data/qdrant
+gpu:
+  indexing: true
 QDRANT
 
 # ─── One-shot helper scripts ──────────────────────────────────────────────────
@@ -148,7 +156,7 @@ stdout_logfile=/var/log/redis.log
 stderr_logfile=/var/log/redis.err
 
 [program:qdrant]
-command=/usr/local/bin/qdrant --config-path /etc/qdrant/config.yaml
+command=/bin/sh -c 'ldconfig; exec /usr/local/bin/qdrant --config-path /etc/qdrant/config.yaml'
 autostart=true
 autorestart=true
 stdout_logfile=/var/log/qdrant.log
@@ -199,7 +207,7 @@ stderr_logfile=/var/log/minio-init.err
 
 [program:api-gateway]
 command=/usr/local/bin/kioku-api-gateway
-environment=PORT="8056",ADMIN_API_URL="http://localhost:8001",MEETING_API_URL="http://localhost:8080",TRANSCRIPTION_COLLECTOR_URL="http://localhost:8080",MCP_URL="http://localhost:18888",AGENT_API_URL="http://localhost:8100",REDIS_URL="${REDIS_LOCAL_URL}",PUBLIC_BASE_URL="${VEXA_PUBLIC_URL:-http://localhost:8056}",TRANSCRIPT_SHARE_TTL_SECONDS="900",INTERNAL_API_SECRET="${INTERNAL_API_SECRET:-}",VEXA_ENV="${VEXA_ENV:-production}",CORS_ORIGINS="${CORS_ORIGINS:-*}",RUST_LOG="${LOG_LEVEL:-info}"
+environment=PORT="8056",ADMIN_API_URL="http://localhost:8001",MEETING_API_URL="http://localhost:8080",TRANSCRIPTION_COLLECTOR_URL="http://localhost:8080",MCP_URL="http://localhost:18888",AGENT_API_URL="http://localhost:8100",LOCAL_BACKEND_URL="http://localhost:8091",RUNPOD_BACKEND_URL="http://localhost:8092",REDIS_URL="${REDIS_LOCAL_URL}",PUBLIC_BASE_URL="${VEXA_PUBLIC_URL:-http://localhost:8056}",TRANSCRIPT_SHARE_TTL_SECONDS="900",INTERNAL_API_SECRET="${INTERNAL_API_SECRET:-}",VEXA_ENV="${VEXA_ENV:-production}",CORS_ORIGINS="${CORS_ORIGINS:-*}",RUST_LOG="${LOG_LEVEL:-info}"
 autostart=true
 autorestart=true
 stdout_logfile=/var/log/api-gateway.log
@@ -215,9 +223,8 @@ stdout_logfile=/var/log/admin-api.log
 stderr_logfile=/var/log/admin-api.err
 
 [program:meeting-api]
-command=/opt/venv/bin/uvicorn meeting_api.main:app --host 0.0.0.0 --port 8080
-directory=/opt/vexa/services/meeting-api
-environment=DB_HOST="localhost",DB_PORT="5432",DB_NAME="${DB_NAME}",DB_USER="${DB_USER}",DB_PASSWORD="${DB_PASSWORD}",DB_SCHEMA="vexa",DB_SSL_MODE="disable",DB_POOL_SIZE="20",DB_MAX_OVERFLOW="20",DB_POOL_TIMEOUT="10",REDIS_URL="${REDIS_LOCAL_URL}",REDIS_HOST="localhost",REDIS_PORT="6379",REDIS_STREAM_NAME="transcription_segments",REDIS_CONSUMER_GROUP="collector_group",REDIS_STREAM_READ_COUNT="10",REDIS_STREAM_BLOCK_MS="2000",TRANSCRIPTION_COLLECTOR_URL="http://localhost:8080",TRANSCRIPTION_SERVICE_URL="http://localhost:8000",REMOTE_TRANSCRIBER_URL="http://localhost:8000/v1/audio/transcriptions",REMOTE_TRANSCRIBER_API_KEY="${VEXA_TRANSCRIBER_API_KEY:-}",TTS_SERVICE_URL="${BOT_TTS_URL}",RUNTIME_API_URL="http://localhost:8090",MEETING_API_URL="http://localhost:8080",BOT_IMAGE_NAME="${BOT_IMAGE}",BOT_REDIS_URL="${REDIS_BOT_URL}",BOT_MEETING_API_URL="${BOT_MEETING_API_URL}",BOT_TTS_URL="${BOT_TTS_URL}",BOT_COOKIE_URL="${BOT_COOKIE_URL}",BOT_TRANSCRIPTION_SERVICE_URL="http://localhost:8000",ADMIN_TOKEN="${VEXA_ADMIN_API_TOKEN}",INTERNAL_API_SECRET="${INTERNAL_API_SECRET:-}",CORS_ORIGINS="${CORS_ORIGINS:-*}",VEXA_ENV="${VEXA_ENV:-production}",LOG_LEVEL="${LOG_LEVEL:-INFO}",ZOOM_CLIENT_ID="${ZOOM_CLIENT_ID:-}",ZOOM_CLIENT_SECRET="${ZOOM_CLIENT_SECRET:-}",STORAGE_BACKEND="${STORAGE_BACKEND:-minio}",MINIO_ENDPOINT="localhost:9000",MINIO_ACCESS_KEY="${MINIO_ACCESS_KEY:-vexa-access-key}",MINIO_SECRET_KEY="${MINIO_SECRET_KEY:-vexa-secret-key}",MINIO_BUCKET="${MINIO_BUCKET:-vexa-recordings}",MINIO_SECURE="false",RECORDING_ENABLED="${RECORDING_ENABLED:-false}",CAPTURE_MODES="audio",COOKIE_STORAGE_BACKEND="http",COOKIE_SERVICE_URL="http://localhost:8099",COOKIE_SERVICE_TOKEN="${COOKIE_SERVICE_TOKEN:-}"
+command=/usr/local/bin/kioku-meeting-api
+environment=DB_HOST="localhost",DB_PORT="5432",DB_NAME="${DB_NAME}",DB_USER="${DB_USER}",DB_PASSWORD="${DB_PASSWORD}",DB_POOL_SIZE="20",REDIS_URL="${REDIS_LOCAL_URL}",REDIS_STREAM_NAME="transcription_segments",REDIS_CONSUMER_GROUP="collector_group",REDIS_STREAM_READ_COUNT="10",REDIS_STREAM_BLOCK_MS="2000",TRANSCRIPTION_COLLECTOR_URL="http://localhost:8080",HIVEMIND_URL="http://localhost:9100",LOCAL_BACKEND_URL="http://localhost:8091",RUNPOD_BACKEND_URL="http://localhost:8092",USE_LOCAL_RESOURCE="${USE_LOCAL_RESOURCE:-true}",LOCAL_BOT_THRESHOLD="${LOCAL_BOT_THRESHOLD:-3}",MEETING_API_URL="http://localhost:8080",BOT_IMAGE_NAME="${BOT_IMAGE}",BOT_REDIS_URL="${REDIS_BOT_URL}",BOT_MEETING_API_URL="${BOT_MEETING_API_URL}",ADMIN_TOKEN="${VEXA_ADMIN_API_TOKEN}",INTERNAL_API_SECRET="${INTERNAL_API_SECRET:-}",CORS_ORIGINS="${CORS_ORIGINS:-*}",PORT="8080",STORAGE_BACKEND="${STORAGE_BACKEND:-minio}",MINIO_ENDPOINT="localhost:9000",MINIO_ACCESS_KEY="${MINIO_ACCESS_KEY:-vexa-access-key}",MINIO_SECRET_KEY="${MINIO_SECRET_KEY:-vexa-secret-key}",MINIO_BUCKET="${MINIO_BUCKET:-vexa-recordings}",MINIO_SECURE="false",COOKIE_STORAGE_BACKEND="http",COOKIE_SERVICE_URL="http://localhost:8099",COOKIE_SERVICE_TOKEN="${COOKIE_SERVICE_TOKEN:-}",RUST_LOG="${LOG_LEVEL:-info}"
 autostart=true
 autorestart=true
 stdout_logfile=/var/log/meeting-api.log
@@ -226,7 +233,7 @@ stderr_logfile=/var/log/meeting-api.err
 [program:agent-api]
 command=/opt/venv/bin/uvicorn agent_api.main:app --host 0.0.0.0 --port 8100
 directory=/opt/vexa/services/agent-api
-environment=REDIS_URL="${REDIS_LOCAL_URL}",RUNTIME_API_URL="http://localhost:8090",ADMIN_API_URL="http://localhost:8001",ADMIN_API_TOKEN="${VEXA_ADMIN_API_TOKEN:-}",AGENT_API_INTERNAL_URL="http://localhost:8100",INTERNAL_API_SECRET="${INTERNAL_API_SECRET:-}",VEXA_ENV="${VEXA_ENV:-production}",CORS_ORIGINS="${CORS_ORIGINS:-*}",ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}",LOG_LEVEL="${LOG_LEVEL:-INFO}"
+environment=REDIS_URL="${REDIS_LOCAL_URL}",LOCAL_BACKEND_URL="http://localhost:8091",RUNPOD_BACKEND_URL="http://localhost:8092",USE_LOCAL_RESOURCE="${USE_LOCAL_RESOURCE:-true}",ADMIN_API_URL="http://localhost:8001",ADMIN_API_TOKEN="${VEXA_ADMIN_API_TOKEN:-}",AGENT_API_INTERNAL_URL="http://localhost:8100",INTERNAL_API_SECRET="${INTERNAL_API_SECRET:-}",VEXA_ENV="${VEXA_ENV:-production}",CORS_ORIGINS="${CORS_ORIGINS:-*}",ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}",LOG_LEVEL="${LOG_LEVEL:-INFO}"
 autostart=true
 autorestart=true
 stdout_logfile=/var/log/agent-api.log
@@ -270,22 +277,12 @@ stdout_logfile=/var/log/hivemind.log
 stderr_logfile=/var/log/hivemind.err
 
 [program:mcp]
-command=/opt/venv/bin/python main.py
-directory=/opt/vexa/services/mcp
-environment=KIOKU_API_URL="http://localhost:8056",HIVEMIND_API_URL="http://localhost:9100",KIOKU_ENV="${VEXA_ENV:-production}",LOG_LEVEL="${LOG_LEVEL:-INFO}"
+command=/usr/local/bin/kioku-mcp
+environment=KIOKU_API_URL="http://localhost:8056",HIVEMIND_API_URL="http://localhost:9100",PORT="18888",RUST_LOG="${LOG_LEVEL:-info}"
 autostart=true
 autorestart=true
 stdout_logfile=/var/log/mcp.log
 stderr_logfile=/var/log/mcp.err
-
-[program:router]
-command=/opt/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8090
-directory=/opt/vexa/services/router
-environment=USE_LOCAL_RESOURCE="${USE_LOCAL_RESOURCE:-true}",LOCAL_BOT_THRESHOLD="${LOCAL_BOT_THRESHOLD:-3}",LOCAL_BACKEND_URL="http://localhost:8091",RUNPOD_BACKEND_URL="http://localhost:8092"
-autostart=true
-autorestart=true
-stdout_logfile=/var/log/router.log
-stderr_logfile=/var/log/router.err
 
 [program:cookie]
 command=/opt/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8099

@@ -4,8 +4,8 @@ import sys
 from pathlib import Path
 
 _repo = Path(__file__).resolve().parents[3]  # <repo>/services/admin-api/tests -> <repo>
-sys.path.insert(0, str(_repo / "libs" / "admin-models"))
-sys.path.insert(0, str(_repo / "packages" / "meeting-api"))
+sys.path.insert(0, str(_repo / "services" / "libs" / "admin-models"))
+sys.path.insert(0, str(_repo / "services" / "libs" / "meeting-models"))
 
 # Add the service root so `import app` works
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

@@ -97,7 +97,6 @@ STATELESS_CONTAINERS=(
     "kioku-vexa-agent-api"
     "kioku-vexa-transcription-service"
     "kioku-vexa-runtime-api-local"
-    "kioku-runtime-router"
     "kioku-mcp"
     "kioku-vexa-tts-service"
     "kioku-vexa-redis"

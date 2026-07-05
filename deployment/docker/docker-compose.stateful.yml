@@ -85,6 +85,17 @@ services:
       - NEXT_PUBLIC_DOCS_URL=${NEXT_PUBLIC_DOCS_URL:-https://docs.kioku.chat}
       # ── SSH (optional, for RunPod terminal access) ────────────────────────────
       - PUBLIC_KEY=${PUBLIC_KEY:-}
+      # ── GPU (Ollama + Qdrant GPU indexing) ────────────────────────────────────
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    devices:
+      # nvidia-container-toolkit's own DRM render-node auto-injection doesn't
+      # work on this host (hybrid Intel/NVIDIA GPU setup) despite the
+      # "graphics" capability above, so /dev/dri needs to be passed through
+      # directly for Qdrant's Vulkan GPU indexing to find a device. Safe to
+      # expose both cards: only the NVIDIA Vulkan ICD is registered in
+      # /etc/vulkan/icd.d/, so Vulkan can't pick the Intel one by mistake.
+      - /dev/dri:/dev/dri
+      - /dev/nvidia-modeset:/dev/nvidia-modeset
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - postgres-data:/data/postgresql
@@ -100,6 +111,13 @@ services:
     networks:
       - kioku-network
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8056/health || exit 1"]
       interval: 30s
