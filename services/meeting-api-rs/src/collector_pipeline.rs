@@ -93,6 +93,33 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
     a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
+/// Mint a MeetingToken (HS256 JWT) — the inverse of `verify_meeting_token` above. Called by
+/// `handlers::meetings::request_bot` so the bot has a signed token to present when posting
+/// transcription segments (verified against the same ADMIN_TOKEN secret).
+pub fn mint_meeting_token(secret: &str, meeting_id: i32, user_id: i32, platform: &str, native_meeting_id: &str, ttl_seconds: i64) -> String {
+    let now = chrono::Utc::now().timestamp();
+    let header = json!({"alg": "HS256", "typ": "JWT"});
+    let payload = json!({
+        "meeting_id": meeting_id,
+        "user_id": user_id,
+        "platform": platform,
+        "native_meeting_id": native_meeting_id,
+        "scope": "transcribe:write",
+        "iss": "meeting-api",
+        "aud": "transcription-collector",
+        "iat": now,
+        "exp": now + ttl_seconds,
+        "jti": uuid::Uuid::new_v4().to_string(),
+    });
+    let header_b64 = b64url_encode(header.to_string().as_bytes());
+    let payload_b64 = b64url_encode(payload.to_string().as_bytes());
+    let signing_input = format!("{header_b64}.{payload_b64}");
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key length");
+    mac.update(signing_input.as_bytes());
+    let signature_b64 = b64url_encode(&mac.finalize().into_bytes());
+    format!("{signing_input}.{signature_b64}")
+}
+
 // ---------------------------------------------------------------------------
 // Message processing
 // ---------------------------------------------------------------------------

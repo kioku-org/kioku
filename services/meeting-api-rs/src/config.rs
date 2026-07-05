@@ -51,6 +51,10 @@ pub struct Config {
     pub immutability_threshold_secs: i64,
     pub redis_segment_ttl: i64,
 
+    pub cookie_storage_backend: String,
+    pub cookie_service_url: String,
+    pub cookie_service_token: String,
+
     pub storage_backend: String,
     pub minio_endpoint: String,
     pub minio_public_endpoint: String,
@@ -148,6 +152,10 @@ impl Config {
             background_task_interval_secs: env_or("BACKGROUND_TASK_INTERVAL", "10").parse().unwrap_or(10),
             immutability_threshold_secs: env_or("IMMUTABILITY_THRESHOLD", "30").parse().unwrap_or(30),
             redis_segment_ttl: env_or("REDIS_SEGMENT_TTL", "3600").parse().unwrap_or(3600),
+
+            cookie_storage_backend: env_or("COOKIE_STORAGE_BACKEND", "s3"),
+            cookie_service_url: env_or("COOKIE_SERVICE_URL", "http://kioku-cookie-service:8099"),
+            cookie_service_token: env_or("COOKIE_SERVICE_TOKEN", ""),
 
             storage_backend: env_or("STORAGE_BACKEND", "minio"),
             minio_endpoint: env_or("MINIO_ENDPOINT", "minio:9000"),
