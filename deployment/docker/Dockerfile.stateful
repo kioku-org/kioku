@@ -4,7 +4,7 @@
 # ==============================================================================
 
 # ─── Stage 1: Build hivemind (Rust) ───────────────────────────────────────────
-FROM rust:1.94-slim AS hivemind-builder
+FROM rust:1.88-slim AS hivemind-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev libfontconfig1-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -13,7 +13,7 @@ COPY services/hivemind/ .
 RUN cargo build --release
 
 # ─── Stage 1b: Build api-gateway (Rust) ───────────────────────────────────────
-FROM rust:1.94-slim AS api-gateway-builder
+FROM rust:1.88-slim AS api-gateway-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -22,7 +22,7 @@ COPY services/api-gateway/ .
 RUN cargo build --release
 
 # ─── Stage 1c: Build mcp (Rust) ────────────────────────────────────────────────
-FROM rust:1.94-slim AS mcp-builder
+FROM rust:1.88-slim AS mcp-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -31,10 +31,17 @@ COPY services/mcp/ .
 RUN cargo build --release
 
 # ─── Stage 1d: Build meeting-api (Rust) ────────────────────────────────────────
-FROM rust:1.94-slim AS meeting-api-builder
+# rust:1.88-slim's aws-sdk-s3 transitive deps (aws-smithy-types, crc-fast) need rustc >=1.91.1,
+# but rust's own -slim tags are Debian (newer glibc than the runtime stage's Ubuntu 22.04) — a
+# newer rust:X-slim produces binaries that fail with "GLIBC_2.3x not found" against that runtime.
+# Building directly on ubuntu:22.04 via rustup keeps this stage's glibc identical to the runtime
+# stage's, while still getting a modern-enough rustc.
+FROM ubuntu:22.04 AS meeting-api-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config libssl-dev \
+    curl ca-certificates pkg-config libssl-dev build-essential \
     && rm -rf /var/lib/apt/lists/*
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.94.0
+ENV PATH="/root/.cargo/bin:${PATH}"
 WORKDIR /app
 COPY services/meeting-api/ .
 RUN cargo build --release
