@@ -147,7 +147,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Python 3.11 via deadsnakes — same minor version as python-builder so the
 # patched pyvenv.cfg home path resolves correctly at runtime.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends software-properties-common \
+    && apt-get install -y --no-install-recommends software-properties-common gnupg \
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
