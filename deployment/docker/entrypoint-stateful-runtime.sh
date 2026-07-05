@@ -15,6 +15,12 @@ BOT_IMAGE="${BOT_IMAGE:-ghcr.io/kioku-org/kioku-stateless:latest}"
 
 echo "[KIOKU] Preparing stateful runtime..."
 
+# nvidia-container-toolkit bind-mounts the host driver's shared libraries (incl.
+# the Vulkan ICD, libGLX_nvidia.so.0) into the container at creation time but
+# never refreshes ld.so.cache, so dlopen-based lookups (Qdrant's Vulkan loader)
+# fail to find them until this runs.
+ldconfig
+
 # ─── Detect public IP (used for bot pod callbacks on RunPod) ──────────────────
 PUBLIC_IP=$(curl -s --max-time 5 http://ifconfig.me 2>/dev/null || echo localhost)
 echo "[KIOKU] Public IP: $PUBLIC_IP"
@@ -150,7 +156,7 @@ stdout_logfile=/var/log/redis.log
 stderr_logfile=/var/log/redis.err
 
 [program:qdrant]
-command=/usr/local/bin/qdrant --config-path /etc/qdrant/config.yaml
+command=/bin/sh -c 'ldconfig; exec /usr/local/bin/qdrant --config-path /etc/qdrant/config.yaml'
 autostart=true
 autorestart=true
 stdout_logfile=/var/log/qdrant.log
