@@ -30,6 +30,15 @@ WORKDIR /app
 COPY services/mcp/ .
 RUN cargo build --release
 
+# ─── Stage 1d: Build meeting-api (Rust) ────────────────────────────────────────
+FROM rust:1.88-slim AS meeting-api-builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY services/meeting-api/ .
+RUN cargo build --release
+
 # ─── Stage 2: Install Python services into venv ───────────────────────────────
 # python:3.11-slim-bookworm puts Python at /usr/local/bin and stdlib at
 # /usr/local/lib/python3.11. Stage 4 (Ubuntu 22.04 + deadsnakes) puts Python
@@ -50,12 +59,10 @@ WORKDIR /build
 # Shared libs
 COPY services/libs/schema-sync/ /build/libs/schema-sync/
 COPY services/libs/admin-models/ /build/libs/admin-models/
-RUN pip install --no-cache-dir /build/libs/schema-sync /build/libs/admin-models
+COPY services/libs/meeting-models/ /build/libs/meeting-models/
+RUN pip install --no-cache-dir /build/libs/schema-sync /build/libs/admin-models /build/libs/meeting-models
 
 # Packages installed as editable deps by other services
-COPY services/meeting-api/ /build/services/meeting-api/
-RUN pip install --no-cache-dir /build/services/meeting-api
-
 COPY services/agent-api/ /build/services/agent-api/
 RUN pip install --no-cache-dir /build/services/agent-api
 
@@ -78,7 +85,6 @@ RUN pip install --no-cache-dir python-pptx
 # Copy all service source into /opt/vexa/services/
 RUN mkdir -p /opt/vexa/services
 COPY services/admin-api/     /opt/vexa/services/admin-api/
-COPY services/meeting-api/   /opt/vexa/services/meeting-api/
 COPY services/agent-api/     /opt/vexa/services/agent-api/
 COPY services/tts-service/   /opt/vexa/services/tts-service/
 COPY services/runtime-api/   /opt/vexa/services/runtime-api/
@@ -183,6 +189,11 @@ COPY --from=api-gateway-builder /app/target/release/kioku-api-gateway /usr/local
 
 # mcp binary (consolidates the old Python services/mcp + hivemind's embedded MCP server)
 COPY --from=mcp-builder /app/target/release/kioku-mcp /usr/local/bin/kioku-mcp
+
+# meeting-api binary (replaces the old Python services/meeting-api uvicorn app; admin-api still
+# imports meeting_api's models/schemas/webhook_url from services/libs/meeting-models, installed
+# above). sqlx::migrate! embeds migrations/ at compile time — nothing to copy at runtime.
+COPY --from=meeting-api-builder /app/target/release/kioku-meeting-api /usr/local/bin/kioku-meeting-api
 
 # Python venv + all service source
 COPY --from=python-builder /opt/venv  /opt/venv
