@@ -88,6 +88,22 @@ impl KiokuMcpService {
         Ok(body)
     }
 
+    /// Faithful port of main.py's download_url rewrite in `get_recording_media_download`:
+    /// relative URLs get the gateway base prefixed; internal `minio:`/`minio/` URLs get their
+    /// host swapped for the gateway's so external callers can actually reach them.
+    fn rewrite_download_url(&self, data: &mut Value) {
+        let Some(dl) = data.get("download_url").and_then(Value::as_str).map(str::to_string) else { return };
+        if dl.starts_with('/') {
+            data["download_url"] = json!(format!("{}{}", self.config.kioku_api_url, dl));
+        } else if dl.contains("minio:") || dl.contains("minio/") {
+            if let (Ok(base), Ok(parsed)) = (url::Url::parse(&self.config.kioku_api_url), url::Url::parse(&dl)) {
+                let mut rewritten = base;
+                rewritten.set_path(parsed.path());
+                data["download_url"] = json!(rewritten.to_string());
+            }
+        }
+    }
+
     async fn hivemind(&self, method: reqwest::Method, path: &str, token: &str, body: Option<Value>) -> Result<Value, String> {
         let url = format!("{}{}", self.config.hivemind_api_url, path);
         let mut req = self.http.request(method, &url).bearer_auth(token);
@@ -104,10 +120,14 @@ impl KiokuMcpService {
     }
 }
 
+/// Matches main.py's `get_api_key`: prefer `Authorization: Bearer <token>`, then a raw
+/// `Authorization: <token>` value (back-compat), then fall back to `X-API-Key`.
 fn bearer_token_from_context(context: &RequestContext<RoleServer>) -> Option<String> {
     let parts = context.extensions.get::<axum::http::request::Parts>()?;
-    let auth = parts.headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
-    Some(auth.strip_prefix("Bearer ").unwrap_or(auth).to_string())
+    if let Some(auth) = parts.headers.get(axum::http::header::AUTHORIZATION).and_then(|v| v.to_str().ok()) {
+        return Some(auth.strip_prefix("Bearer ").unwrap_or(auth).to_string());
+    }
+    parts.headers.get("x-api-key").and_then(|v| v.to_str().ok()).map(str::to_string)
 }
 
 fn to_result(r: Result<Value, String>) -> CallToolResult {
@@ -158,23 +178,51 @@ struct RecordingIdArgs {
 }
 
 #[derive(Debug, Default, Deserialize)]
+struct RecordingMediaDownloadArgs {
+    recording_id: i64,
+    media_file_id: i64,
+}
+
+#[derive(Debug, Default, Deserialize)]
 struct RecordingConfigUpdateArgs {
     #[serde(flatten)]
     rest: serde_json::Map<String, Value>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Deserialize)]
 struct MeetingBundleArgs {
     meeting_id: String,
     #[serde(default = "default_platform")]
     meeting_platform: String,
     #[serde(default)]
     include_segments: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     include_recordings: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     include_share_link: bool,
+    #[serde(default)]
+    include_media_download_urls: bool,
     share_ttl_seconds: Option<i64>,
+}
+
+// #[derive(Default)] would give include_recordings/include_share_link `false`, which is wrong
+// for `parse_args`'s `None` (no-arguments-object) case — Python's defaults are both `True`.
+impl Default for MeetingBundleArgs {
+    fn default() -> Self {
+        Self {
+            meeting_id: String::new(),
+            meeting_platform: default_platform(),
+            include_segments: false,
+            include_recordings: true,
+            include_share_link: true,
+            include_media_download_urls: false,
+            share_ttl_seconds: None,
+        }
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -329,6 +377,11 @@ fn all_tools() -> Vec<Tool> {
             schema(json!({"type":"object","properties":{"recording_id":{"type":"integer"}},"required":["recording_id"]})),
         ),
         Tool::new(
+            "get_recording_media_download",
+            "Get a download URL for a recording media file.",
+            schema(json!({"type":"object","properties":{"recording_id":{"type":"integer"},"media_file_id":{"type":"integer"}},"required":["recording_id","media_file_id"]})),
+        ),
+        Tool::new(
             "get_recording_config",
             "Get recording configuration for the authenticated user.",
             schema(json!({"type":"object","properties":{}})),
@@ -344,7 +397,8 @@ fn all_tools() -> Vec<Tool> {
             schema(json!({"type":"object","properties":{
                 "meeting_id":{"type":"string"},"meeting_platform":{"type":"string"},
                 "include_segments":{"type":"boolean"},"include_recordings":{"type":"boolean"},
-                "include_share_link":{"type":"boolean"},"share_ttl_seconds":{"type":"integer"}
+                "include_share_link":{"type":"boolean"},"share_ttl_seconds":{"type":"integer"},
+                "include_media_download_urls":{"type":"boolean"}
             },"required":["meeting_id"]})),
         ),
         Tool::new(
@@ -561,7 +615,31 @@ impl ServerHandler for KiokuMcpService {
                             Err(e) => return Ok(error_result(e)),
                         }
                     }
-                    Ok(to_result(self.gateway(reqwest::Method::POST, "/bots", &vexa_key, Some(Value::Object(payload)), &[]).await))
+                    match self.gateway(reqwest::Method::POST, "/bots", &vexa_key, Some(Value::Object(payload.clone())), &[]).await {
+                        Ok(v) => Ok(text_result(serde_json::to_string_pretty(&v).unwrap_or_default())),
+                        // Idempotency case, matching main.py: a 409 means the meeting already
+                        // exists for this key — look it up and return it as a soft success
+                        // instead of surfacing a hard tool error, since `vexa.meeting_prep`
+                        // documents `request_meeting_bot` as idempotent.
+                        Err(e) if e.starts_with("HTTP 409") => {
+                            let platform = payload.get("platform").and_then(Value::as_str).map(str::to_string);
+                            let native_id = payload.get("native_meeting_id").and_then(Value::as_str).map(str::to_string);
+                            let meetings = self.gateway(reqwest::Method::GET, "/meetings", &vexa_key, None, &[]).await.ok();
+                            let found = match (&meetings, &platform, &native_id) {
+                                (Some(Value::Array(list)), Some(pl), Some(nid)) => list
+                                    .iter()
+                                    .find(|m| m.get("platform").and_then(Value::as_str) == Some(pl.as_str()) && m.get("native_meeting_id").and_then(Value::as_str) == Some(nid.as_str()))
+                                    .cloned(),
+                                _ => None,
+                            };
+                            let body = match found {
+                                Some(m) => json!({"status": "already_exists", "meeting": m}),
+                                None => json!({"status": "already_exists", "detail": e}),
+                            };
+                            Ok(text_result(serde_json::to_string_pretty(&body).unwrap_or_default()))
+                        }
+                        Err(e) => Ok(error_result(e)),
+                    }
                 }
                 "get_meeting_transcript" => {
                     let p: MeetingPlatformIdArgs = parse_args(args)?;
@@ -590,6 +668,18 @@ impl ServerHandler for KiokuMcpService {
                     let path = format!("/recordings/{}", p.recording_id);
                     Ok(to_result(self.gateway(reqwest::Method::DELETE, &path, &vexa_key, None, &[]).await))
                 }
+                "get_recording_media_download" => {
+                    let p: RecordingMediaDownloadArgs = parse_args(args)?;
+                    let vexa_key = self.resolve_vexa_key(&token).await;
+                    let path = format!("/recordings/{}/media/{}/download", p.recording_id, p.media_file_id);
+                    match self.gateway(reqwest::Method::GET, &path, &vexa_key, None, &[]).await {
+                        Ok(mut v) => {
+                            self.rewrite_download_url(&mut v);
+                            Ok(text_result(serde_json::to_string_pretty(&v).unwrap_or_default()))
+                        }
+                        Err(e) => Ok(error_result(e)),
+                    }
+                }
                 "get_recording_config" => {
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     Ok(to_result(self.gateway(reqwest::Method::GET, "/recording-config", &vexa_key, None, &[]).await))
@@ -613,6 +703,30 @@ impl ServerHandler for KiokuMcpService {
                         }
                         if !p.include_recordings {
                             obj.remove("recordings");
+                        }
+                    }
+                    if p.include_media_download_urls {
+                        if let Value::Object(ref mut obj) = result {
+                            if let Some(Value::Array(recs)) = obj.get_mut("recordings") {
+                                for rec in recs.iter_mut() {
+                                    let Some(rid) = rec.get("id").and_then(Value::as_i64) else { continue };
+                                    let Some(Value::Array(mfs)) = rec.get_mut("media_files") else { continue };
+                                    for mf in mfs.iter_mut() {
+                                        let Some(mf_id) = mf.get("id").and_then(Value::as_i64) else { continue };
+                                        let path = format!("/recordings/{rid}/media/{mf_id}/download");
+                                        let outcome = match self.gateway(reqwest::Method::GET, &path, &vexa_key, None, &[]).await {
+                                            Ok(mut dl) => {
+                                                self.rewrite_download_url(&mut dl);
+                                                ("download", dl)
+                                            }
+                                            Err(e) => ("download_error", json!(e)),
+                                        };
+                                        if let Some(mf_obj) = mf.as_object_mut() {
+                                            mf_obj.insert(outcome.0.to_string(), outcome.1);
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                     if p.include_share_link {
@@ -727,5 +841,50 @@ impl ServerHandler for KiokuMcpService {
                 _ => Err(ErrorData::method_not_found::<rmcp::model::CallToolRequestMethod>()),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn service() -> KiokuMcpService {
+        KiokuMcpService {
+            http: reqwest::Client::new(),
+            config: Arc::new(Config { kioku_api_url: "https://api.kioku.chat".to_string(), hivemind_api_url: String::new(), port: 0 }),
+        }
+    }
+
+    #[test]
+    fn rewrite_download_url_prefixes_relative_path() {
+        let svc = service();
+        let mut v = json!({"download_url": "/recordings/1/media/2/download/raw"});
+        svc.rewrite_download_url(&mut v);
+        assert_eq!(v["download_url"], "https://api.kioku.chat/recordings/1/media/2/download/raw");
+    }
+
+    #[test]
+    fn rewrite_download_url_swaps_minio_host() {
+        let svc = service();
+        let mut v = json!({"download_url": "http://minio:9000/vexa-recordings/foo.wav"});
+        svc.rewrite_download_url(&mut v);
+        assert_eq!(v["download_url"], "https://api.kioku.chat/vexa-recordings/foo.wav");
+    }
+
+    #[test]
+    fn rewrite_download_url_leaves_ordinary_url_untouched() {
+        let svc = service();
+        let mut v = json!({"download_url": "https://cdn.example.com/foo.wav"});
+        svc.rewrite_download_url(&mut v);
+        assert_eq!(v["download_url"], "https://cdn.example.com/foo.wav");
+    }
+
+    #[test]
+    fn meeting_bundle_args_default_matches_python_defaults() {
+        let args: MeetingBundleArgs = parse_args(None).unwrap();
+        assert!(!args.include_segments);
+        assert!(args.include_recordings);
+        assert!(args.include_share_link);
+        assert!(!args.include_media_download_urls);
     }
 }
