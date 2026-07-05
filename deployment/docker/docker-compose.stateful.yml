@@ -86,7 +86,7 @@ services:
       # ── SSH (optional, for RunPod terminal access) ────────────────────────────
       - PUBLIC_KEY=${PUBLIC_KEY:-}
       # ── GPU (Ollama + Qdrant GPU indexing) ────────────────────────────────────
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
+      - NVIDIA_DRIVER_CAPABILITIES=all
     devices:
       # nvidia-container-toolkit's own DRM render-node auto-injection doesn't
       # work on this host (hybrid Intel/NVIDIA GPU setup) despite the

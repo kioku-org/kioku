@@ -129,7 +129,14 @@ ENV NEXT_PUBLIC_VEXA_OSS_VERSION=$NEXT_PUBLIC_VEXA_OSS_VERSION
 RUN npm run build
 
 # ─── Stage 4: Runtime ─────────────────────────────────────────────────────────
-FROM nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04
+# nvidia/opengl (not nvidia/cuda) — Qdrant's GPU/Vulkan indexing needs the GLVND
+# EGL/GLX dispatch stack this image provides; nvidia/cuda + manually-installed
+# libglvnd0/libgl1/libegl1/mesa-vulkan-drivers was tested and still left
+# libGLX_nvidia.so.0's vk_icdGetInstanceProcAddr returning NULL — verified live
+# that the identical binary+icd.json only works once the base image itself is
+# nvidia/opengl. Ollama bundles its own CUDA runtime in its installer and
+# doesn't need the base image to provide CUDA/cuDNN, so this doesn't regress it.
+FROM nvidia/opengl:1.2-glvnd-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PG_MAJOR=16 \
@@ -170,8 +177,9 @@ RUN apt-get update \
         postgresql-16 postgresql-16-pgvector postgresql-client-16 \
     && rm -rf /var/lib/apt/lists/*
 
-# Qdrant (GPU-enabled binary, see qdrant-gpu stage above)
-RUN apt-get update && apt-get install -y --no-install-recommends libvulkan1 \
+# Qdrant (GPU-enabled binary, see qdrant-gpu stage above). libunwind8 isn't
+# pulled in by nvidia/opengl's base packages but qdrant links against it.
+RUN apt-get update && apt-get install -y --no-install-recommends libvulkan1 libunwind8 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=qdrant-gpu /qdrant/qdrant /usr/local/bin/qdrant
 COPY --from=qdrant-gpu /etc/vulkan/icd.d/nvidia_icd.json /etc/vulkan/icd.d/nvidia_icd.json
