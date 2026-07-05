@@ -77,7 +77,7 @@ pub struct MeetingResponse {
     pub platform: String,
     pub native_meeting_id: Option<String>,
     pub status: String,
-    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: Option<chrono::NaiveDateTime>,
 }
 
 impl From<Meeting> for MeetingResponse {

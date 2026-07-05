@@ -1,7 +1,14 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+// meetings.{start_time,end_time,created_at,updated_at} are `TIMESTAMP` (no timezone) in Postgres
+// — always UTC by convention, never stored with an offset — so these are NaiveDateTime, not
+// DateTime<Utc>. sqlx's Postgres decoder is strict about this: TIMESTAMP only decodes into
+// NaiveDateTime, TIMESTAMPTZ only into DateTime<Tz>. Getting this wrong doesn't fail to compile
+// (both are just chrono types) — it fails at runtime, at decode time, on every row that isn't
+// empty. Call sites needing a real DateTime<Utc> (rfc3339 formatting, Unix timestamps, passing to
+// code that takes DateTime<Utc>) do `.and_utc()`, the zero-cost "this naive value is UTC" cast.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Meeting {
     pub id: i32,
@@ -10,11 +17,11 @@ pub struct Meeting {
     pub platform_specific_id: Option<String>,
     pub status: String,
     pub bot_container_id: Option<String>,
-    pub start_time: Option<DateTime<Utc>>,
-    pub end_time: Option<DateTime<Utc>>,
+    pub start_time: Option<NaiveDateTime>,
+    pub end_time: Option<NaiveDateTime>,
     pub data: Value,
-    pub created_at: Option<DateTime<Utc>>,
-    pub updated_at: Option<DateTime<Utc>>,
+    pub created_at: Option<NaiveDateTime>,
+    pub updated_at: Option<NaiveDateTime>,
 }
 
 impl Meeting {
@@ -39,7 +46,7 @@ pub struct Transcription {
     pub text: String,
     pub speaker: Option<String>,
     pub language: Option<String>,
-    pub created_at: Option<DateTime<Utc>>,
+    pub created_at: Option<NaiveDateTime>,
     pub session_uid: Option<String>,
     pub segment_id: Option<String>,
 }
@@ -61,8 +68,8 @@ pub struct Recording {
     pub source: String,
     pub status: String,
     pub error_message: Option<String>,
-    pub created_at: Option<DateTime<Utc>>,
-    pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: Option<NaiveDateTime>,
+    pub completed_at: Option<NaiveDateTime>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -77,7 +84,7 @@ pub struct MediaFile {
     pub file_size_bytes: Option<i32>,
     pub duration_seconds: Option<f64>,
     pub metadata: Value,
-    pub created_at: Option<DateTime<Utc>>,
+    pub created_at: Option<NaiveDateTime>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -93,5 +100,5 @@ pub struct CalendarEvent {
     pub status: String,
     pub meeting_id: Option<i32>,
     pub sync_token: Option<String>,
-    pub created_at: Option<DateTime<Utc>>,
+    pub created_at: Option<NaiveDateTime>,
 }

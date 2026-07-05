@@ -58,7 +58,7 @@ pub async fn sweep_stale_stopping(state: &AppState) -> u32 {
 /// Last time this meeting's status actually progressed, per its append-only transition
 /// history — falls back to created_at for rows with no history yet.
 fn last_progress_timestamp(meeting: &Meeting) -> chrono::DateTime<chrono::Utc> {
-    let mut latest = meeting.created_at.unwrap_or_else(chrono::Utc::now);
+    let mut latest = meeting.created_at.map(|t| t.and_utc()).unwrap_or_else(chrono::Utc::now);
     if let Some(transitions) = meeting.data.get("status_transition").and_then(Value::as_array) {
         for t in transitions {
             let Some(ts) = t.get("timestamp").and_then(Value::as_str) else { continue };
@@ -103,7 +103,7 @@ mod tests {
             start_time: None,
             end_time: None,
             data,
-            created_at: Some(created_at),
+            created_at: Some(created_at.naive_utc()),
             updated_at: None,
         }
     }

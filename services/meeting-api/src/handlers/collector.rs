@@ -32,7 +32,7 @@ fn segment_json(t: &Transcription) -> Value {
         "end": t.end_time,
         "text": t.text,
         "language": t.language,
-        "created_at": t.created_at.map(|d| d.to_rfc3339()),
+        "created_at": t.created_at.map(|d| d.and_utc().to_rfc3339()),
         "speaker": t.speaker,
         "segment_id": t.segment_id,
     })
@@ -89,8 +89,8 @@ pub async fn get_meetings(State(state): State<AppState>, headers: HeaderMap, Que
     Json(json!({"meetings": meetings.into_iter().map(|m| json!({
         "id": m.id, "user_id": m.user_id, "platform": m.platform,
         "native_meeting_id": m.platform_specific_id, "status": m.status,
-        "created_at": m.created_at.map(|d| d.to_rfc3339()),
-        "updated_at": m.updated_at.map(|d| d.to_rfc3339()),
+        "created_at": m.created_at.map(|d| d.and_utc().to_rfc3339()),
+        "updated_at": m.updated_at.map(|d| d.and_utc().to_rfc3339()),
         "data": m.data,
     })).collect::<Vec<_>>()}))
     .into_response()
@@ -145,8 +145,8 @@ pub async fn get_transcript_by_native_id(
     Json(json!({
         "id": meeting.id, "user_id": meeting.user_id, "platform": meeting.platform,
         "native_meeting_id": meeting.platform_specific_id, "status": meeting.status,
-        "start_time": meeting.start_time.map(|d| d.to_rfc3339()),
-        "end_time": meeting.end_time.map(|d| d.to_rfc3339()),
+        "start_time": meeting.start_time.map(|d| d.and_utc().to_rfc3339()),
+        "end_time": meeting.end_time.map(|d| d.and_utc().to_rfc3339()),
         "recordings": meeting.data.get("recordings").cloned().unwrap_or_else(|| json!([])),
         "notes": meeting.data.get("notes"),
         "data": meeting.data,
@@ -265,7 +265,7 @@ mod tests {
     use chrono::Utc;
 
     fn segment(text: &str, start: f64) -> Transcription {
-        Transcription { id: 1, meeting_id: 1, start_time: start, end_time: start + 1.0, text: text.to_string(), speaker: Some("Alice".to_string()), language: Some("en".to_string()), created_at: Some(Utc::now()), session_uid: None, segment_id: None }
+        Transcription { id: 1, meeting_id: 1, start_time: start, end_time: start + 1.0, text: text.to_string(), speaker: Some("Alice".to_string()), language: Some("en".to_string()), created_at: Some(Utc::now().naive_utc()), session_uid: None, segment_id: None }
     }
 
     #[test]

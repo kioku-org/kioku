@@ -13,8 +13,8 @@ pub async fn classify_stopped_exit(
     db: &PgPool,
     meeting_id: i32,
     meeting_data: &Value,
-    start_time: Option<chrono::DateTime<Utc>>,
-    end_time: Option<chrono::DateTime<Utc>>,
+    start_time: Option<chrono::NaiveDateTime>,
+    end_time: Option<chrono::NaiveDateTime>,
     requested_reason: MeetingCompletionReason,
 ) -> (MeetingStatus, MeetingCompletionReason) {
     // User-initiated stop is NEVER a failure, regardless of lifecycle stage at DELETE time.
@@ -42,7 +42,7 @@ pub async fn classify_stopped_exit(
     }
 
     let duration_s = match start_time {
-        Some(start) => (end_time.unwrap_or_else(Utc::now) - start).num_milliseconds() as f64 / 1000.0,
+        Some(start) => (end_time.unwrap_or_else(|| Utc::now().naive_utc()) - start).num_milliseconds() as f64 / 1000.0,
         None => 0.0,
     };
     let transcribe_enabled = meeting_data.get("transcribe_enabled").and_then(|v| v.as_bool()).unwrap_or(true);

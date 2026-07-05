@@ -46,11 +46,11 @@ fn build_meeting_event_data(meeting: &Meeting) -> Value {
         "status": meeting.status,
         "completion_reason": meeting.data.get("completion_reason"),
         "failure_stage": meeting.data.get("failure_stage"),
-        "start_time": meeting.start_time.map(|t| t.to_rfc3339()),
-        "end_time": meeting.end_time.map(|t| t.to_rfc3339()),
+        "start_time": meeting.start_time.map(|t| t.and_utc().to_rfc3339()),
+        "end_time": meeting.end_time.map(|t| t.and_utc().to_rfc3339()),
         "data": clean_meeting_data(&meeting.data),
-        "created_at": meeting.created_at.map(|t| t.to_rfc3339()),
-        "updated_at": meeting.updated_at.map(|t| t.to_rfc3339()),
+        "created_at": meeting.created_at.map(|t| t.and_utc().to_rfc3339()),
+        "updated_at": meeting.updated_at.map(|t| t.and_utc().to_rfc3339()),
     })
 }
 
@@ -58,7 +58,7 @@ fn build_meeting_event_data(meeting: &Meeting) -> Value {
 /// progress" signal the stale-stopping sweep keys off; retry storms shouldn't reset its
 /// staleness clock). Writes updated_at back to its own current value to defeat any
 /// ON UPDATE-style trigger, matching the Python raw-UPDATE approach exactly.
-async fn persist_data_preserving_updated_at(db: &PgPool, meeting_id: i32, data: &Value, updated_at: Option<chrono::DateTime<chrono::Utc>>) {
+async fn persist_data_preserving_updated_at(db: &PgPool, meeting_id: i32, data: &Value, updated_at: Option<chrono::NaiveDateTime>) {
     let _ = sqlx::query("UPDATE meetings SET data = $1, updated_at = COALESCE($2, updated_at) WHERE id = $3")
         .bind(data)
         .bind(updated_at)
