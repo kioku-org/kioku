@@ -91,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/health", get(health))
-        .route("/bots", post(handlers::meetings::request_bot))
+        .route("/bots", get(handlers::meetings::list_bots).post(handlers::meetings::request_bot))
         .route("/bots/status", get(handlers::meetings::get_bots_status))
         .route("/bots/id/:meeting_id", get(handlers::meetings::get_bot_by_id))
         .route("/bots/:platform/:native_meeting_id", delete(handlers::meetings::stop_bot))
