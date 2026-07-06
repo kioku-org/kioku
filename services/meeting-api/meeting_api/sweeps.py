@@ -311,14 +311,35 @@ async def _sweep_container_stops() -> dict:
     small (one supervisor, one task). Same shape as Pack H.4's
     aggregation-retry sweep above.
     """
-    from .meetings import get_redis, _stop_via_runtime_api
+    from .meetings import get_redis, _stop_via_runtime_api, backend_url_for
     from .container_stop_outbox import consume_pending_stops
+    from .database import async_session_local
+    from .models import Meeting
 
     redis_client = get_redis()
     if redis_client is None:
         return {}
 
-    return await consume_pending_stops(redis_client, _stop_via_runtime_api)
+    async def _stop_via_backend_for_meeting(container_name: str, meeting_id_str: str) -> bool:
+        """Resolve which backend (local/RunPod) a meeting's bot was spawned
+        on before calling the actual stop — see choose_runtime_backend in
+        meetings.py."""
+        runtime_api_url = None
+        try:
+            meeting_id = int(meeting_id_str)
+        except (TypeError, ValueError):
+            meeting_id = None
+        if meeting_id is not None:
+            async with async_session_local() as db:
+                meeting = await db.get(Meeting, meeting_id)
+            if meeting is not None:
+                runtime_api_url = backend_url_for(meeting)
+        if runtime_api_url is None:
+            from .config import LOCAL_BACKEND_URL
+            runtime_api_url = LOCAL_BACKEND_URL
+        return await _stop_via_runtime_api(container_name, runtime_api_url)
+
+    return await consume_pending_stops(redis_client, _stop_via_backend_for_meeting)
 
 
 def _new_recording_numeric_id() -> int:

@@ -45,12 +45,15 @@ from .auth import get_user_and_token
 from .collector.auth import require_internal_secret
 from .config import (
     REDIS_URL,
-    RUNTIME_API_URL,
     MEETING_API_URL,
     BOT_REDIS_URL,
     BOT_MEETING_API_URL,
     BOT_IMAGE_NAME,
     BOT_STOP_DELAY_SECONDS,
+    USE_LOCAL_RESOURCE,
+    LOCAL_BOT_THRESHOLD,
+    LOCAL_BACKEND_URL,
+    RUNPOD_BACKEND_URL,
 )
 from .post_meeting import run_all_tasks, run_status_webhook_task
 
@@ -274,7 +277,7 @@ async def update_meeting_status(
     if new_status in (MeetingStatus.COMPLETED, MeetingStatus.FAILED):
         job_id = (meeting.data or {}).get("scheduler_job_id") if isinstance(meeting.data, dict) else None
         if job_id:
-            asyncio.create_task(_cancel_bot_timeout(job_id, meeting.id))
+            asyncio.create_task(_cancel_bot_timeout(job_id, meeting.id, backend_url_for(meeting)))
 
     return True
 
@@ -346,6 +349,7 @@ async def _schedule_bot_timeout(
     platform: str,
     native_meeting_id: str,
     max_bot_time_ms: int,
+    runtime_api_url: str,
 ) -> Optional[str]:
     """Schedule a timeout job to kill the bot after max_bot_time.
 
@@ -355,7 +359,7 @@ async def _schedule_bot_timeout(
         client = _get_httpx_client()
         execute_at = time.time() + (max_bot_time_ms / 1000.0)
         resp = await client.post(
-            f"{RUNTIME_API_URL}/scheduler/jobs",
+            f"{runtime_api_url}/scheduler/jobs",
             json={
                 "execute_at": execute_at,
                 "request": {
@@ -386,12 +390,12 @@ async def _schedule_bot_timeout(
         return None
 
 
-async def _cancel_bot_timeout(job_id: str, meeting_id: int) -> None:
+async def _cancel_bot_timeout(job_id: str, meeting_id: int, runtime_api_url: str) -> None:
     """Cancel the scheduler timeout job for a meeting, if one exists."""
     try:
         client = _get_httpx_client()
         resp = await client.delete(
-            f"{RUNTIME_API_URL}/scheduler/jobs/{job_id}",
+            f"{runtime_api_url}/scheduler/jobs/{job_id}",
             timeout=10.0,
         )
         if resp.status_code in (200, 404):
@@ -402,7 +406,45 @@ async def _cancel_bot_timeout(job_id: str, meeting_id: int) -> None:
         logger.error(f"Failed to cancel bot timeout for meeting {meeting_id}: {e}")
 
 
+async def choose_runtime_backend(db: AsyncSession) -> tuple[str, str]:
+    """Decide local vs RunPod for a new bot spawn.
+
+    Ports services/router's proxying logic (USE_LOCAL_RESOURCE +
+    LOCAL_BOT_THRESHOLD) directly into meeting-api instead of a separate
+    always-on proxy service. Router kept an in-memory local-bot counter;
+    this counts active meetings with data.runtime_backend == 'local' from
+    the database instead, so the choice survives restarts and works the
+    same whether meeting-api is a single process or several.
+
+    Returns (backend_url, backend_name).
+    """
+    if not USE_LOCAL_RESOURCE:
+        return RUNPOD_BACKEND_URL, "runpod"
+
+    result = await db.execute(
+        select(func.count()).select_from(Meeting).where(
+            Meeting.status.in_(["requested", "joining", "awaiting_admission", "active"]),
+            Meeting.platform != "browser_session",
+            Meeting.data["runtime_backend"].astext == "local",
+        )
+    )
+    local_count = result.scalar() or 0
+    if local_count < LOCAL_BOT_THRESHOLD:
+        return LOCAL_BACKEND_URL, "local"
+    return RUNPOD_BACKEND_URL, "runpod"
+
+
+def backend_url_for(meeting: Meeting) -> str:
+    """Which backend URL an *existing* meeting's bot lives on, from the
+    runtime_backend recorded in its data at spawn time (see
+    choose_runtime_backend). Falls back to the local backend for rows that
+    predate this field."""
+    backend = (meeting.data or {}).get("runtime_backend")
+    return RUNPOD_BACKEND_URL if backend == "runpod" else LOCAL_BACKEND_URL
+
+
 async def _spawn_via_runtime_api(
+    runtime_api_url: str,
     profile: str,
     config: Dict[str, Any],
     user_id: int,
@@ -414,7 +456,7 @@ async def _spawn_via_runtime_api(
     try:
         client = _get_httpx_client()
         resp = await client.post(
-            f"{RUNTIME_API_URL}/containers",
+            f"{runtime_api_url}/containers",
             json={
                 "profile": profile,
                 "config": config,
@@ -437,12 +479,12 @@ async def _spawn_via_runtime_api(
         return None
 
 
-async def _get_container_info(container_name: str) -> Optional[dict]:
+async def _get_container_info(container_name: str, runtime_api_url: str) -> Optional[dict]:
     """Get container info from Runtime API GET /containers/{name}."""
     try:
         client = _get_httpx_client()
         resp = await client.get(
-            f"{RUNTIME_API_URL}/containers/{container_name}",
+            f"{runtime_api_url}/containers/{container_name}",
             timeout=5.0,
         )
         if resp.status_code == 200:
@@ -452,12 +494,12 @@ async def _get_container_info(container_name: str) -> Optional[dict]:
     return None
 
 
-async def _stop_via_runtime_api(container_name: str) -> bool:
+async def _stop_via_runtime_api(container_name: str, runtime_api_url: str) -> bool:
     """Stop a container via Runtime API DELETE /containers/{name}."""
     try:
         client = _get_httpx_client()
         resp = await client.delete(
-            f"{RUNTIME_API_URL}/containers/{container_name}",
+            f"{runtime_api_url}/containers/{container_name}",
             timeout=30.0,
         )
         return resp.status_code in (200, 404)
@@ -467,18 +509,19 @@ async def _stop_via_runtime_api(container_name: str) -> bool:
 
 
 async def _get_running_bots_from_runtime(user_id: int) -> list:
-    """Get running containers for a user from Runtime API + enrich with DB data."""
+    """Get running containers for a user from both backends + enrich with DB data."""
     try:
         client = _get_httpx_client()
         containers = []
-        for profile in ("meeting", "browser-session"):
-            resp = await client.get(
-                f"{RUNTIME_API_URL}/containers",
-                params={"user_id": str(user_id), "profile": profile},
-                timeout=15.0,
-            )
-            if resp.status_code == 200:
-                containers.extend(resp.json())
+        for backend_url in ({LOCAL_BACKEND_URL, RUNPOD_BACKEND_URL} if USE_LOCAL_RESOURCE else {RUNPOD_BACKEND_URL}):
+            for profile in ("meeting", "browser-session"):
+                resp = await client.get(
+                    f"{backend_url}/containers",
+                    params={"user_id": str(user_id), "profile": profile},
+                    timeout=15.0,
+                )
+                if resp.status_code == 200:
+                    containers.extend(resp.json())
     except httpx.RequestError as e:
         logger.error(f"Runtime API list failed for user {user_id}: {e}")
         return []
@@ -634,7 +677,10 @@ async def _delayed_container_stop(container_name: str, meeting_id: int, delay_se
             f"{container_name} (meeting {meeting_id}); attempting direct stop."
         )
         await asyncio.sleep(delay_seconds)
-        await _stop_via_runtime_api(container_name)
+        async with async_session_local() as fallback_db:
+            meeting_row = await fallback_db.get(Meeting, meeting_id)
+        runtime_api_url = backend_url_for(meeting_row) if meeting_row else LOCAL_BACKEND_URL
+        await _stop_via_runtime_api(container_name, runtime_api_url)
     else:
         await enqueue_stop(redis_client, container_name, meeting_id, delay_seconds)
         logger.info(
@@ -871,18 +917,20 @@ async def request_bot(
 
     # --- Agent-only mode ---
     if req.agent_enabled and req.platform is None:
+        backend_url, backend_name = await choose_runtime_backend(db)
         new_meeting = Meeting(
             user_id=current_user.id,
             platform="agent",
             platform_specific_id=f"agent-{uuid_lib.uuid4().hex[:8]}",
             status=MeetingStatus.REQUESTED.value,
-            data={"agent_enabled": True},
+            data={"agent_enabled": True, "runtime_backend": backend_name},
         )
         db.add(new_meeting)
         await db.commit()
         await db.refresh(new_meeting)
 
         result = await _spawn_via_runtime_api(
+            backend_url,
             profile="meeting",
             config={"env": {"BOT_MODE": "agent"}},
             user_id=current_user.id,
@@ -917,13 +965,14 @@ async def request_bot(
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Concurrent bot limit reached ({active_count}/{user_limit})")
 
         session_token = secrets.token_urlsafe(24)
+        backend_url, backend_name = await choose_runtime_backend(db)
         new_meeting = Meeting(
             user_id=current_user.id,
             platform="browser_session",
             platform_specific_id=f"bs-{uuid_lib.uuid4().hex[:8]}",
             status=MeetingStatus.ACTIVE.value,
             start_time=datetime.utcnow(),
-            data={"mode": "browser_session", "session_token": session_token},
+            data={"mode": "browser_session", "session_token": session_token, "runtime_backend": backend_name},
         )
         db.add(new_meeting)
         await db.commit()
@@ -962,6 +1011,7 @@ async def request_bot(
         }
 
         result = await _spawn_via_runtime_api(
+            backend_url,
             profile="browser-session",
             config={"image": BOT_IMAGE_NAME, "env": {"BOT_CONFIG": json.dumps(bot_config), "BOT_MODE": "browser_session"}},
             user_id=current_user.id,
@@ -991,7 +1041,7 @@ async def request_bot(
                 for _attempt in range(10):
                     await asyncio.sleep(1)
                     try:
-                        info = await _get_container_info(container_name)
+                        info = await _get_container_info(container_name, backend_url)
                         if info and info.get("ip"):
                             container_ip = info["ip"]
                             break
@@ -1134,6 +1184,9 @@ async def request_bot(
             meeting_data["webhook_events"] = {
                 evt.strip(): True for evt in webhook_events_raw.split(",") if evt.strip()
             }
+
+    backend_url, backend_name = await choose_runtime_backend(db)
+    meeting_data["runtime_backend"] = backend_name
 
     new_meeting = Meeting(
         user_id=current_user.id,
@@ -1345,6 +1398,7 @@ async def request_bot(
 
     # Spawn via Runtime API
     result = await _spawn_via_runtime_api(
+        backend_url,
         profile="meeting",
         config={"image": BOT_IMAGE_NAME, "env": env_vars},
         user_id=current_user.id,
@@ -1409,6 +1463,7 @@ async def request_bot(
         platform=req.platform.value,
         native_meeting_id=native_meeting_id,
         max_bot_time_ms=resolved_max_bot_time,
+        runtime_api_url=backend_url,
     )
     if scheduler_job_id:
         current_data = dict(new_meeting.data or {})
@@ -1740,13 +1795,14 @@ async def stop_bot(
         return {"message": f"Meeting already {all_meetings[0].status}."}
 
     for meeting in non_terminal:
+        meeting_backend_url = backend_url_for(meeting)
         # Resolve container name: DB first, fallback to runtime API lookup
         container_name = meeting.bot_container_id
         if not container_name:
             try:
                 client = _get_httpx_client()
                 resp = await client.get(
-                    f"{RUNTIME_API_URL}/containers",
+                    f"{meeting_backend_url}/containers",
                     params={"user_id": str(current_user.id), "profile": "meeting"},
                     timeout=10.0,
                 )
@@ -1776,7 +1832,7 @@ async def stop_bot(
             try:
                 client = _get_httpx_client()
                 cresp = await client.get(
-                    f"{RUNTIME_API_URL}/containers/{container_name}",
+                    f"{meeting_backend_url}/containers/{container_name}",
                     timeout=5.0,
                 )
                 if cresp.status_code == 404 or (
