@@ -30,26 +30,10 @@ WORKDIR /app
 COPY services/mcp/ .
 RUN cargo build --release
 
-# ─── Stage 1d: Build meeting-api (Rust) ────────────────────────────────────────
-# rust:1.88-slim's aws-sdk-s3 transitive deps (aws-smithy-types, crc-fast) need rustc >=1.91.1,
-# but rust's own -slim tags are Debian (newer glibc than the runtime stage's Ubuntu 22.04) — a
-# newer rust:X-slim produces binaries that fail with "GLIBC_2.3x not found" against that runtime.
-# Building directly on ubuntu:22.04 via rustup keeps this stage's glibc identical to the runtime
-# stage's, while still getting a modern-enough rustc.
-FROM ubuntu:22.04 AS meeting-api-builder
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates pkg-config libssl-dev build-essential \
-    && rm -rf /var/lib/apt/lists/*
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.94.0
-ENV PATH="/root/.cargo/bin:${PATH}"
-WORKDIR /app
-COPY services/meeting-api/ .
-RUN cargo build --release
-
 # ─── Stage 1e: Qdrant GPU binary (prebuilt, not compiled here) ─────────────────
 # Same Ubuntu 22.04 / glibc 2.35 base as the runtime stage — verified via
 # `docker run --rm --entrypoint sh qdrant/qdrant:gpu-nvidia-latest -c 'cat /etc/os-release'`
-# before pinning, so no GLIBC mismatch risk like meeting-api hit above.
+# before pinning, to avoid a GLIBC mismatch against the runtime stage.
 FROM qdrant/qdrant:v1.18.2-gpu-nvidia AS qdrant-gpu
 
 # ─── Stage 2: Install Python services into venv ───────────────────────────────
@@ -72,10 +56,12 @@ WORKDIR /build
 # Shared libs
 COPY services/libs/schema-sync/ /build/libs/schema-sync/
 COPY services/libs/admin-models/ /build/libs/admin-models/
-COPY services/libs/meeting-models/ /build/libs/meeting-models/
-RUN pip install --no-cache-dir /build/libs/schema-sync /build/libs/admin-models /build/libs/meeting-models
+RUN pip install --no-cache-dir /build/libs/schema-sync /build/libs/admin-models
 
 # Packages installed as editable deps by other services
+COPY services/meeting-api/ /build/services/meeting-api/
+RUN pip install --no-cache-dir /build/services/meeting-api
+
 COPY services/agent-api/ /build/services/agent-api/
 RUN pip install --no-cache-dir /build/services/agent-api
 
@@ -98,6 +84,7 @@ RUN pip install --no-cache-dir python-pptx
 # Copy all service source into /opt/vexa/services/
 RUN mkdir -p /opt/vexa/services
 COPY services/admin-api/     /opt/vexa/services/admin-api/
+COPY services/meeting-api/   /opt/vexa/services/meeting-api/
 COPY services/agent-api/     /opt/vexa/services/agent-api/
 COPY services/tts-service/   /opt/vexa/services/tts-service/
 COPY services/runtime-api/   /opt/vexa/services/runtime-api/
@@ -209,11 +196,6 @@ COPY --from=api-gateway-builder /app/target/release/kioku-api-gateway /usr/local
 
 # mcp binary (consolidates the old Python services/mcp + hivemind's embedded MCP server)
 COPY --from=mcp-builder /app/target/release/kioku-mcp /usr/local/bin/kioku-mcp
-
-# meeting-api binary (replaces the old Python services/meeting-api uvicorn app; admin-api still
-# imports meeting_api's models/schemas/webhook_url from services/libs/meeting-models, installed
-# above). sqlx::migrate! embeds migrations/ at compile time — nothing to copy at runtime.
-COPY --from=meeting-api-builder /app/target/release/kioku-meeting-api /usr/local/bin/kioku-meeting-api
 
 # Python venv + all service source
 COPY --from=python-builder /opt/venv  /opt/venv
