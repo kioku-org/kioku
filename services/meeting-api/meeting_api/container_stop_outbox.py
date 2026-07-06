@@ -177,15 +177,17 @@ def _decode_payload(raw: Any) -> dict:
 
 async def consume_pending_stops(
     redis: aioredis.Redis,
-    stop_callable: Callable[[str], Awaitable[bool]],
+    stop_callable: Callable[[str, str], Awaitable[bool]],
 ) -> dict:
     """One sweep pass: process all stream entries due (fire_at <= now).
 
     Args:
         redis: meeting-api's redis async client.
-        stop_callable: async fn(container_name) -> bool (truthy on success);
-            normally meetings._stop_via_runtime_api. Injected so the
-            outbox module is decoupled from meetings.py + testable.
+        stop_callable: async fn(container_name, meeting_id_str) -> bool
+            (truthy on success); normally sweeps._stop_via_backend_for_meeting,
+            which resolves the right local/RunPod runtime-api URL for that
+            meeting before calling meetings._stop_via_runtime_api. Injected so
+            the outbox module is decoupled from meetings.py + testable.
 
     Returns:
         Dict {processed, succeeded, retried, dlq, deferred} for logging.
@@ -261,7 +263,7 @@ async def consume_pending_stops(
 
         success = False
         try:
-            success = bool(await stop_callable(container_name))
+            success = bool(await stop_callable(container_name, meeting_id_str))
         except Exception as e:
             logger.warning(
                 f"[stop-outbox] stop_callable raised for {container_name}: {e}",

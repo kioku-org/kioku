@@ -7,8 +7,20 @@ REDIS_URL = os.environ.get("REDIS_URL")
 if not REDIS_URL:
     raise ValueError("Missing required environment variable: REDIS_URL")
 
-# Runtime API — where we delegate container operations
-RUNTIME_API_URL = os.environ.get("RUNTIME_API_URL", "http://runtime-api:8000")
+# Runtime API — where we delegate container operations.
+# Local/RunPod backend selection used to be a separate `router` service
+# (services/router, proxying based on USE_LOCAL_RESOURCE/LOCAL_BOT_THRESHOLD);
+# that's folded directly into meeting-api now (see choose_runtime_backend in
+# meetings.py) rather than resurrecting a standalone proxy.
+USE_LOCAL_RESOURCE = os.environ.get("USE_LOCAL_RESOURCE", "true").lower() == "true"
+try:
+    LOCAL_BOT_THRESHOLD = int(os.environ.get("LOCAL_BOT_THRESHOLD", "3"))
+except ValueError:
+    LOCAL_BOT_THRESHOLD = 3
+LOCAL_BACKEND_URL = os.environ.get(
+    "LOCAL_BACKEND_URL", os.environ.get("RUNTIME_API_URL", "http://localhost:8091")
+)
+RUNPOD_BACKEND_URL = os.environ.get("RUNPOD_BACKEND_URL", "http://localhost:8092")
 RUNTIME_API_TOKEN = os.environ.get("RUNTIME_API_TOKEN", "")
 
 # Self URL — used for callback_url in container creation
