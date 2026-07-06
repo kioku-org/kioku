@@ -29,12 +29,12 @@ require_env HIVEMIND_JWT_SECRET
 require_env HIVEMIND_ENCRYPTION_SECRET
 require_env VEXA_ADMIN_API_TOKEN
 
-IMAGE="${IMAGE:-kyomoto/kioku-stateful:latest}"
+IMAGE="${IMAGE:-ghcr.io/kioku-org/kioku-stateful:latest}"
 POD_NAME="${POD_NAME:-${RUNPOD_POD_NAME:-kioku-stateful}}"
 CONTAINER_DISK="${CONTAINER_DISK_GB:-${RUNPOD_DISK_GB:-20}}"
 VOLUME_SIZE="${VOLUME_GB:-${RUNPOD_VOLUME_GB:-50}}"
 STATEFUL_RUNPOD_CLOUD_TYPE="${STATEFUL_RUNPOD_CLOUD_TYPE:-COMMUNITY}"
-BOT_IMAGE="${BOT_IMAGE:-kyomoto/kioku-stateless:latest}"
+BOT_IMAGE="${BOT_IMAGE:-ghcr.io/kioku-org/kioku-stateless:latest}"
 BROWSER_IMAGE="${BROWSER_IMAGE:-$BOT_IMAGE}"
 RUNPOD_ACCOUNT_API_KEY="${RUNPOD_ACCOUNT_API_KEY:-$RUNPOD_API_KEY}"
 RUNPOD_GPU_TYPES="${RUNPOD_GPU_TYPES:-NVIDIA GeForce RTX 3090,NVIDIA GeForce RTX 5090,NVIDIA RTX A5000,NVIDIA RTX A4000}"
@@ -132,7 +132,7 @@ CMD=(
     --container-disk-in-gb "$CONTAINER_DISK"
     --volume-in-gb "$VOLUME_SIZE"
     --volume-mount-path "/data"
-    --ports "22/tcp,6379/tcp,8080/http,9100/http,8056/http"
+    --ports "22/tcp,6379/tcp,8080/http,9100/http,8056/http,3001/http,18888/http"
     --env "$ENV_JSON"
 )
 
@@ -147,5 +147,5 @@ echo "Pod created."
 echo "  Check status: runpodctl get pod"
 echo "  Remove pod:   ./destroy.sh <pod-id>"
 echo ""
-echo "Bot pods (kyomoto/kioku-stateless) will be spawned automatically"
+echo "Bot pods (${BOT_IMAGE}) will be spawned automatically"
 echo "by runtime-api when meetings are requested."
