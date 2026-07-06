@@ -244,7 +244,7 @@ pub async fn push_to_hivemind(state: &AppState, meeting: &Meeting) {
         (Some(s), Some(e)) => (e - s).num_seconds(),
         _ => 0,
     };
-    let date_ms = meeting.start_time.map(|t| t.timestamp_millis()).unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
+    let date_ms = meeting.start_time.map(|t| t.and_utc().timestamp_millis()).unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
     let title = meeting
         .data
         .get("name")
@@ -303,9 +303,9 @@ pub async fn fire_post_meeting_hooks(state: &AppState, meeting: &Meeting) {
             "platform": meeting.platform,
             "status": meeting.status,
             "duration_seconds": duration_seconds,
-            "start_time": start_time.to_rfc3339(),
-            "end_time": end_time.to_rfc3339(),
-            "created_at": meeting.created_at.map(|t| t.to_rfc3339()),
+            "start_time": start_time.and_utc().to_rfc3339(),
+            "end_time": end_time.and_utc().to_rfc3339(),
+            "created_at": meeting.created_at.map(|t| t.and_utc().to_rfc3339()),
             "transcription_enabled": meeting.data.get("transcribe_enabled").and_then(Value::as_bool).unwrap_or(false),
         },
     });

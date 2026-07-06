@@ -17,7 +17,7 @@ use crate::runtime_backend;
 use crate::schemas::MeetingStatus;
 use crate::state::AppState;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -77,7 +77,7 @@ pub struct MeetingResponse {
     pub platform: String,
     pub native_meeting_id: Option<String>,
     pub status: String,
-    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: Option<chrono::NaiveDateTime>,
 }
 
 impl From<Meeting> for MeetingResponse {
@@ -295,6 +295,98 @@ pub async fn request_bot(
     .await;
 
     (StatusCode::CREATED, Json(MeetingResponse::from(updated))).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListBotsQuery {
+    #[serde(default = "default_list_limit")]
+    limit: i64,
+    #[serde(default)]
+    offset: i64,
+    search: Option<String>,
+    status: Option<String>,
+    platform: Option<String>,
+    /// Backward-compat opt-in for the full `data` JSONB blob instead of the summary below.
+    include: Option<String>,
+}
+fn default_list_limit() -> i64 {
+    50
+}
+
+/// Slim per-meeting summary — mirrors Python's `_data_summary` (v0.10.5 Pack L): the list view
+/// only ever renders name/title, completion_reason, a few participants, a notes preview, last
+/// status transition, and whether a recording exists, so send that instead of the full blob
+/// (which carries status_transition[]/recordings[]/webhook_deliveries[] and gets large).
+fn data_summary(d: &Value) -> Value {
+    let participants: Vec<Value> = d.get("participants").and_then(Value::as_array).cloned().unwrap_or_default();
+    let notes_preview = d.get("notes").and_then(Value::as_str).map(|n| n.chars().take(120).collect::<String>());
+    let last_transition = d.get("status_transition").and_then(Value::as_array).and_then(|t| t.last()).cloned();
+    let has_recording = d.get("recordings").and_then(Value::as_array).map(|a| !a.is_empty()).unwrap_or(false);
+    json!({
+        "name": d.get("name").or_else(|| d.get("title")),
+        "completion_reason": d.get("completion_reason"),
+        "participants": participants.iter().take(3).cloned().collect::<Vec<_>>(),
+        "participants_count": participants.len(),
+        "notes_preview": notes_preview,
+        "languages": d.get("languages"),
+        "last_transition": last_transition,
+        "has_recording": has_recording,
+    })
+}
+
+/// `GET /bots` — list recent meetings/bots for the authenticated user, any status. Port of
+/// Python's `list_user_bots`; this is the dashboard's primary Meetings-page data source
+/// (`services/dashboard/src/app/api/vexa/[...path]/route.ts`), missing entirely from the initial
+/// Rust cutover (#84).
+pub async fn list_bots(State(state): State<AppState>, headers: HeaderMap, Query(q): Query<ListBotsQuery>) -> Response {
+    let user = match crate::auth::validate_request(&state, &headers) {
+        Ok(u) => u,
+        Err(_) => return json_error(StatusCode::UNAUTHORIZED, "Authentication required"),
+    };
+
+    let limit = q.limit.max(1);
+    let search_pattern = q.search.as_ref().map(|s| format!("%{s}%"));
+
+    let meetings: Vec<Meeting> = sqlx::query_as(
+        "SELECT * FROM meetings WHERE user_id = $1 \
+         AND ($2::text IS NULL OR platform_specific_id ILIKE $2 OR data->>'name' ILIKE $2 OR data->>'title' ILIKE $2) \
+         AND ($3::text IS NULL OR status = $3) \
+         AND ($4::text IS NULL OR platform = $4) \
+         ORDER BY created_at DESC OFFSET $5 LIMIT $6",
+    )
+    .bind(user.user_id)
+    .bind(&search_pattern)
+    .bind(&q.status)
+    .bind(&q.platform)
+    .bind(q.offset)
+    .bind(limit + 1)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    let has_more = meetings.len() as i64 > limit;
+    let include_full_data = q.include.as_deref() == Some("data");
+
+    let items: Vec<Value> = meetings
+        .into_iter()
+        .take(limit as usize)
+        .map(|m| {
+            json!({
+                "id": m.id,
+                "platform": m.platform,
+                "native_meeting_id": m.platform_specific_id,
+                "status": m.status,
+                "bot_container_id": m.bot_container_id,
+                "start_time": m.start_time,
+                "end_time": m.end_time,
+                "data": if include_full_data { m.data.clone() } else { data_summary(&m.data) },
+                "created_at": m.created_at,
+                "updated_at": m.updated_at,
+            })
+        })
+        .collect();
+
+    Json(json!({"meetings": items, "has_more": has_more})).into_response()
 }
 
 pub async fn get_bots_status(State(state): State<AppState>, headers: HeaderMap) -> Response {
