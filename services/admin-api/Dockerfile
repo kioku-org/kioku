@@ -13,8 +13,8 @@ COPY ./libs/admin-models /app/libs/admin-models
 RUN pip install --no-cache-dir /app/libs/admin-models
 
 # Install meeting-api models (admin reads meeting stats)
-COPY ./libs/meeting-models /app/libs/meeting-models
-RUN pip install --no-cache-dir /app/libs/meeting-models
+COPY ./meeting-api /app/meeting-api
+RUN pip install --no-cache-dir /app/meeting-api
 
 # Copy application code and requirements
 COPY ./admin-api/requirements.txt /app/
