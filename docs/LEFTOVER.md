@@ -1,24 +1,26 @@
 # LEFTOVER
 
-Last updated: 2026-07-05 (rev 16)
+Last updated: 2026-07-09 (rev 17)
 
 ## Current Status
 
-True stateful/stateless architecture deployed and running on the deploy server. All 18 supervisord
-processes in `kioku-stateful` come up cleanly. Bot containers spawn on-demand via Docker socket.
-`kioku-stateless` image builds from `deployment/docker/Dockerfile.stateless`. CI pushes both images
-to GHCR on every push to master.
+**meeting-api is Python again** — the Rust rewrite described in rev 15/16 below was reverted
+(`bd98dce`, before rev 17) after the rustc/glibc mismatch bricked the dev server; `mcp` and
+`hivemind` stayed Rust. The rev 16 "dev server degraded" note is stale/resolved — don't act on it.
+
+**RunPod-hosted deploy (`deployment/docker/scripts/runpod/deploy.sh`) is now fully e2e-verified
+working** — stateful pod boot, dashboard login, real bot join, live transcription, and live
+WebSocket transcript updates all confirmed live on an actual RunPod pod this session (rev 17,
+below). It was **completely broken** end-to-end before this session (four separate bugs, all
+fixed and merged to `master` — see rev 17). A `MIN_BOT_POOL` warm-pool feature was added on top
+(built + pushed, **not yet verified live** — see Open Items).
 
 `feat/hivemind` branch is active with Hivemind MCP integration, CLI OAuth signin, and GitHub OAuth.
 Not yet merged to main — needs final testing pass before PR.
 
-`feat/rs-rewrite` (this branch) has now ported **meeting-api**, the transcription-collector
-pipeline, and **mcp** from Python to Rust, and cut the deploy over: `services/meeting-api` is the
-Rust binary (`kioku-meeting-api`), the Python FastAPI app is deleted, and `Dockerfile.stateful` /
-`entrypoint-stateful-runtime.sh` build and run the Rust binary directly (see rev 15 section below).
-**Deploy is mid-flight and the dev server is currently in a degraded state** — see the rev 16 Open
-Items entry below for exactly what's broken and the precise next steps before doing anything else
-with `kioku-stateful` on the dev server.
+`kioku-stateful` runs on the dev server via docker-compose as documented below; all 18 supervisord
+processes come up cleanly there. `kioku-stateless` image builds from
+`deployment/docker/Dockerfile.stateless`. CI pushes both images to GHCR on every push to master.
 
 ## Architecture
 
@@ -43,6 +45,83 @@ kioku-stateless (ephemeral per-meeting pod, spawned by runtime-api-local)
 Bot containers run on `kioku-network` and reach stateful services by container name (`kioku-stateful`).
 
 ## What Is Done
+
+### RunPod-hosted deploy: 4 bugs found + fixed, full e2e verified, warm pool added (rev 17 — 2026-07-09)
+
+`deployment/docker/scripts/runpod/deploy.sh` had never actually been run end-to-end before this
+session. Ran it for real on a live RunPod pod and iterated through every bug it hit until a real
+Google Meet bot join, live transcription, and live dashboard updates all worked. All four fixes are
+commits directly on `master` (no PR — small, targeted, verified live each time); no GitHub issues
+were filed for any of them since `gh` isn't available in this environment (see note in Bugfix SOP
+below) — the commit messages carry full root-cause writeups instead.
+
+**Bug 1 — `runtime-api-local`/`runtime-api-runpod` crash-loop forever, everywhere** (`f4a3e99`):
+`entrypoint-stateful-runtime.sh` hardcoded `PROFILES_PATH=/app/profiles.yaml` for both, but
+`Dockerfile.stateful` never copies `profiles.yaml` there — it only lands at
+`/opt/vexa/services/runtime-api/profiles.yaml`. `load_profiles()` raises `FileNotFoundError` at
+FastAPI startup on a missing path, so both processes crashed on boot on *every* deployment (local
+Docker backend included, not just RunPod) — bot spawning has been broken this whole time until this
+fix. Confirmed live by temporarily exposing 8091/8092 and getting RunPod's "waiting for service to
+respond" indefinitely. Same commit also fixed `deploy.sh`: `USE_LOCAL_RESOURCE` was never set for a
+RunPod-only pod (defaults to `true`, meaning meeting-api tried the nonexistent local Docker backend
+first every time), and `NEXTAUTH_SECRET`/`VEXA_ALLOW_DIRECT_LOGIN`/Google OAuth vars were never
+passed through (dashboard login would break on a from-scratch deploy).
+
+**Bug 2 — `runtime-api-runpod` callback + RunPod-key collision** (`a26adab`): even after Bug 1,
+every `/bots` request 500'd. Two separate causes in `runtime-api-runpod`'s stanza only: (a) never
+set `ALLOW_PRIVATE_CALLBACKS`, so it rejected meeting-api's own `http://localhost:8080/...`
+callback URL (meeting-api always calls back to itself regardless of which backend spawned the
+bot); (b) `RUNPOD_ACCOUNT_API_KEY="${RUNPOD_API_KEY:-}"` reads the wrong source variable — RunPod
+auto-injects its own pod-scoped `RUNPOD_API_KEY` into any pod *it* hosts, shadowing the plain
+dev-server meaning of that name, so every RunPod pod-create call 403'd with the wrong-scoped key.
+Fixed to prefer `RUNPOD_ACCOUNT_API_KEY`, falling back to `RUNPOD_API_KEY` only when unset.
+
+**Bug 3 — bot pods can't reach `kioku-stateful` via Docker-network hostname** (`9b071ce`): once a
+bot pod actually spawned (as its own separate RunPod pod, not a Docker container on the shared
+`kioku-network`), `REDIS_BOT_URL`/`BOT_MEETING_API_URL`/`BOT_TTS_URL`/`BOT_COOKIE_URL` were all
+hardcoded to the `kioku-stateful` hostname, unresolvable from anywhere but the local Docker
+network. Confirmed live via bot pod logs: `Redis Client Error: getaddrinfo ENOTFOUND
+kioku-stateful`, meeting stuck at `requested` forever. Fixed: when `RUNPOD_POD_ID` is set (i.e. the
+stateful pod itself is RunPod-hosted), these now resolve via `RUNPOD_PUBLIC_IP` +
+`RUNPOD_TCP_PORT_<port>` (raw TCP, e.g. Redis) or `https://<pod-id>-<port>.proxy.runpod.net` (HTTP
+services) — both confirmed real, auto-injected by RunPod into every pod it hosts (verified live via
+a RunPod web terminal). Non-RunPod deploys are unaffected (falls back to the old `kioku-stateful`
+hostname when `RUNPOD_POD_ID` is unset). Also added the missing `8002`/`8099` port exposure to
+`deploy.sh` so the TTS/cookie proxy URLs actually resolve.
+
+**Bug 4 — dashboard WebSocket hardcoded to the real production domain** (`f66a3f1`): transcripts
+only ever updated on manual page refresh, never live. `VEXA_PUBLIC_API_URL` defaulted to
+`https://meetings.kioku.chat` in the dashboard's stanza, so *any* deployment that doesn't
+explicitly set it (RunPod included) had its browser-facing WebSocket URL silently pointed at the
+real prod domain instead of wherever it's actually running — confirmed via browser console
+(`Connecting to: wss://meetings.kioku.chat/ws`, endless failed reconnect). REST calls were
+unaffected (they go through the dashboard's own server-side proxy, not this public-URL
+resolution) — which is exactly why refreshing "fixed" it. Root-caused that the hardcoded default
+was unnecessary in the first place: the dashboard's own `next.config.ts` already rewrites
+same-origin `/ws` requests straight to `http://localhost:8056` server-side, which correctly reaches
+api-gateway in both the real dual-subdomain prod topology and any single-origin deploy. Removed the
+hardcoded fallback; `VEXA_PUBLIC_API_URL` now defaults to empty everywhere.
+
+**`MIN_BOT_POOL` warm pool** (`6eeeced`, built + pushed, **not yet verified live**): keeps N
+stateless bot pods pre-spawned and idle (image already pulled) so a real meeting request claims one
+instantly instead of always cold-spawning a fresh RunPod pod and waiting ~2-5 min on the ~3.8GB
+stateless image to pull. `RunPodBackend._pool_loop` (mirrors the existing `_reaper_loop`) tops up
+idle slots; `create()` tries `_claim_pool_slot()` first (atomic Redis `SPOP`, pushes the real
+`BOT_CONFIG` to `pool:assign:{pod_id}`, re-keys the tracking entry under the real meeting's
+container name) before falling back to a normal cold-spawn. `vexa-bot/core/entrypoint.sh` blocks on
+a new `pool-wait.js` helper (plain CommonJS, `BLPOP`s its own assignment) when `POOL_SLOT=true` and
+no `BOT_CONFIG` is present yet. Configured via `MIN_BOT_POOL` in the runpod `.env` (default `0` =
+disabled; set to `2` in this session's test `.env`). **Next step: redeploy and verify the pool
+actually spins up N idle pods and that a real meeting request claims one instead of cold-spawning**
+— image built and confirmed on GHCR (tag `6eeeced`) but never actually deployed/tested.
+
+**Also this session**: cloned `vexa-ai/vexa` upstream and diffed it against this fork — found that
+RunPod support (`runtime_api/backends/runpod.py`, `choose_runtime_backend` in meeting-api) is
+**100% kioku's own addition**, not present upstream at all (upstream only has docker/k8s/process
+backends), which is why this whole RunPod path was this buggy — it's new, not inherited-working
+code. Also found kioku extracted `vad.ts`/`speaker-streams.ts`/`transcription-client.ts`/etc. into a
+private `@vexa/gmeet-pipeline` package (upstream keeps them in-repo open source); our fork's
+`index.ts` has no `SileroVAD`/streaming-VAD wiring at its entry point, unlike upstream.
 
 ### meeting-api + mcp Rust rewrite and cutover (feat/rs-rewrite, rev 15 — 2026-07-05)
 
@@ -223,7 +302,31 @@ applies to `curl`, not the piped `sh` (see #62). Plain `curl ... | sh` with no
 
 ## Open Items
 
-### Deploy + e2e test meeting-api Rust cutover (feat/rs-rewrite, rev 16 — 2026-07-05, IN PROGRESS)
+### Verify MIN_BOT_POOL live (rev 17 — 2026-07-09)
+
+Implementation is done and pushed (`6eeeced`), image confirmed built on GHCR, but **never actually
+deployed or tested**. Next session: redeploy the runpod `.env` (already has `MIN_BOT_POOL=2` set),
+confirm `runpodctl pod list` shows 2 extra idle bot pods spin up shortly after the stateful pod
+boots (named `pool-<hex>`, `POOL_SLOT=true` in their env), then request a real meeting and confirm
+via `runtime-api-runpod`'s logs / RunPod's pod list that it **claims** one of the idle pods
+(no new RunPod pod-create call, existing pod just gets a `pool:assign:{pod_id}` Redis push) instead
+of cold-spawning, and that a fresh replacement idle pod appears afterward to top the pool back up.
+
+### Clean up stray RunPod test pods (rev 17 — 2026-07-09)
+
+As of this write-up, `meeting-4-7df3ba62` (pod id `2xso1ga1zpem82`) is still running on RunPod —
+an orphaned bot pod from an earlier test join, currently just burning $0.22/hr. Removal was
+attempted this session but the user interrupted/rejected the tool call before clarifying why —
+confirm with them before deleting it. The stateful test pod (`kioku-stateful-e2e`, currently
+`4msqp7envky1n1`) is also still up ($0.06/hr) — fine to leave running for continuity into the next
+session, or destroy with `deployment/docker/scripts/runpod/destroy.sh <pod-id>` if not needed.
+
+### Deploy + e2e test meeting-api Rust cutover (feat/rs-rewrite, rev 16 — 2026-07-05, SUPERSEDED)
+
+**This entire section is moot** — the Rust meeting-api rewrite it describes was reverted
+(`bd98dce`, "revert: restore the working Python meeting-api") before rev 17. `meeting-api` has been
+plain Python ever since; `mcp` and `hivemind` stayed Rust. Left below only as historical record of
+why that revert happened — don't act on any of the steps in this section.
 
 **Current state of the dev server as of this write-up — read this before touching it again:**
 `~/ws/kioku` on the dev server is checked out at commit `0d4de71` (fetched + `git reset --hard`
@@ -455,6 +558,12 @@ curl https://api.kioku.chat/health | jq .   # hivemind health check
 ```
 
 ## GitHub Issue State
+
+**Note (rev 17):** `gh` CLI is not available in this environment, so none of rev 17's fixes
+(profiles.yaml crash-loop, RunPod key collision, kioku-stateful hostname, dashboard WS hardcoded
+domain, MIN_BOT_POOL) were filed as GitHub issues per the Bugfix SOP — they exist only as commits
+on `master` with full root-cause writeups in the commit messages (see rev 17 in What Is Done
+above for the SHAs). File issues retroactively if the paper trail matters going forward.
 
 - `#27` closed: RunPod stateful path
 - `#28` closed: stateless GPU path
