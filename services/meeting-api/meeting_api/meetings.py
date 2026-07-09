@@ -1242,7 +1242,7 @@ async def request_bot(
     SYSTEM_DEFAULTS = {
         "max_bot_time":           _env_ms("BOT_MAX_TIME",               7200000),  # 2h
         "max_wait_for_admission": _env_ms("BOT_MAX_WAIT_FOR_ADMISSION",   900000),  # 15 min
-        "max_time_left_alone":    _env_ms("BOT_MAX_TIME_LEFT_ALONE",      900000),  # 15 min
+        "max_time_left_alone":    _env_ms("BOT_MAX_TIME_LEFT_ALONE",      120000),  # 2 min
         "no_one_joined_timeout":  _env_ms("BOT_NO_ONE_JOINED_TIMEOUT",    120000),  # 2 min
     }
 

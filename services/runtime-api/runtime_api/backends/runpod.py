@@ -358,10 +358,57 @@ class RunPodBackend(Backend):
             try:
                 await asyncio.sleep(config.RUNPOD_POLL_INTERVAL)
                 await self._reap_dead(on_exit)
+                await self._reconcile_orphans()
             except asyncio.CancelledError:
                 return
             except Exception:
                 logger.debug("Reaper loop error", exc_info=True)
+
+    # Matches runtime-api's `f"{profile}-{identifier}-{suffix}"` naming
+    # (api.py) for every profile in profiles.yaml, plus our own pool prefix.
+    _BOT_NAME_PREFIXES = ("meeting-", "browser-session-", "agent-", "pool-")
+
+    async def _reconcile_orphans(self) -> None:
+        """Safety net for pods that exited but were never removed because our
+        Redis registry lost track of them (e.g. the stateful pod — which also
+        hosts Redis — was itself recreated mid-meeting, wiping the tracking
+        key). `_reap_dead` only walks keys it still has in Redis, so a pod
+        that falls out of the registry is invisible to it forever even after
+        it exits on its own. This lists every pod on the account instead and
+        deletes any bot pod (matched by our name prefixes) already
+        EXITED/TERMINATED on RunPod's side, tracked or not — safe because a
+        pod that's already dead can't be mid-meeting."""
+        if not self._redis:
+            return
+        client = self._get_client()
+        try:
+            resp = await client.get("/pods")
+            resp.raise_for_status()
+        except Exception:
+            logger.debug("Orphan reconcile: failed to list pods", exc_info=True)
+            return
+
+        for pod in resp.json():
+            name = pod.get("name", "")
+            if not name.startswith(self._BOT_NAME_PREFIXES):
+                continue
+            if pod.get("desiredStatus") not in ("EXITED", "TERMINATED"):
+                continue
+
+            pod_id = pod.get("id")
+            if not pod_id:
+                continue
+            try:
+                del_resp = await client.delete(f"/pods/{pod_id}")
+                if del_resp.status_code in (204, 404):
+                    logger.info(f"Orphan reconcile: removed dead untracked-or-stale pod {name} ({pod_id})")
+                else:
+                    logger.warning(f"Orphan reconcile: delete {name} ({pod_id}) -> HTTP {del_resp.status_code}")
+            except Exception:
+                logger.warning(f"Orphan reconcile: delete failed for {name} ({pod_id})", exc_info=True)
+
+            await self._redis.srem(POOL_IDLE_SET, name)
+            await self._redis.delete(f"{RUNPOD_PREFIX}{name}")
 
     async def _pool_loop(self) -> None:
         """Keep MIN_BOT_POOL idle bot pods warm (image already pulled, waiting
