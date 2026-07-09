@@ -20,17 +20,28 @@ This model matches OpenAI's `text-embedding-3-small` (62.3 MTEB) on benchmarks w
 
 ## Pipeline
 
-### Documents (PDF)
+### Documents (PDF, DOCX, PPTX, TXT, MD)
 
 ```
-Upload PDF → pdf-extract (text) → chunk → Ollama embed → Qdrant store
+Upload file → extract text → chunk (400 words, 80-word overlap) → Ollama embed → Qdrant store
 ```
 
-1. PDF uploaded via `POST /knowledge/documents`
-2. Text extracted using `pdf-extract` crate
-3. Text split into chunks
+1. Document uploaded via `POST /knowledge/documents` (50MB cap)
+2. Text extracted — `pdf-extract` for PDF (with an OCR fallback for scanned PDFs),
+   `docx-rs` for DOCX, a custom zip/XML parser for PPTX, raw UTF-8 for TXT/MD
+3. Text split into word-window chunks
 4. Each chunk embedded via Ollama HTTP API
 5. Embeddings + metadata stored in Qdrant
+
+### Sessions (arbitrary content)
+
+```
+Ingest content → paragraph-aware chunk → Ollama embed → Qdrant store
+```
+
+`POST /knowledge/sessions` ingests arbitrary content (e.g. a coding session) using a
+paragraph-aware splitter — splits on blank lines first, only word-windows oversized
+paragraphs, and carries the last paragraph forward as overlap context.
 
 ### Meetings (Transcripts)
 

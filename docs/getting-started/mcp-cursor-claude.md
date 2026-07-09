@@ -3,12 +3,15 @@ title: "For MCP / Cursor / Claude"
 description: "Give Claude, Cursor, and other AI clients direct access to your meeting knowledge."
 ---
 
-Kioku runs two MCP servers that AI clients can connect to:
+Kioku runs **one** MCP server (`kioku-mcp`) that AI clients can connect to — it exposes
+both knowledge tools (search, meetings, documents, sessions) and meeting/bot tools (spawn
+bots, read live transcripts, manage recordings) behind a single endpoint and a single
+credential.
 
-| Server | Endpoint | Purpose |
-|---|---|---|
-| **Knowledge MCP** | `api.kioku.chat/mcp` | Search transcripts and documents, list meetings |
-| **Meetings MCP** | `mcp.kioku.chat/mcp` | Request bots, read live transcripts, manage recordings |
+| | |
+|---|---|
+| Hosted URL | `https://mcp.kioku.chat/mcp` |
+| Local URL | `http://localhost:18888/mcp` |
 
 ## Quickest Setup (CLI)
 
@@ -16,7 +19,13 @@ Kioku runs two MCP servers that AI clients can connect to:
 kioku mcp
 ```
 
-This prints a ready-to-paste JSON config block with both servers and your current auth token. Paste it into your client's MCP config file.
+This prints a ready-to-paste JSON config block. Paste it into your client's MCP config file.
+
+<Note>
+  The output currently includes a second, stale `Kioku` entry pointed at the Hivemind API
+  URL — that one no longer serves `/mcp`. Use the `Kioku Meetings` entry (or the unified
+  URL above directly); it serves every tool, knowledge and meetings alike.
+</Note>
 
 ## Claude Desktop
 
@@ -26,27 +35,22 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 {
   "mcpServers": {
     "Kioku": {
-      "url": "https://api.kioku.chat/mcp",
-      "headers": {
-        "Authorization": "Bearer YOUR_HIVEMIND_JWT"
-      }
-    },
-    "Kioku Meetings": {
       "url": "https://mcp.kioku.chat/mcp",
       "headers": {
-        "Authorization": "Bearer YOUR_VEXA_API_KEY"
+        "Authorization": "Bearer YOUR_KIOKU_TOKEN"
       }
     }
   }
 }
 ```
 
-Get your **Hivemind JWT** from `kioku auth-token` (after `kioku signin`).  
-Get your **Vexa API key** from the dashboard under **Settings → API Keys**.
+Get a token via `kioku signin` then `kioku --token`. Any Kioku credential works — a
+Hivemind JWT, a `kioku_...` API key, or a Vexa API key — the server exchanges internally as
+needed.
 
 ## Claude Code
 
-Add to your project's `.claude/mcp.json` or run `kioku mcp` and paste the output.
+Add to your project's `.claude/mcp.json` or run `kioku mcp` and paste the (corrected) output.
 
 ## Cursor
 
@@ -56,8 +60,8 @@ Add to `.cursor/mcp.json` in your project root:
 {
   "mcpServers": {
     "Kioku": {
-      "url": "https://api.kioku.chat/mcp",
-      "headers": { "Authorization": "Bearer YOUR_JWT" }
+      "url": "https://mcp.kioku.chat/mcp",
+      "headers": { "Authorization": "Bearer YOUR_KIOKU_TOKEN" }
     }
   }
 }
@@ -65,18 +69,14 @@ Add to `.cursor/mcp.json` in your project root:
 
 ## Self-Hosted Local Setup
 
-Replace the hosted URLs with localhost:
+Replace the hosted URL with localhost:
 
 ```json
 {
   "mcpServers": {
     "Kioku": {
-      "url": "http://localhost:9100/mcp",
-      "headers": { "Authorization": "Bearer YOUR_JWT" }
-    },
-    "Kioku Meetings": {
       "url": "http://localhost:18888/mcp",
-      "headers": { "Authorization": "Bearer YOUR_VEXA_API_KEY" }
+      "headers": { "Authorization": "Bearer YOUR_KIOKU_TOKEN" }
     }
   }
 }
@@ -86,16 +86,16 @@ Replace the hosted URLs with localhost:
 
 Once connected, ask your AI client:
 
-- *"What did we decide about the deployment strategy last week?"*  
+- *"What did we decide about the deployment strategy last week?"*
   → Claude calls `search` and returns relevant transcript excerpts.
 
-- *"Summarize my last three standups."*  
+- *"Summarize my last three standups."*
   → Claude calls `meetings`, then `transcript` for each.
 
-- *"Find everything we discussed about RunPod."*  
-  → Semantic search across all meetings and uploaded documents.
+- *"Join this meeting and prep me."*
+  → Claude calls `request_meeting_bot`, and later `get_meeting_bundle` for a summary.
 
-- *"Upload this transcript."*  
+- *"Upload this transcript."*
   → Claude calls `meeting` with the structured data.
 
-See [MCP Tools](/api-cli-mcp#mcp-tools) for the full list of available tools.
+See [MCP Tools](/mcp/tools) for the full list of available tools.

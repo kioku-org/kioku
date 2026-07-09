@@ -1,9 +1,10 @@
 ---
-title: "Data Flow"
-description: "How meeting audio and transcripts move through Kioku."
+title: "Data flow"
+description: "How Kioku processes meeting, document, and search data."
 ---
 
-Understanding where data flows helps you assess privacy risk and configure your deployment accordingly.
+This page describes the data paths in a self-hosted deployment. Hosted Kioku follows the
+same product flow, but its services run on Kioku-managed infrastructure.
 
 ## Meeting Capture Flow
 
@@ -38,14 +39,15 @@ sequenceDiagram
     HM->>U: ranked excerpts
 ```
 
-## Where Your Audio Goes
+## Where meeting data goes
 
-1. **Captured** inside the `kioku-stateless` bot container — audio never leaves the container as raw PCM
-2. **Transcribed** locally by faster-whisper running inside the same container
-3. **Segments streamed** as text over Redis to meeting-api (still on your server)
-4. **Never sent to a third-party ASR API** — Whisper runs on your hardware
+In a local Docker deployment, the bot captures audio and the configured transcription
+workload processes it on infrastructure you operate. Transcript segments are assembled,
+stored, and indexed for workspace search.
 
-If you use the **hosted** kioku.chat service, audio is transcribed on Kioku's GPU infrastructure. See [Self-Hosted Guarantees](/security/self-hosted-guarantees) for what changes when you self-host.
+If you configure RunPod for overflow or remote bot execution, the corresponding bot and
+transcription workload run on RunPod. Treat the meeting data required for that workload as
+leaving your infrastructure. See [RunPod](/deployment/runpod).
 
 ## Where Embeddings Are Computed
 
@@ -59,7 +61,7 @@ By default, Kioku calls no external APIs. External calls are only made if you ex
 |---|---|---|
 | OpenAI API | `OPENAI_API_KEY` set | Session messages to chat completions API |
 | Anthropic API | `ANTHROPIC_API_KEY` set | Session messages to Messages API |
-| RunPod API | `RUNPOD_API_KEY` set | Bot spawn/stop requests (no audio or transcript) |
+| RunPod API | `RUNPOD_API_KEY` set | Remote bot execution and its required capture/transcription traffic |
 | Cloudflare Tunnel | `cloudflared` running | Encrypted tunnel traffic (no plaintext) |
 
 ## Data at Rest
@@ -68,6 +70,6 @@ By default, Kioku calls no external APIs. External calls are only made if you ex
 |---|---|---|
 | Transcripts + meetings | PostgreSQL (`kioku-postgres-data` volume) | Plaintext (disk-level encryption is your responsibility) |
 | Vector embeddings | Qdrant (`kioku-qdrant-data` volume) | Plaintext |
-| Meeting recordings | MinIO (`kioku-minio-data` volume) | Plaintext |
+| Optional meeting recordings | MinIO (`kioku-minio-data` volume) and `kioku-recordings-data` | Plaintext |
 | Bot session cookies | Cookie service (`kioku-cookie-data` volume) | Plaintext |
 | Model weights | Ollama / Whisper volumes | N/A (public models) |

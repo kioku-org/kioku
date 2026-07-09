@@ -1,13 +1,18 @@
 ---
 title: "Sessions API"
+description: "Store conversation sessions, messages, and trace steps in your workspace."
 ---
-Sessions are conversation containers with messages and execution traces.
 
-## List Sessions
+Sessions are conversation containers with messages and execution traces. Every route requires
+an authenticated Kioku credential and is scoped to the active workspace and calling user.
+
+Use `X-Workspace-Id` to select a non-default workspace. See [Authentication](/api/authentication).
+
+## List sessions
 
 <Endpoint method="GET" path="/sessions" />
 
-Returns all sessions for the authenticated user's company.
+Returns the calling user's sessions in the active workspace.
 
 ## Create Session
 

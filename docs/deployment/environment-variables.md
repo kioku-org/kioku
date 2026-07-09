@@ -1,7 +1,8 @@
 ---
 title: "Environment Variables"
 ---
-Full reference for all configuration options.
+Full reference for all configuration options. See `deployment/docker/.env.example` for the
+authoritative, up-to-date list.
 
 ## Database
 
@@ -16,6 +17,7 @@ Full reference for all configuration options.
 | Variable | Default | Description |
 |---|---|---|
 | `HIVEMIND_JWT_SECRET` | — | JWT signing secret (64-char hex, required) |
+| `HIVEMIND_ENCRYPTION_SECRET` | — | Field-level encryption secret (64-char hex, required) |
 | `HIVEMIND_PORT` | `9100` | Hivemind API port |
 
 ## Vexa
@@ -23,15 +25,23 @@ Full reference for all configuration options.
 | Variable | Default | Description |
 |---|---|---|
 | `VEXA_ADMIN_API_TOKEN` | — | Vexa admin API token (required) |
-| `VEXA_PUBLIC_URL` | `http://localhost:8056` | Public URL for Vexa API |
-| `VEXA_BOT_IMAGE` | `vexa-bot:dev` | Docker image for bot containers |
+| `VEXA_PUBLIC_URL` | `http://localhost:8056` | Public URL for the Vexa API gateway |
+| `VEXA_PUBLIC_API_URL` | — (compose falls back to `https://meetings.kioku.chat` if unset — see warning below) | Public URL the dashboard's browser-side code uses for its WebSocket connection |
+| `VEXA_BOT_IMAGE` | `ghcr.io/kioku-org/kioku-stateless:latest` | Docker image for bot pods |
 | `INTERNAL_API_SECRET` | — | Secret for internal API callbacks |
 
-## Redis (RunPod)
+<Warning>
+  `docker-compose.stateful.yml` still defaults `VEXA_PUBLIC_API_URL` to
+  `https://meetings.kioku.chat` at the compose level if you leave it unset. Always set it
+  explicitly for self-hosted deployments, or the dashboard's browser-side WebSocket will
+  silently point at Kioku's production domain instead of your server.
+</Warning>
+
+## Redis
 
 | Variable | Default | Description |
 |---|---|---|
-| `REDIS_PASSWORD` | — | Redis AUTH password (required on RunPod) |
+| `REDIS_PASSWORD` | — | Redis AUTH password (required if Redis is exposed publicly, e.g. RunPod overflow) |
 
 ## Storage
 
@@ -41,6 +51,7 @@ Full reference for all configuration options.
 | `MINIO_ACCESS_KEY` | `vexa-access-key` | MinIO access key |
 | `MINIO_SECRET_KEY` | `vexa-secret-key` | MinIO secret key |
 | `MINIO_BUCKET` | `vexa-recordings` | MinIO bucket name |
+| `RECORDING_ENABLED` | `false` | Enable audio/video recording capture |
 
 ## Vector DB
 
@@ -48,17 +59,31 @@ Full reference for all configuration options.
 |---|---|---|
 | `QDRANT_API_KEY` | — | Qdrant API key (optional) |
 
+Note: Hivemind connects to Qdrant on the **gRPC** port (`6334`), not the REST port (`6333`).
+
 ## AI Integrations (Optional)
 
 | Variable | Description |
 |---|---|
-| `OPENAI_API_KEY` | OpenAI API key (TTS, agent) |
+| `OPENAI_API_KEY` | OpenAI API key (TTS, agent-api chat) |
 | `OPENAI_BASE_URL` | OpenAI base URL (default: `https://api.openai.com`) |
-| `ANTHROPIC_API_KEY` | Anthropic API key (agent) |
+| `ANTHROPIC_API_KEY` | Anthropic API key (agent-api chat — this is the only LLM provider agent-api reads) |
 | `VEXA_TRANSCRIBER_API_KEY` | Transcription service API key |
 | `ZOOM_CLIENT_ID` | Zoom OAuth client ID |
 | `ZOOM_CLIENT_SECRET` | Zoom OAuth client secret |
 | `TTS_API_TOKEN` | TTS service auth token |
+
+## Dashboard / OAuth
+
+| Variable | Default | Description |
+|---|---|---|
+| `NEXTAUTH_SECRET` | — | Dashboard session secret (required) |
+| `NEXTAUTH_URL` | — | Dashboard's own public URL (required for OAuth redirects) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — | Google sign-in (also used for the CLI's Calendar-consent round trip) |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | — | GitHub sign-in |
+| `AZURE_AD_CLIENT_ID` / `AZURE_AD_CLIENT_SECRET` / `AZURE_AD_TENANT_ID` | — | Microsoft Entra ID sign-in |
+| `VEXA_ALLOW_DIRECT_LOGIN` | — | Allow email/password login with no OAuth configured |
+| `INTERNAL_API_SECRET` | — | Shared secret for the dashboard's `/internal/provision` call into Hivemind |
 
 ## General
 
@@ -78,17 +103,29 @@ Full reference for all configuration options.
 
 | Variable | Default | Description |
 |---|---|---|
-| `RUNPOD_API_KEY` | — | Local/dev fallback for the RunPod account API key |
-| `RUNPOD_ACCOUNT_API_KEY` | — | Preferred RunPod account API key inside deployed stateful pods |
+| `RUNPOD_API_KEY` | — | Local/dev fallback for the RunPod account API key. Inside a pod that is itself RunPod-hosted, RunPod auto-injects its own pod-scoped value into this name, so prefer `RUNPOD_ACCOUNT_API_KEY` there. |
+| `RUNPOD_ACCOUNT_API_KEY` | — | Preferred RunPod account API key — always takes precedence over `RUNPOD_API_KEY` when set |
 | `RUNPOD_GPU_TYPE` | `NVIDIA GeForce RTX 3090` | GPU type for bot pods |
 | `RUNPOD_GPU_TYPES` | `NVIDIA GeForce RTX 3090,NVIDIA GeForce RTX 5090,NVIDIA RTX A5000,NVIDIA RTX A4000` | Ordered GPU fallback list for bot pods |
 | `RUNPOD_CLOUD_TYPE` | `COMMUNITY` | Cloud tier (`SECURE` or `COMMUNITY`) |
 | `RUNPOD_CONTAINER_DISK_GB` | `40` | Container disk size for bot pods |
 | `RUNPOD_POLL_INTERVAL` | `15` | Pod status poll interval (seconds) |
-| `BOT_IMAGE` | `kyomoto/kioku-stateless:latest` | Image for bot pods |
+| `MIN_BOT_POOL` | `0` | Idle bot pods to keep warm; `create()` claims one before cold-spawning. Only wired for RunPod deploys. |
+| `BOT_IMAGE` | `ghcr.io/kioku-org/kioku-stateless:latest` | Image for bot pods |
 | `BROWSER_IMAGE` | defaults to `BOT_IMAGE` | Browser/runtime image passed into the meeting profile |
-| `BOT_REDIS_URL` | defaults to `REDIS_URL` | Redis URL passed to bot pods |
-| `BOT_MEETING_API_URL` | defaults to `MEETING_API_URL` | Meeting API URL passed to bot pods |
+| `BOT_REDIS_URL` | auto-resolved from `RUNPOD_POD_ID` when set, else defaults to `REDIS_URL` | Redis URL passed to bot pods |
+| `BOT_MEETING_API_URL` | auto-resolved from `RUNPOD_POD_ID` when set, else defaults to `MEETING_API_URL` | Meeting API URL passed to bot pods |
+| `BOT_TTS_URL` / `BOT_COOKIE_URL` | auto-resolved from `RUNPOD_POD_ID` when set | TTS/cookie service URLs passed to bot pods |
+| `BOT_MAX_TIME_LEFT_ALONE` | `120000` (2 min, in code) | How long a bot waits alone in a meeting before self-leaving (Google Meet/Teams only — Zoom has no alone-detection) |
+
+## Runtime API
+
+| Variable | Default | Description |
+|---|---|---|
+| `ORCHESTRATOR_BACKEND` | `docker` | `docker` \| `kubernetes` \| `process` \| `runpod` |
+| `USE_LOCAL_RESOURCE` | `true` | If `true`, spawn bots via the Docker socket up to `LOCAL_BOT_THRESHOLD` before overflowing to RunPod |
+| `LOCAL_BOT_THRESHOLD` | `3` | Max local bots before overflow to RunPod |
+| `ALLOW_PRIVATE_CALLBACKS` | `true` (hardcoded for both `runtime-api-local` and `runtime-api-runpod`) | Allows meeting-api's own `http://localhost:8080/...` callback URL |
 
 ## Build Paths
 
@@ -96,5 +133,5 @@ Full reference for all configuration options.
 |---|---|---|
 | `KIOKU_VEXA_PATH` | `../../services` | Root of the services directory (for Docker build contexts) |
 | `HIVEMIND_PATH` | `../../services/hivemind` | Path to hivemind source (for Docker builds) |
-| `CONTAINER_DISK_GB` | `20` | Default container disk used by `deployment/runpod/deploy.sh` for the stateful CPU pod |
-| `STATEFUL_RUNPOD_CLOUD_TYPE` | `COMMUNITY` | Cloud tier used by `deployment/runpod/deploy.sh` for the long-lived stateful pod |
+| `CONTAINER_DISK_GB` | `20` | Default container disk used by `deployment/docker/scripts/runpod/deploy.sh` for the stateful pod |
+| `STATEFUL_RUNPOD_CLOUD_TYPE` | `COMMUNITY` | Cloud tier used by `deployment/docker/scripts/runpod/deploy.sh` for the long-lived stateful pod |

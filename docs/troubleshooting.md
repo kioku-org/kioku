@@ -101,6 +101,13 @@ Workarounds:
 - Restart the whole container: `docker restart kioku-stateful`
 - For runtime-profiles.yaml changes only: send SIGHUP to runtime-api-local — it hot-reloads profiles without restart
 
+## Dashboard connects to `meetings.kioku.chat` instead of my own server
+
+`docker-compose.stateful.yml` falls back to `VEXA_PUBLIC_API_URL=https://meetings.kioku.chat`
+if you don't set it explicitly. This makes a self-hosted dashboard's browser-side WebSocket
+connect to Kioku's production domain instead of your own server. Fix: set
+`VEXA_PUBLIC_API_URL` explicitly in your `.env` to your own public URL.
+
 ## Cloudflare Tunnel — 502 Bad Gateway
 
 1. Check cloudflared is running inside the container:

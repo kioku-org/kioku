@@ -8,12 +8,13 @@
 
 ## Terminology
 
-- **Hivemind** — the Rust API server
+- **Hivemind** — the Rust API server (auth, workspaces, knowledge, sessions, meetings)
 - **CLI** — the `kioku` binary (Rust, clap)
-- **Knowledge** — searchable corpus from meetings + documents
+- **Workspace** — Hivemind's tenancy unit (renamed from "company"; a user can belong to multiple)
+- **Knowledge** — searchable corpus from meetings + documents + ingested sessions
 - **Sessions** — conversation containers with messages and traces
 - **Meetings** — ingested transcript data (from Vexa bots or manual upload)
-- **MCP** — Model Context Protocol integration for AI clients
+- **MCP** — the single unified `kioku-mcp` server (Rust) exposing both knowledge and meeting/bot tools to AI clients — not split across two services
 
 ## Style preferences
 

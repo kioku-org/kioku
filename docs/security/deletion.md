@@ -22,7 +22,7 @@ Deleting a meeting removes:
 ## Delete a Document
 
 ```bash
-kioku knowledge-delete <doc-id>
+kioku docs --delete <doc-id>
 
 # or via REST
 curl -X DELETE http://localhost:9100/knowledge/documents/<id> \
@@ -33,41 +33,44 @@ Deleting a document removes the metadata from PostgreSQL and all chunk embedding
 
 ## Delete a User
 
-Via admin API:
+Via the Vexa admin API (note: `admin-api` listens on port 8001, not 8056):
 
 ```bash
-curl -X DELETE http://localhost:8056/admin/users/<user_id> \
-  -H "X-Admin-Token: $VEXA_ADMIN_API_TOKEN"
+curl -X DELETE http://localhost:8001/admin/users/<user_id> \
+  -H "X-Admin-API-Key: $VEXA_ADMIN_API_TOKEN"
 ```
 
-This removes the user record. Company data (meetings, documents) is not deleted unless the company is also deleted.
+This removes the Vexa-side user record. It does not touch the linked Hivemind user or
+workspace data (meetings, documents) — those are separate systems, see
+[Vexa ↔ Hivemind credential linking](/architecture/vexa-hivemind-credentials).
 
-## Delete All Data for a Company
+## Delete All Data for a Workspace
 
 To fully remove a tenant's data, you need to:
 
 1. Delete all meetings (and their embeddings)
 2. Delete all documents (and their embeddings)
-3. Delete all users in the company
-4. Delete the company record
+3. Remove all members from the workspace
+4. Delete the workspace record
 
-There is no single "delete company" API call yet. For self-hosted deployments, you can delete directly from the database:
+There is no single "delete workspace" API call yet. For self-hosted deployments, you can delete directly from the database (schema `hivemind`):
 
 ```sql
 -- Inside the PostgreSQL container
-DELETE FROM meetings WHERE company_id = 'c-123';
-DELETE FROM documents WHERE company_id = 'c-123';
-DELETE FROM users WHERE company_id = 'c-123';
-DELETE FROM companies WHERE id = 'c-123';
+DELETE FROM knowledge_chunks WHERE workspace_id = 'w-123';
+DELETE FROM meetings WHERE workspace_id = 'w-123';
+DELETE FROM knowledge_documents WHERE workspace_id = 'w-123';
+DELETE FROM workspace_members WHERE workspace_id = 'w-123';
+DELETE FROM workspaces WHERE id = 'w-123';
 ```
 
 Then clean up orphaned Qdrant vectors:
 
 ```bash
-# Delete all vectors for a company (Qdrant filter delete)
-curl -X POST http://localhost:6333/collections/kioku/points/delete \
+# Delete all vectors for a workspace (Qdrant filter delete)
+curl -X POST http://localhost:6333/collections/knowledge/points/delete \
   -H "Content-Type: application/json" \
-  -d '{"filter": {"must": [{"key": "company_id", "match": {"value": "c-123"}}]}}'
+  -d '{"filter": {"must": [{"key": "workspace_id", "match": {"value": "w-123"}}]}}'
 ```
 
 ## Bot Session Cookies

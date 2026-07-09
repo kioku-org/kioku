@@ -1,46 +1,59 @@
 ---
 title: "For Hosted Users"
-description: "Start transcribing meetings on kioku.chat in minutes."
+description: "Capture meetings and search knowledge with the hosted Kioku service."
 ---
 
-## Sign In
+## Sign in
 
-Go to [dashboard.kioku.chat](https://dashboard.kioku.chat) and sign in with your email or Google account.
+Go to [dashboard.kioku.chat](https://dashboard.kioku.chat) and sign in. The dashboard is
+where you manage meetings, documents, workspace access, and API keys.
 
-## Join a Meeting
+## Capture a meeting
 
-1. Open the **Meetings** tab
-2. Paste a Google Meet, Zoom, or Microsoft Teams URL
-3. Click **Join Meeting**
+1. Open **Join a Meeting**.
+2. Choose Google Meet, Zoom, or Microsoft Teams.
+3. Enter the meeting identifier. Enter the passcode for Teams when required.
+4. Select **Join Meeting**.
 
-The Kioku bot enters the meeting, captures audio, and transcribes in real time. Once the meeting ends (or you click **Stop**), the transcript is indexed and becomes searchable.
+The bot connects to the meeting and transcribes it while it runs. When the meeting finishes,
+the transcript is available from the meeting view and can be searched with your other
+workspace knowledge.
 
 <Note>
-  Leave **Authenticated** toggle OFF. Authenticated mode requires pre-stored browser cookies and is not yet supported in the hosted product. The bot joins via the Ask to Join waiting room.
+  Leave **Authenticated** off unless you have configured a supported account connection. A
+  non-authenticated bot may need to be admitted from the meeting waiting room.
 </Note>
 
-## Search Your Meetings
+## Search your knowledge
 
-Use the **Search** bar to query across all your transcripts and uploaded documents using semantic similarity — not keyword matching.
+Use **Search** to find relevant excerpts across your meeting transcripts, uploaded documents,
+and ingested sessions. Results are scoped to your active workspace.
 
-## Upload Documents
+## Upload documents
 
-Drag a PDF onto the **Documents** panel to add it to your knowledge base. The text is extracted, embedded, and becomes searchable alongside your meeting transcripts.
+Open **Documents** and upload a PDF, DOCX, PPTX, TXT, or Markdown file up to 50 MB. Kioku
+extracts its text, indexes it, and makes it available to search alongside meetings.
 
-## Connect an AI Client (MCP)
+## Connect an AI client
 
-To let Claude, Cursor, or another MCP client access your knowledge base:
-
-```bash
-kioku mcp
-```
-
-This prints a ready-to-paste JSON config with both MCP servers and your current token. See [MCP / Cursor / Claude](/getting-started/mcp-cursor-claude) for details.
-
-## API Access
-
-Get your API key from **Settings → API Keys** in the dashboard. All REST endpoints are at `https://meetings.kioku.chat`.
+Connect Claude, Cursor, or another MCP client to:
 
 ```bash
-curl -H "Authorization: Bearer YOUR_KEY" https://meetings.kioku.chat/bots
+https://mcp.kioku.chat/mcp
 ```
+
+Authenticate with a Kioku token or API key. The [MCP client guide](/getting-started/mcp-cursor-claude)
+has ready-to-paste configurations.
+
+## Use the API
+
+Create an API key from **Settings**. The hosted Hivemind API is available at
+`https://api.kioku.chat`.
+
+```bash
+curl https://api.kioku.chat/meetings \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+See [Authentication](/api/authentication) for the supported credentials and
+[API / CLI / MCP](/api-cli-mcp) for the endpoint reference.

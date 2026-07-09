@@ -50,14 +50,24 @@ curl http://localhost:18888/health    # {"status":"ok"} (MCP)
 
 ## Create Your First Admin User
 
+The simplest path is the CLI's bootstrap command, which creates a Hivemind workspace + admin user in one step:
+
+```bash
+export KIOKU_SERVER=http://localhost:9100
+kioku register-admin
+```
+
+`register-admin` is hidden from `--help` (it's for self-hosted servers only — it refuses
+to run against `api.kioku.chat`) but fully functional. Then sign in at `http://localhost:3001` or via `kioku signin`.
+
+To create a Vexa-side admin user directly (rarely needed — Hivemind provisions Vexa users lazily on first use):
+
 ```bash
 curl -X POST http://localhost:8056/admin/users \
-  -H "X-Admin-Token: $VEXA_ADMIN_API_TOKEN" \
+  -H "X-Admin-API-Key: $VEXA_ADMIN_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"email": "you@example.com"}'
 ```
-
-Then sign in at `http://localhost:3001`.
 
 ## Public Access with Cloudflare Tunnel
 

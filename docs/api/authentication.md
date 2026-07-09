@@ -7,17 +7,22 @@ All API endpoints except `/health` and `/auth/register/*` require a JWT bearer t
 Authorization: Bearer <token>
 ```
 
+A user can belong to multiple workspaces. To operate on a workspace other than the
+token's default, send `X-Workspace-Id: <workspace_id>` — it must be one of the token's
+memberships.
+
 ## Register Admin
 
 <Endpoint method="POST" path="/auth/register/admin" />
 
-Creates a new company + admin user. Returns an auth session with JWT token.
+Creates a new workspace + admin user. Returns an auth session with JWT token.
 
 ### Request
 
 ```json
 {
-    "company_name": "Acme Corp",
+    "workspace_name": "Acme Corp",
+    "workspace_slug": "acme-corp",
     "email": "admin@acme.com",
     "name": "Admin User",
     "password": "securepassword"
@@ -25,7 +30,7 @@ Creates a new company + admin user. Returns an auth session with JWT token.
 ```
 
 <Note>
-  Password must be at least 8 characters.
+  Password must be at least 8 characters. `workspace_slug` is optional — derived from `workspace_name` if omitted.
 </Note>
 
 ### Response
@@ -35,9 +40,9 @@ Creates a new company + admin user. Returns an auth session with JWT token.
     "user_id": "u-1",
     "email": "admin@acme.com",
     "name": "Admin User",
-    "company_id": "c-1",
-    "company_name": "Acme Corp",
-    "company_slug": "acme-corp",
+    "workspace_id": "w-1",
+    "workspace_name": "Acme Corp",
+    "workspace_slug": "acme-corp",
     "role": "admin",
     "token": "eyJhbGci..."
 }
@@ -47,13 +52,13 @@ Creates a new company + admin user. Returns an auth session with JWT token.
 
 <Endpoint method="POST" path="/auth/register/personal" />
 
-Register a standalone account (no company).
+Registers a standalone user with an auto-created, auto-named workspace (`"{name}'s Workspace"`).
 
 ## Register Member
 
 <Endpoint method="POST" path="/auth/register/member" />
 
-Register a team member. Requires a valid invite.
+Registers a team member. Requires a `workspace_slug` and a valid pending invite matching the email. Blocked if the target workspace is on the free tier and already has a member.
 
 ## Sign In
 
@@ -66,13 +71,13 @@ Register a team member. Requires a valid invite.
 }
 ```
 
-Returns the same `AuthSession` object as registration.
+Returns the same `AuthSession` object as registration, using the user's oldest workspace membership as the active workspace.
 
 ## Sign Out
 
 <Endpoint method="POST" path="/auth/signout" />
 
-Invalidates the current token. Requires auth.
+Invalidates the current token server-side (deletes its `auth_tokens` row) — not just a client-side clear. Requires auth.
 
 ## Get Current User
 
@@ -84,10 +89,24 @@ Returns the current user's `AuthSession`.
 
 <Endpoint method="POST" path="/auth/token" />
 
-Exchange a company API key for a JWT. Use the `X-API-Key` header:
+Exchange a workspace API key for a JWT. Use the `X-API-Key` header:
 
 ```
-X-API-Key: koku_abc123...
+X-API-Key: kioku_abc123...
 ```
 
-This is used by the CLI for long-lived authentication without storing passwords.
+Legacy `cmp_...` keys are still accepted for backward compatibility. This is used by the CLI (`kioku signin --api-key ...`) for long-lived authentication without storing passwords.
+
+## Workspaces
+
+<Endpoint method="GET" path="/workspaces" />
+
+List every workspace the token's memberships include.
+
+<Endpoint method="POST" path="/workspaces" />
+
+Create an additional workspace. Returns a fresh token with the new membership added.
+
+```json
+{ "name": "New Team" }
+```

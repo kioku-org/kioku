@@ -1,45 +1,42 @@
 ---
-title: "Self-Hosted Guarantees"
-description: "What changes about your data when you self-host Kioku."
+title: "Self-hosted guarantees"
+description: "What you control, and what external services can still receive data."
 ---
 
-## What Self-Hosting Means
+## What self-hosting gives you
 
-When you run Kioku on your own infrastructure:
+When you run `kioku-stateful` on infrastructure you control, you operate the API, dashboard,
+database, vector index, object storage, and their persistent volumes. You choose who has
+network and operating-system access to them.
 
-- **No audio leaves your machine** — faster-whisper transcribes inside your bot container
-- **No text leaves your machine for embeddings** — Ollama runs locally, no OpenAI embedding API
-- **No meeting data sent to Kioku** — your PostgreSQL and Qdrant hold all records
-- **Kioku has zero access** to your meetings, transcripts, documents, or search queries
+With local bot execution, meeting bots and transcription workloads also run on your Docker
+host. The default embedding stack is local Ollama plus Qdrant, so document and transcript
+text does not need an external embedding provider.
 
-## Hosted vs. Self-Hosted Comparison
+## What self-hosting does not guarantee
 
-| Aspect | kioku.chat (hosted) | Self-hosted |
-|---|---|---|
-| Audio transcription | Kioku's GPU servers | Your hardware |
-| Embeddings | Kioku's Ollama instance | Your Ollama instance |
-| Meeting storage | Kioku's database | Your PostgreSQL |
-| Vector storage | Kioku's Qdrant | Your Qdrant |
-| Who can access your data | Kioku staff (via platform) | Only you (OS-level access) |
-| Uptime SLA | Platform-managed | Your responsibility |
-| Backups | Platform-managed | Your responsibility |
+Self-hosting does not make every deployment fully isolated. Data can leave your
+infrastructure when you opt into a remote service or expose an endpoint publicly.
 
-## External Calls You Control
+## External calls you control
 
-Self-hosted Kioku makes no external calls by default. You opt in to external services:
+You opt into the external services below. Review their data handling terms before enabling
+them.
 
 | Service | Env var | What it enables |
 |---|---|---|
 | OpenAI | `OPENAI_API_KEY` | LLM for chat sessions |
 | Anthropic | `ANTHROPIC_API_KEY` | Claude for chat sessions |
-| RunPod | `RUNPOD_API_KEY` | Remote GPU bot pods |
+| RunPod | `RUNPOD_API_KEY` or `RUNPOD_ACCOUNT_API_KEY` | Remote bot execution; capture and transcription data traverse RunPod infrastructure |
 | Cloudflare | `cloudflared` binary | Public tunnel for your server |
 
-If you set `OPENAI_API_KEY`, session messages are sent to OpenAI. If you don't want that, use Anthropic or leave both unset (chat sessions will be disabled, but search and transcription still work).
+If you set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`, the associated feature can send its
+request content to that provider. Public dashboard, API, and MCP endpoints also require TLS,
+strong credentials, and network access controls.
 
-## What's Not Isolated by Self-Hosting
+## Other external dependencies
 
-- **DNS** — you still use Cloudflare DNS if you're using their tunnel
+- **Cloudflare Tunnel** — public traffic traverses Cloudflare when you enable its tunnel
 - **Container images** — pulled from GHCR (`ghcr.io/kioku-org/...`); inspect the Dockerfiles and build from source if you need full supply-chain control
 - **Update check** — the CLI's `kioku upgrade-check` calls the GitHub releases API; no personal data sent, but network call occurs
 

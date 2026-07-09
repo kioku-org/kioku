@@ -16,7 +16,7 @@ description: "Steps to harden a Kioku deployment before going to production."
 ## Networking
 
 - [ ] Only expose ports 9100, 8056, 3001, 18888 (or none if using Cloudflare Tunnel)
-- [ ] PostgreSQL (5432), Qdrant (6333), MinIO (9000), Ollama (11434) stay internal
+- [ ] PostgreSQL (5432), Qdrant (6334 gRPC / 6333 REST), MinIO (9000), Ollama (11434) stay internal
 - [ ] If using RunPod overflow: expose Redis (6379) and meeting-api (8080) with password auth
 - [ ] Set `CORS_ORIGINS` to your actual domain instead of `*`
 - [ ] Set `NEXTAUTH_URL` and `VEXA_PUBLIC_URL` to your actual public URLs

@@ -24,9 +24,21 @@
         "group": "Getting Started",
         "pages": [
           "index",
+          "quickstart",
+          "concepts",
           "getting-started/hosted",
           "getting-started/self-hosting",
           "getting-started/mcp-cursor-claude"
+        ]
+      },
+      {
+        "group": "Architecture",
+        "pages": [
+          "architecture-index",
+          "architecture/hivemind",
+          "architecture/vexa",
+          "architecture/cli",
+          "architecture/vexa-hivemind-credentials"
         ]
       },
       {
@@ -36,6 +48,15 @@
           "core-concepts/document-memory",
           "core-concepts/agent-context",
           "core-concepts/multi-tenancy"
+        ]
+      },
+      {
+        "group": "Knowledge",
+        "pages": [
+          "knowledge/overview",
+          "knowledge/search",
+          "knowledge/documents",
+          "knowledge/meetings"
         ]
       },
       {
@@ -61,10 +82,19 @@
         "group": "API / CLI / MCP",
         "pages": [
           "api-cli-mcp",
+          "mcp/overview",
           "mcp/tools",
           "api/authentication",
+          "api/workspace",
+          "api/knowledge",
+          "api/meetings",
+          "api/sessions",
           "api/vexa"
         ]
+      },
+      {
+        "group": "Contributing",
+        "pages": ["contributing", "testing"]
       },
       {
         "group": "Troubleshooting",

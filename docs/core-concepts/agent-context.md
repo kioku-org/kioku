@@ -7,23 +7,26 @@ Agent context is how Kioku makes your knowledge base available to AI systems —
 
 ## Sessions
 
-Sessions are conversation containers that let you build chat-style interactions against your knowledge base.
+Sessions are conversation containers that let you build chat-style interactions against
+your knowledge base. There's no dedicated CLI subcommand for them yet — use the REST API
+directly:
 
 ```bash
-# Create a session
-kioku sessions-create --title "Q3 Planning Research"
+curl -X POST http://localhost:9100/sessions \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"title": "Q3 Planning Research", "mode": "research"}'
 
-# Send a message
-kioku send <session_id> "What did we discuss about the deployment strategy?"
-
-# View message history
-kioku messages <session_id>
+curl -X POST http://localhost:9100/sessions/<id>/messages \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"role": "user", "content": [{"type": "text", "text": "What did we discuss about the deployment strategy?"}]}'
 ```
 
 Each session has:
 - **Messages** — user/assistant turns in OpenAI chat format
 - **Traces** — execution records (what tools were called, what was retrieved)
 - **Mode** — session purpose (e.g. `research`, `chat`)
+
+See [Sessions API](/api/sessions) for the full endpoint reference.
 
 ## Knowledge Search
 
@@ -40,21 +43,19 @@ Returns semantically ranked results with source attribution (speaker, meeting, t
 
 ## MCP Tools
 
-The preferred way to give AI clients access to Kioku. Both MCP servers are streamable-HTTP:
+The preferred way to give AI clients access to Kioku. One streamable-HTTP MCP server
+(`mcp.kioku.chat/mcp` or `localhost:18888/mcp`) hosts all 25 tools:
 
-**Knowledge MCP** (`api.kioku.chat/mcp` or `localhost:9100/mcp`):
-- `kioku_search` — semantic search across all knowledge
-- `kioku_list_meetings` — list all meetings
-- `kioku_get_transcript` — full transcript of a meeting
-- `kioku_list_documents` — list uploaded documents
-- `kioku_ingest_meeting` — add a meeting transcript
+- `search` — semantic search across all knowledge
+- `meetings` / `meeting_get` — list meetings, get one
+- `transcript` — full transcript of a meeting
+- `documents` / `document_delete` — manage uploaded documents
+- `meeting` / `session` — ingest a transcript or arbitrary content
+- `request_meeting_bot` / `stop_bot` / `get_bot_status` — bot lifecycle
+- `get_meeting_bundle` / `create_transcript_share_link` — transcript + recordings + share link
+- `list_recordings` / `get_recording` / `delete_recording` — recording management
 
-**Meetings MCP** (`mcp.kioku.chat/mcp` or `localhost:18888/mcp`):
-- Bot request and management tools
-- Real-time transcript access
-- Recording management
-
-See [MCP Tools](/api-cli-mcp#mcp-tools) for full tool signatures.
+See [MCP Tools](/mcp/tools) for full tool signatures.
 
 ## Embedding Model
 

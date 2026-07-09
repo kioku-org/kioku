@@ -124,8 +124,8 @@ Triggered on push to `master` when `services/**` changes:
 | `cli-unit` | Unit tests (excluding integration) |
 | `dashboard-unit` | vitest |
 | `dashboard-build` | Next.js production build |
-| `mcp-unit` | pytest |
-| `mcp-lint` | ruff |
+| `mcp-unit` | pytest (⚠ stale — `services/mcp` is now a Rust binary with no `requirements.txt`/`tests/`; this job currently fails on any PR touching `services/mcp/**`) |
+| `mcp-lint` | ruff (⚠ same staleness as above) |
 | `integration` | Full integration: Postgres + Qdrant + hivemind + CLI + MCP + dashboard |
 
 ### RunPod Integration Test (`.github/workflows/runpod-test.yml`)

@@ -69,7 +69,7 @@ curl -X POST http://localhost:9100/knowledge/search \
   -d '{"query": "what did we decide about the API design", "limit": 5}'
 
 # CLI
-kioku knowledge-search "API design decisions"
+kioku search "API design decisions"
 
 # MCP (ask your AI client)
 # "What did we discuss about API design last month?"

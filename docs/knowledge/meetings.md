@@ -45,9 +45,8 @@ The bot joins, transcribes, and on exit, the transcript is automatically ingeste
 ## List Meetings
 
 ```bash
-kioku meetings-list
-# m-1  Weekly Standup  1700000000000
-# m-2  Design Review   1700100000000
+kioku meet
+# abc-defg-hij — google_meet (Up)
 ```
 
 ## Search Across Meetings
@@ -55,6 +54,6 @@ kioku meetings-list
 Meeting transcripts are searchable alongside documents:
 
 ```bash
-kioku knowledge-search "what did we decide about RunPod"
-# r-1 [score=0.92]: We decided to use RunPod for GPU pods...
+kioku search "what did we decide about RunPod"
+# 1. [score 0.92]  We decided to use RunPod for GPU pods...
 ```

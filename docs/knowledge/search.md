@@ -44,21 +44,21 @@ curl -X POST http://localhost:9100/knowledge/search \
 ## CLI
 
 ```bash
-kioku knowledge-search "deployment strategy"
-# [score=0.920]: We decided to use RunPod for GPU pods...
-# [score=0.845]: The stateful pod runs on CPU...
+kioku search "deployment strategy"
+# 1. [score 0.92]  We decided to use RunPod for GPU pods...
+# 2. [score 0.85]  The stateful pod runs on CPU...
 ```
 
 ## MCP
 
-AI clients can search knowledge via the `kioku_search` MCP tool:
+AI clients can search knowledge via the `search` MCP tool:
 
 ```json
 {
-    "tool": "kioku_search",
+    "tool": "search",
     "arguments": {
         "query": "deployment strategy",
-        "limit": 5
+        "limit": 6
     }
 }
 ```
@@ -66,6 +66,6 @@ AI clients can search knowledge via the `kioku_search` MCP tool:
 ## Notes
 
 - Empty queries return an empty array (no error)
-- `limit` is clamped to minimum 1
-- Results are scoped to the authenticated user's company
-- Both documents and meetings are searched in a single query
+- `limit` is clamped between 1 and 20 (MCP) or a minimum of 1 (REST)
+- Results are scoped to the authenticated user's active workspace
+- Documents, meetings, and ingested sessions are all searched in a single query

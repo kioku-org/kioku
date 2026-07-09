@@ -1,7 +1,7 @@
 ---
 title: "Documents"
 ---
-Upload and manage PDF documents in your knowledge base.
+Upload and manage documents (PDF, DOCX, PPTX, TXT, or MD) in your knowledge base.
 
 ## Upload
 

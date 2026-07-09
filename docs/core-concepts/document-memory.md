@@ -3,7 +3,7 @@ title: "Document Memory"
 description: "Upload PDFs and make them searchable alongside your meeting transcripts."
 ---
 
-Document memory lets you upload PDFs — reports, specs, notes — so they're indexed in the same knowledge base as your meeting transcripts and searchable by semantic meaning.
+Document memory lets you upload documents — PDF, DOCX, PPTX, TXT, or MD files: reports, specs, notes — so they're indexed in the same knowledge base as your meeting transcripts and searchable by semantic meaning.
 
 ## Upload
 
@@ -22,7 +22,7 @@ curl -X POST http://localhost:9100/knowledge/documents \
 ### CLI
 
 ```bash
-kioku knowledge-upload ./report.pdf
+kioku docs ./report.pdf
 ```
 
 Processing is asynchronous — text extraction, chunking, and embedding happen on the server after upload returns.
@@ -41,7 +41,7 @@ Each chunk is stored with:
 - Document ID and filename
 - Chunk index and text
 - Embedding vector (256–768 dimensions, `nomic-embed-text-v2-moe`)
-- Company ID (for multi-tenant isolation)
+- Workspace ID (for multi-tenant isolation)
 
 ## Search
 
@@ -59,10 +59,10 @@ A result tagged `chunk_type: document` came from a PDF; `chunk_type: transcript`
 
 ```bash
 # List
-kioku knowledge-documents
+kioku docs
 
 # Delete (removes document + all its embeddings from Qdrant)
-kioku knowledge-delete doc-1
+kioku docs --delete doc-1
 ```
 
 Deletion is immediate and permanent — the document and all its vector embeddings are removed.

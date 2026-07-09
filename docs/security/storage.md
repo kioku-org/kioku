@@ -14,25 +14,26 @@ Kioku uses four storage backends, all running locally inside (or alongside) the 
 | **MinIO** | `kioku-minio-data` | Meeting audio recordings (only if `RECORDING_ENABLED=true`) |
 | **Redis** | `kioku-redis-data` | Live transcription streams, bot scheduling (ephemeral) |
 
-## PostgreSQL Schema (Key Tables)
+## PostgreSQL Schema (Key Tables, schema `hivemind`)
 
-- `companies` — tenant records
-- `users` — user accounts (email, hashed password, role, `company_id`)
-- `meetings` — meeting metadata and full transcript JSON
-- `documents` — document metadata (PDF text not stored, only embeddings in Qdrant)
+- `workspaces` — tenant records (formerly `companies`)
+- `users` — user accounts (email, hashed password); membership + role live in `workspace_members`, allowing one user to belong to multiple workspaces
+- `meetings` — meeting metadata and transcript chunks (in `knowledge_chunks`)
+- `knowledge_documents` — document metadata (text not stored, only embeddings in Qdrant)
+- `coding_sessions` — ingested arbitrary content (e.g. coding sessions)
 - `sessions` — AI chat sessions
 - `messages` — session messages and agent traces
-- `api_keys` — long-lived API key records
+- `workspace_api_keys` — long-lived API key records
 
 Passwords are hashed (bcrypt). Sensitive fields use application-level encryption (`HIVEMIND_ENCRYPTION_SECRET`).
 
 ## Qdrant Collections
 
-All embeddings are in a single collection. Each vector stores:
-- `company_id` — for tenant isolation filtering
-- `chunk_type` — `transcript` or `document`
+All embeddings are in a single collection named `knowledge`. Each vector stores:
+- `workspace_id` — for tenant isolation filtering
+- `chunk_type` — `transcript`, `document`, or `session`
 - `text` — the original chunk text
-- Source metadata (meeting ID + speaker, or document ID + chunk index)
+- Source metadata (meeting ID + speaker, document ID + chunk index, or session ID)
 
 ## Recording Storage
 

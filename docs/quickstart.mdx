@@ -18,14 +18,13 @@ Get Kioku running locally in 5 minutes.
     git submodule update --init --recursive
     cd deployment/docker
 
-    # Copies .env.example, generates secure secrets, pulls images
-    ./scripts/setup.sh
+    cp .env.example .env
     ```
   </Step>
 
   <Step title="Configure environment">
     ```bash
-    # Required — set your Vexa admin token
+    # Required — Hivemind secrets, Vexa admin token, dashboard secret
     $EDITOR .env
 
     # Optional — add API keys for integrations
@@ -34,22 +33,29 @@ Get Kioku running locally in 5 minutes.
     # ZOOM_CLIENT_ID=...
     # ZOOM_CLIENT_SECRET=...
     ```
+    See [Environment Variables](/deployment/environment-variables) for the required-vs-optional breakdown.
   </Step>
 
   <Step title="Start the stack">
     ```bash
-    ./scripts/manage.sh start
+    docker compose -f docker-compose.stateful.yml up -d
     ```
 
-    This starts stateful services (Postgres, Qdrant) first, then all stateless services (Hivemind, Vexa, Ollama, etc.).
+    Everything — Postgres, Qdrant, Redis, MinIO, Ollama, Hivemind, the MCP server, all
+    Vexa services, and the dashboard — runs as supervisord-managed processes inside one
+    `kioku-stateful` container.
   </Step>
 
   <Step title="Verify health">
     ```bash
-    ./scripts/healthcheck.sh
+    docker exec kioku-stateful supervisorctl status
+    curl http://localhost:9100/health      # Hivemind
+    curl http://localhost:8056/            # Vexa API gateway
+    curl http://localhost:18888/health     # MCP server
+    curl http://localhost:3001             # Dashboard
     ```
 
-    All services should show green checkmarks.
+    Every process in `supervisorctl status` should show `RUNNING`.
   </Step>
 
   <Step title="Install CLI">
@@ -58,6 +64,7 @@ Get Kioku running locally in 5 minutes.
     cargo install --path crates/cc-cli
 
     # Bootstrap the first admin account on the local Hivemind server
+    export KIOKU_SERVER=http://localhost:9100
     kioku register-admin
 
     # Later sign-ins can use the same local server default
@@ -70,21 +77,28 @@ Get Kioku running locally in 5 minutes.
 
 | Service | Port | Description |
 |---------|------|-------------|
-| Hivemind API | `9100` | Core API (auth, sessions, knowledge search, MCP) |
+| Hivemind API | `9100` | Core API (auth, workspaces, knowledge search) |
+| MCP server | `18888` | Unified MCP server (knowledge + meeting tools) |
 | Vexa API Gateway | `8056` | Meeting bot API |
-| Vexa Admin API | `8057` | Admin operations |
+| Vexa Admin API | `8001` | Admin operations (internal-only by default) |
+| Dashboard | `3001` | Web UI |
 | MinIO Console | `9001` | Object storage UI |
 | Ollama | `11434` | Local embedding model server |
-| Qdrant | `6333` | Vector DB REST API |
+| Qdrant | `6334` (gRPC) / `6333` (REST) | Vector DB |
 
 ## Management
 
 ```bash
-./scripts/manage.sh status          # running containers + resource usage
-./scripts/manage.sh logs <service>  # tail logs (e.g. logs kioku-hivemind)
-./scripts/manage.sh stop            # stop all (data preserved)
-./scripts/manage.sh down            # stop and remove containers
-./scripts/manage.sh down-volumes    # ⚠ destroy ALL data
-./scripts/manage.sh backup          # dump databases to backups/
-./scripts/manage.sh restore <file>  # restore from backup
+docker exec kioku-stateful supervisorctl status        # process status
+docker exec kioku-stateful supervisorctl tail -f <name>  # tail one process's logs
+docker compose -f docker-compose.stateful.yml stop      # stop (data preserved)
+docker compose -f docker-compose.stateful.yml down      # stop and remove the container
+docker compose -f docker-compose.stateful.yml down -v   # ⚠ also destroys all volumes
 ```
+
+<Note>
+  `scripts/manage.sh`/`scripts/setup.sh`/`scripts/healthcheck.sh` in this directory predate
+  the current single-container design and describe separate per-service containers that no
+  longer exist — don't rely on them until they're updated. See
+  [Docker Compose](/deployment/docker-compose) for more.
+</Note>

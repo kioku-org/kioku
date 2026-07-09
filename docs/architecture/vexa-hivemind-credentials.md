@@ -4,23 +4,24 @@ Hivemind and Vexa are separate services with separate credential systems —
 different schemas, different hashing, no shared users table. There is no
 single merged "users" table; the two are linked by reference, not by schema
 merge. This documents the resulting shape after the per-user Vexa token
-link (#60).
+link, with Hivemind's `company` → `workspace` rename applied.
 
 ## Schema
 
 ```mermaid
 erDiagram
-    "hivemind.companies" ||--o{ "hivemind.users" : "company_members"
-    "hivemind.companies" ||--o{ "hivemind.company_api_keys" : owns
-    "hivemind.users" ||--o{ "hivemind.company_api_keys" : owns
+    "hivemind.workspaces" ||--o{ "hivemind.users" : "workspace_members"
+    "hivemind.workspaces" ||--o{ "hivemind.workspace_api_keys" : owns
+    "hivemind.users" ||--o{ "hivemind.workspace_api_keys" : owns
     "hivemind.users" ||--o| "vexa.users" : "linked by email (vexa_user_id)"
     "hivemind.users" ||--o| "vexa.api_tokens" : "linked by email (vexa_token_id)"
     "vexa.users" ||--o{ "vexa.api_tokens" : owns
 
-    "hivemind.companies" {
+    "hivemind.workspaces" {
         uuid id PK
         varchar name
         varchar slug UK
+        varchar tier "free | pro | teams, default free"
     }
 
     "hivemind.users" {
@@ -33,9 +34,9 @@ erDiagram
         text vexa_token "plaintext, mirrors vexa.api_tokens.token"
     }
 
-    "hivemind.company_api_keys" {
+    "hivemind.workspace_api_keys" {
         uuid id PK
-        uuid company_id FK
+        uuid workspace_id FK
         uuid user_id FK
         varchar name
         varchar key_prefix "kioku_ prefix (legacy: cmp_)"
@@ -60,10 +61,14 @@ erDiagram
     }
 ```
 
+A single Hivemind `user` can belong to and switch between **multiple workspaces**
+(`memberships` in the JWT) — the diagram above shows one user's membership edge into
+one workspace, but the relationship is many-to-many via `workspace_members`.
+
 ## Why two systems, not one
 
 - **Hivemind** (`services/hivemind`, schema `hivemind`): `kioku_<hex>` keys,
-  bcrypt-hashed in `company_api_keys`. Owns CLI/MCP-facing auth — the
+  bcrypt-hashed in `workspace_api_keys`. Owns CLI/MCP-facing auth — the
   credential a user actually holds (`kioku signin --api-key ...`).
 - **Vexa** (`services/admin-api` + `services/meeting-api`, schema `vexa`):
   plaintext `api_tokens`, validated by `admin-api`'s `POST /internal/validate`.
@@ -78,8 +83,8 @@ provisioned lazily.
 ## Provisioning flow
 
 1. A Hivemind user calls anything that proxies to Vexa (`POST /vexa/bots`,
-   `GET /vexa/bots/status`, `DELETE /vexa/bots/:platform/:id`,
-   `GET /vexa/meetings`, or the new `GET /vexa/token` exchange endpoint).
+   `GET /vexa/bots/status`, `DELETE /vexa/bots/:platform/:native_meeting_id`,
+   `GET /vexa/meetings`, or the `GET /vexa/token` exchange endpoint).
 2. `resolve_vexa_api_key` (`services/hivemind/src/handlers/vexa.rs`) checks
    `hivemind.users.vexa_token`. If already set, use it — no network call.
 3. If unset, find-or-create the Vexa user by email
@@ -101,11 +106,11 @@ downtime-risking migration of either service's existing credential table.
 
 ## MCP unification
 
-The Vexa/meetings MCP server (`services/mcp`, port 18888) forwarded
-whatever credential it was given straight to the Vexa gateway as
-`X-API-Key` — which only worked if the caller already held a raw Vexa
-token, not a Hivemind `kioku_`/`cmp_` key or JWT. It now calls
-`GET /vexa/token` on Hivemind first (`_exchange_for_vexa_key` in
-`services/mcp/main.py`) to resolve whichever Kioku credential it was given
-into the caller's per-user Vexa key, so `kioku mcp`'s single printed
-credential works against both the knowledge MCP and the meetings MCP.
+The single unified MCP server (`services/mcp`, `kioku-mcp`, port 18888) hosts both the
+knowledge tools and the meeting/bot tools behind one endpoint. For meeting/bot tools, it
+calls `GET /vexa/token` on Hivemind first (`resolve_vexa_key` in `handler.rs`) to resolve
+whichever Kioku credential it was given (JWT, `kioku_...` key, or a raw Vexa key) into the
+caller's per-user Vexa API key, then forwards to the Vexa gateway as `X-API-Key`. For
+knowledge tools, it forwards the caller's original bearer token straight to Hivemind, which
+validates it itself. So `kioku mcp`'s single printed credential works against every tool —
+knowledge and meetings alike. See [MCP overview](/mcp/overview) for the full tool list.
