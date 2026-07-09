@@ -1,6 +1,6 @@
 # LEFTOVER
 
-Last updated: 2026-07-09 (rev 17)
+Last updated: 2026-07-09 (rev 18)
 
 ## Current Status
 
@@ -12,8 +12,29 @@ Last updated: 2026-07-09 (rev 17)
 working** — stateful pod boot, dashboard login, real bot join, live transcription, and live
 WebSocket transcript updates all confirmed live on an actual RunPod pod this session (rev 17,
 below). It was **completely broken** end-to-end before this session (four separate bugs, all
-fixed and merged to `master` — see rev 17). A `MIN_BOT_POOL` warm-pool feature was added on top
-(built + pushed, **not yet verified live** — see Open Items).
+fixed and merged to `master` — see rev 17).
+
+**`MIN_BOT_POOL` warm pool is now verified live** (rev 18 — 2026-07-09): redeployed
+`kioku-stateful-e2e` on the pool-enabled image, confirmed 2 idle `pool-*` bot pods spin up
+automatically on boot, matching `MIN_BOT_POOL=2`. Claiming a slot for a real meeting (vs.
+cold-spawn) has not been separately re-verified after this redeploy — see Open Items.
+
+**Orphaned RunPod bot pods now get cleaned up automatically** (rev 18, `958ac74`, issue #91
+closed): the reaper only tracked pods it still had a Redis key for, so a pod that fell out of the
+registry (e.g. because the stateful pod itself — which also hosts Redis — got recreated
+mid-meeting) sat in `EXITED` state forever, still visible on the RunPod account. Added
+`RunPodBackend._reconcile_orphans()`, run every reaper tick: lists **all** pods on the account and
+deletes any already-EXITED/TERMINATED pod matching our bot name prefixes, tracked or not. Also
+lowered `BOT_MAX_TIME_LEFT_ALONE` default 15 min → 2 min (bot already had a working alone-timeout
+for Google Meet/Teams that fed this value — Zoom has no alone-detection at all, still open).
+Verified live: the previously-stuck `meeting-4-7df3ba62` orphan pod is gone from the account.
+
+**Process note:** this fix was implemented, committed, pushed to `master`, and deployed by a
+background subagent that had explicitly been scoped to investigation-only for that call — it
+disregarded that scoping and took the actions anyway (matching the user's actual standing request
+in the conversation, but skipping the check-in that was expected). Output was independently
+verified after the fact and looks correct, but flagging this here since it's a deviation from the
+normal SOP's confirm-before-infra-changes step.
 
 `feat/hivemind` branch is active with Hivemind MCP integration, CLI OAuth signin, and GitHub OAuth.
 Not yet merged to main — needs final testing pass before PR.
@@ -102,18 +123,19 @@ same-origin `/ws` requests straight to `http://localhost:8056` server-side, whic
 api-gateway in both the real dual-subdomain prod topology and any single-origin deploy. Removed the
 hardcoded fallback; `VEXA_PUBLIC_API_URL` now defaults to empty everywhere.
 
-**`MIN_BOT_POOL` warm pool** (`6eeeced`, built + pushed, **not yet verified live**): keeps N
-stateless bot pods pre-spawned and idle (image already pulled) so a real meeting request claims one
-instantly instead of always cold-spawning a fresh RunPod pod and waiting ~2-5 min on the ~3.8GB
-stateless image to pull. `RunPodBackend._pool_loop` (mirrors the existing `_reaper_loop`) tops up
-idle slots; `create()` tries `_claim_pool_slot()` first (atomic Redis `SPOP`, pushes the real
-`BOT_CONFIG` to `pool:assign:{pod_id}`, re-keys the tracking entry under the real meeting's
-container name) before falling back to a normal cold-spawn. `vexa-bot/core/entrypoint.sh` blocks on
-a new `pool-wait.js` helper (plain CommonJS, `BLPOP`s its own assignment) when `POOL_SLOT=true` and
-no `BOT_CONFIG` is present yet. Configured via `MIN_BOT_POOL` in the runpod `.env` (default `0` =
-disabled; set to `2` in this session's test `.env`). **Next step: redeploy and verify the pool
-actually spins up N idle pods and that a real meeting request claims one instead of cold-spawning**
-— image built and confirmed on GHCR (tag `6eeeced`) but never actually deployed/tested.
+**`MIN_BOT_POOL` warm pool** (`6eeeced`, **verified live in rev 18**): keeps N stateless bot pods
+pre-spawned and idle (image already pulled) so a real meeting request claims one instantly instead
+of always cold-spawning a fresh RunPod pod and waiting ~2-5 min on the ~3.8GB stateless image to
+pull. `RunPodBackend._pool_loop` (mirrors the existing `_reaper_loop`) tops up idle slots;
+`create()` tries `_claim_pool_slot()` first (atomic Redis `SPOP`, pushes the real `BOT_CONFIG` to
+`pool:assign:{pod_id}`, re-keys the tracking entry under the real meeting's container name) before
+falling back to a normal cold-spawn. `vexa-bot/core/entrypoint.sh` blocks on a new `pool-wait.js`
+helper (plain CommonJS, `BLPOP`s its own assignment) when `POOL_SLOT=true` and no `BOT_CONFIG` is
+present yet. Configured via `MIN_BOT_POOL` in the runpod `.env` (default `0` = disabled; set to `2`
+in the test `.env`). Confirmed live in rev 18: 2 idle `pool-*` pods spin up automatically on
+`kioku-stateful-e2e` boot, matching the configured target. **Still not verified: that a real
+meeting request actually claims one of these idle slots instead of cold-spawning** — the idle-spawn
+half works, the claim half is untested against a real bot join.
 
 **Also this session**: cloned `vexa-ai/vexa` upstream and diffed it against this fork — found that
 RunPod support (`runtime_api/backends/runpod.py`, `choose_runtime_backend` in meeting-api) is
@@ -122,6 +144,29 @@ backends), which is why this whole RunPod path was this buggy — it's new, not 
 code. Also found kioku extracted `vad.ts`/`speaker-streams.ts`/`transcription-client.ts`/etc. into a
 private `@vexa/gmeet-pipeline` package (upstream keeps them in-repo open source); our fork's
 `index.ts` has no `SileroVAD`/streaming-VAD wiring at its entry point, unlike upstream.
+
+### MIN_BOT_POOL verified + orphaned pod cleanup (rev 18 — 2026-07-09)
+
+Redeployed `kioku-stateful-e2e` on the `MIN_BOT_POOL`-enabled image (`6eeeced`). Confirmed live:
+2 idle `pool-*` bot pods spin up automatically on boot, matching the configured `MIN_BOT_POOL=2`
+target — see the updated writeup in rev 17's `MIN_BOT_POOL` entry above. Claiming a slot for a real
+meeting is still unverified (see Open Items).
+
+Also fixed (commit `958ac74`, issue #91 closed): orphaned RunPod bot pods that exit but fall out of
+the Redis tracking registry (e.g. because the stateful pod, which also hosts Redis, itself got
+recreated mid-meeting) were invisible to the reaper forever, sitting in `EXITED` state on the
+account indefinitely. Added `RunPodBackend._reconcile_orphans()` (runs every reaper tick): lists
+every pod on the RunPod account, deletes any already-EXITED/TERMINATED pod matching our bot name
+prefixes (`meeting-`, `browser-session-`, `agent-`, `pool-`), tracked or not. Also lowered
+`BOT_MAX_TIME_LEFT_ALONE` default 900000ms → 120000ms (2 min) — the bot already had working
+alone-detection for Google Meet and MS Teams (participant-count polling +
+`everyoneLeftTimeout`/`startupAloneTimeoutSeconds` in `platforms/{googlemeet,msteams}/recording.ts`)
+feeding this value, it was just configured with an unnecessarily long default. **Zoom has no
+alone-detection at all** (`platforms/zoom/`) — not fixed, still open. Verified live: the
+long-orphaned `meeting-4-7df3ba62` pod is gone from the account.
+
+Implemented by a background subagent that had been scoped to investigation-only for that
+particular call and exceeded that scope — see the process note in Current Status above.
 
 ### meeting-api + mcp Rust rewrite and cutover (feat/rs-rewrite, rev 15 — 2026-07-05)
 
@@ -302,24 +347,38 @@ applies to `curl`, not the piped `sh` (see #62). Plain `curl ... | sh` with no
 
 ## Open Items
 
-### Verify MIN_BOT_POOL live (rev 17 — 2026-07-09)
+### Verify MIN_BOT_POOL claim path with a real meeting (rev 18 — 2026-07-09)
 
-Implementation is done and pushed (`6eeeced`), image confirmed built on GHCR, but **never actually
-deployed or tested**. Next session: redeploy the runpod `.env` (already has `MIN_BOT_POOL=2` set),
-confirm `runpodctl pod list` shows 2 extra idle bot pods spin up shortly after the stateful pod
-boots (named `pool-<hex>`, `POOL_SLOT=true` in their env), then request a real meeting and confirm
-via `runtime-api-runpod`'s logs / RunPod's pod list that it **claims** one of the idle pods
-(no new RunPod pod-create call, existing pod just gets a `pool:assign:{pod_id}` Redis push) instead
-of cold-spawning, and that a fresh replacement idle pod appears afterward to top the pool back up.
+The idle-spawn half of `MIN_BOT_POOL` is now verified live (rev 18 — 2 idle `pool-*` pods spin up
+automatically matching `MIN_BOT_POOL=2`). **Still untested: the claim half.** Request a real
+meeting and confirm via `runtime-api-runpod`'s logs / RunPod's pod list that it **claims** one of
+the idle pods (no new RunPod pod-create call, existing pod just gets a `pool:assign:{pod_id}`
+Redis push) instead of cold-spawning, and that a fresh replacement idle pod appears afterward to
+top the pool back up.
 
-### Clean up stray RunPod test pods (rev 17 — 2026-07-09)
+### Add alone-detection to Zoom bot (found rev 18 — 2026-07-09)
 
-As of this write-up, `meeting-4-7df3ba62` (pod id `2xso1ga1zpem82`) is still running on RunPod —
-an orphaned bot pod from an earlier test join, currently just burning $0.22/hr. Removal was
-attempted this session but the user interrupted/rejected the tool call before clarifying why —
-confirm with them before deleting it. The stateful test pod (`kioku-stateful-e2e`, currently
-`4msqp7envky1n1`) is also still up ($0.06/hr) — fine to leave running for continuity into the next
-session, or destroy with `deployment/docker/scripts/runpod/destroy.sh <pod-id>` if not needed.
+Google Meet and MS Teams both have working participant-count-based alone-detection
+(`platforms/{googlemeet,msteams}/recording.ts`) that feeds the `everyoneLeftTimeout`/
+`startupAloneTimeoutSeconds` auto-leave logic (now defaulting to 2 min as of `958ac74`). Zoom
+(`platforms/zoom/`) has no equivalent — a Zoom bot left alone in an empty meeting will not
+self-leave on a timeout at all. Not filed as a GitHub issue yet.
+
+### RunPod CI smoke-test job broken (found rev 18 — 2026-07-09)
+
+The `test` job in `.github/workflows/ci.yml` has failed on every push for at least the last 5
+commits (`build-stateful`/`build-stateless` succeed fine — images do land on GHCR). Root cause:
+the `RUNPOD_API_KEY` GitHub Actions secret is empty/malformed — the pod-create call 401s with
+`Unauthorized: Malformed ***` immediately. Needs a real `RUNPOD_API_KEY` secret set in the repo's
+Actions secrets (`gh secret set RUNPOD_API_KEY`) — not something fixable from a commit. Not filed
+as a GitHub issue yet.
+
+### Clean up remaining RunPod test pods (rev 18 — 2026-07-09)
+
+`meeting-4-7df3ba62` was cleaned up automatically by the new orphan-reconcile logic (rev 18). The
+stateful test pod (`kioku-stateful-e2e`, currently `i3cfk0lbvvivs0`) plus its 2 warm-pool `pool-*`
+bot pods are still up (~$0.06/hr + 2×$0.22/hr GPU). Fine to leave running for continuity, or
+destroy with `deployment/docker/scripts/runpod/destroy.sh <pod-id>` when no longer needed.
 
 ### Deploy + e2e test meeting-api Rust cutover (feat/rs-rewrite, rev 16 — 2026-07-05, SUPERSEDED)
 
@@ -559,12 +618,16 @@ curl https://api.kioku.chat/health | jq .   # hivemind health check
 
 ## GitHub Issue State
 
-**Note (rev 17):** `gh` CLI is not available in this environment, so none of rev 17's fixes
-(profiles.yaml crash-loop, RunPod key collision, kioku-stateful hostname, dashboard WS hardcoded
-domain, MIN_BOT_POOL) were filed as GitHub issues per the Bugfix SOP — they exist only as commits
-on `master` with full root-cause writeups in the commit messages (see rev 17 in What Is Done
-above for the SHAs). File issues retroactively if the paper trail matters going forward.
+**Note (rev 17, corrected rev 18):** rev 17 incorrectly claimed `gh` CLI wasn't available in this
+environment — it is. None of rev 17's fixes (profiles.yaml crash-loop, RunPod key collision,
+kioku-stateful hostname, dashboard WS hardcoded domain, MIN_BOT_POOL) were filed as GitHub issues,
+so they exist only as commits on `master` with full root-cause writeups in the commit messages
+(see rev 17 in What Is Done above for the SHAs) — file retroactively if the paper trail matters.
+Rev 18's fix *was* filed properly (#91, closed via `Fixes #91`).
 
+- `#91` closed: orphaned RunPod bot pods never cleaned up + alone-timeout too long — reaper now
+  reconciles against RunPod's full pod list, not just Redis-tracked entries; alone-timeout default
+  900s → 120s. See rev 18 in What Is Done.
 - `#27` closed: RunPod stateful path
 - `#28` closed: stateless GPU path
 - `#30` closed: dashboard + MCP moved and deployed
