@@ -91,6 +91,12 @@ keys = [
     "ZOOM_CLIENT_SECRET",
     "TTS_API_TOKEN",
     "PUBLIC_KEY",
+    "NEXTAUTH_SECRET",
+    "VEXA_ALLOW_DIRECT_LOGIN",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "USE_LOCAL_RESOURCE",
+    "LOCAL_BOT_THRESHOLD",
 ]
 
 data = {}
@@ -118,6 +124,20 @@ data.setdefault(
     "NVIDIA GeForce RTX 3090,NVIDIA GeForce RTX 5090,NVIDIA RTX A5000,NVIDIA RTX A4000",
 )
 data.setdefault("RUNPOD_CLOUD_TYPE", "COMMUNITY")
+data.setdefault("VEXA_ALLOW_DIRECT_LOGIN", "true")
+# This pod has no Docker socket to hand to runtime-api-local, so meeting-api's
+# local/RunPod backend picker (choose_runtime_backend in meeting_api/meetings.py)
+# must never choose "local" here — every bot spawn has to go through
+# runtime-api-runpod instead. Default USE_LOCAL_RESOURCE off for this script;
+# override only if you know this pod really does have a docker socket.
+data.setdefault("USE_LOCAL_RESOURCE", "false")
+# Dashboard's NextAuth session cookie signing key — without it, login breaks.
+# Not in .env.example's required list since most deploys inherit it from the
+# dev-server .env; generate one so a from-scratch deploy still works.
+if not data.get("NEXTAUTH_SECRET"):
+    import secrets as _secrets
+
+    data["NEXTAUTH_SECRET"] = _secrets.token_hex(32)
 
 print(json.dumps(data, separators=(",", ":")))
 PY
