@@ -21,16 +21,29 @@ echo "[KIOKU] Preparing stateful runtime..."
 # fail to find them until this runs.
 ldconfig
 
-# ─── Detect public IP (used for bot pod callbacks on RunPod) ──────────────────
-PUBLIC_IP=$(curl -s --max-time 5 http://ifconfig.me 2>/dev/null || echo localhost)
-echo "[KIOKU] Public IP: $PUBLIC_IP"
-
 REDIS_LOCAL_URL="redis://:${REDIS_PASSWORD}@localhost:6379/0"
-# Bot containers run on kioku-network and reach stateful services by container name
-REDIS_BOT_URL="redis://:${REDIS_PASSWORD}@kioku-stateful:6379/0"
-BOT_MEETING_API_URL="http://kioku-stateful:8080"
-BOT_TTS_URL="http://kioku-stateful:8002"
-BOT_COOKIE_URL="http://kioku-stateful:8099"
+
+if [[ -n "${RUNPOD_POD_ID:-}" ]]; then
+    # kioku-stateful is itself a RunPod pod (deployment/docker/scripts/runpod/deploy.sh) — bot
+    # containers spawned via runtime-api-runpod are separate RunPod pods, not on any shared
+    # Docker network, so the "kioku-stateful" container-name hostname (used below for a plain
+    # docker-compose deploy) is unreachable from them. RunPod injects RUNPOD_PUBLIC_IP /
+    # RUNPOD_TCP_PORT_<port> / RUNPOD_POD_ID into every pod it hosts (confirmed live via a RunPod
+    # web terminal, 2026-07-09) — use those instead: raw TCP ports via public IP + the
+    # RunPod-assigned external port, HTTP ports via the https://<pod-id>-<port>.proxy.runpod.net
+    # gateway (deploy.sh must expose the port as .../http for this to resolve).
+    echo "[KIOKU] Running as RunPod pod ${RUNPOD_POD_ID}, public IP ${RUNPOD_PUBLIC_IP:-unset}"
+    REDIS_BOT_URL="redis://:${REDIS_PASSWORD}@${RUNPOD_PUBLIC_IP}:${RUNPOD_TCP_PORT_6379}/0"
+    BOT_MEETING_API_URL="https://${RUNPOD_POD_ID}-8080.proxy.runpod.net"
+    BOT_TTS_URL="https://${RUNPOD_POD_ID}-8002.proxy.runpod.net"
+    BOT_COOKIE_URL="https://${RUNPOD_POD_ID}-8099.proxy.runpod.net"
+else
+    # Bot containers run on kioku-network and reach stateful services by container name
+    REDIS_BOT_URL="redis://:${REDIS_PASSWORD}@kioku-stateful:6379/0"
+    BOT_MEETING_API_URL="http://kioku-stateful:8080"
+    BOT_TTS_URL="http://kioku-stateful:8002"
+    BOT_COOKIE_URL="http://kioku-stateful:8099"
+fi
 
 # ─── Prepare directories ──────────────────────────────────────────────────────
 mkdir -p \
