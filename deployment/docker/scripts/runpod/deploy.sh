@@ -97,6 +97,7 @@ keys = [
     "GOOGLE_CLIENT_SECRET",
     "USE_LOCAL_RESOURCE",
     "LOCAL_BOT_THRESHOLD",
+    "MIN_BOT_POOL",
 ]
 
 data = {}
@@ -131,6 +132,7 @@ data.setdefault("VEXA_ALLOW_DIRECT_LOGIN", "true")
 # runtime-api-runpod instead. Default USE_LOCAL_RESOURCE off for this script;
 # override only if you know this pod really does have a docker socket.
 data.setdefault("USE_LOCAL_RESOURCE", "false")
+data.setdefault("MIN_BOT_POOL", "0")
 # Dashboard's NextAuth session cookie signing key — without it, login breaks.
 # Not in .env.example's required list since most deploys inherit it from the
 # dev-server .env; generate one so a from-scratch deploy still works.

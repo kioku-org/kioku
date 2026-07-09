@@ -108,6 +108,7 @@ COPY --from=ts-builder /app/vexa-bot/core/dist /app/vexa-bot/core/dist
 COPY --from=ts-builder /modules /modules
 
 COPY services/vexa-bot/core/entrypoint.sh /app/vexa-bot/entrypoint.sh
+COPY services/vexa-bot/core/pool-wait.js /app/vexa-bot/core/pool-wait.js
 RUN chmod +x /app/vexa-bot/entrypoint.sh
 
 # Install Whisper transcription service (GPU)

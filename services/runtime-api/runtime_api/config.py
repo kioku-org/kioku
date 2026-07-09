@@ -39,6 +39,16 @@ RUNPOD_GPU_TYPES = [
 RUNPOD_CLOUD_TYPE = os.getenv("RUNPOD_CLOUD_TYPE", "COMMUNITY")
 RUNPOD_CONTAINER_DISK_GB = int(os.getenv("RUNPOD_CONTAINER_DISK_GB", "40"))
 RUNPOD_POLL_INTERVAL = int(os.getenv("RUNPOD_POLL_INTERVAL", "15"))
+
+# Warm pool — keep N bot pods pre-spawned and idle (image already pulled) so a
+# real meeting request can claim one instantly instead of cold-spawning +
+# waiting on a fresh RunPod pod to pull the (multi-GB) stateless image.
+MIN_BOT_POOL = int(os.getenv("MIN_BOT_POOL", "0"))
+# Bot-facing Redis URL a pool slot uses to await its assignment — same value
+# meeting-api hands real bots as BOT_CONFIG.redisUrl (public IP/port on
+# RunPod, see entrypoint-stateful-runtime.sh). Falls back to REDIS_URL for
+# non-RunPod-hosted deployments where the plain in-network URL already works.
+BOT_REDIS_URL = os.getenv("BOT_REDIS_URL", REDIS_URL)
 # Profiles
 PROFILES_PATH = os.getenv("PROFILES_PATH", "profiles.yaml")
 

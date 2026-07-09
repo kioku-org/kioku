@@ -10,18 +10,22 @@ import asyncio
 import json
 import logging
 import time
+import uuid
 from typing import AsyncIterator, Optional
 
 import httpx
 
 from runtime_api import config
 from runtime_api.backends import Backend, ContainerInfo, ContainerSpec
+from runtime_api.profiles import get_profile
 
 logger = logging.getLogger("runtime_api.backends.runpod")
 
 RUNPOD_PREFIX = "runtime:runpod:"
 MANAGED_LABEL = "runtime.managed"
 RUNPOD_API_BASE = "https://rest.runpod.io/v1"
+POOL_IDLE_SET = "runtime:pool:idle"
+POOL_PROFILE = "meeting"  # warm-pool slots are always plain meeting bots
 
 _STATUS_MAP = {
     "RUNNING": "running",
@@ -40,6 +44,7 @@ class RunPodBackend(Backend):
         self._redis = redis
         self._client: Optional[httpx.AsyncClient] = None
         self._reaper_task: Optional[asyncio.Task] = None
+        self._pool_task: Optional[asyncio.Task] = None
 
     def set_redis(self, redis):
         self._redis = redis
@@ -78,11 +83,18 @@ class RunPodBackend(Backend):
     async def shutdown(self) -> None:
         if self._reaper_task:
             self._reaper_task.cancel()
+        if self._pool_task:
+            self._pool_task.cancel()
         if self._client:
             await self._client.aclose()
             self._client = None
 
     async def create(self, spec: ContainerSpec) -> str:
+        if spec.gpu and config.MIN_BOT_POOL > 0 and self._redis:
+            claimed = await self._claim_pool_slot(spec)
+            if claimed:
+                return claimed
+
         client = self._get_client()
 
         env = dict(spec.env)
@@ -338,6 +350,8 @@ class RunPodBackend(Backend):
 
     async def listen_events(self, on_exit: callable) -> None:
         self._reaper_task = asyncio.create_task(self._reaper_loop(on_exit))
+        if config.MIN_BOT_POOL > 0 and self._redis:
+            self._pool_task = asyncio.create_task(self._pool_loop())
 
     async def _reaper_loop(self, on_exit: callable) -> None:
         while True:
@@ -348,6 +362,161 @@ class RunPodBackend(Backend):
                 return
             except Exception:
                 logger.debug("Reaper loop error", exc_info=True)
+
+    async def _pool_loop(self) -> None:
+        """Keep MIN_BOT_POOL idle bot pods warm (image already pulled, waiting
+        on a real assignment via pool-wait.js) so create() can claim one
+        instantly instead of cold-spawning + waiting on a fresh RunPod pull."""
+        await self._ensure_pool()  # top up immediately on startup
+        while True:
+            try:
+                await asyncio.sleep(config.RUNPOD_POLL_INTERVAL)
+                await self._ensure_pool()
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                logger.warning("Pool loop error", exc_info=True)
+
+    async def _ensure_pool(self) -> None:
+        """Top up the idle pool to MIN_BOT_POOL, pruning dead entries first so
+        a crashed slot doesn't permanently count against the target size."""
+        await self._prune_pool()
+        current = await self._redis.scard(POOL_IDLE_SET)
+        missing = config.MIN_BOT_POOL - current
+        if missing > 0:
+            logger.info(f"Pool below target ({current}/{config.MIN_BOT_POOL}) — spawning {missing} idle slot(s)")
+            await asyncio.gather(*(self._spawn_idle_slot() for _ in range(missing)), return_exceptions=True)
+
+    async def _prune_pool(self) -> None:
+        """Drop idle-set entries whose backing pod no longer exists or has exited."""
+        names = await self._redis.smembers(POOL_IDLE_SET)
+        for name in names:
+            raw = await self._redis.get(f"{RUNPOD_PREFIX}{name}")
+            if not raw:
+                await self._redis.srem(POOL_IDLE_SET, name)
+                continue
+            data = json.loads(raw)
+            pod_id = data.get("pod_id")
+            if not pod_id:
+                await self._redis.srem(POOL_IDLE_SET, name)
+                continue
+            client = self._get_client()
+            try:
+                resp = await client.get(f"/pods/{pod_id}")
+                if resp.status_code == 404 or (
+                    resp.is_success and resp.json().get("desiredStatus") in ("EXITED", "TERMINATED")
+                ):
+                    await self._redis.srem(POOL_IDLE_SET, name)
+                    await self._redis.delete(f"{RUNPOD_PREFIX}{name}")
+            except Exception:
+                logger.debug(f"Pool prune: failed to check {name}", exc_info=True)
+
+    async def _spawn_idle_slot(self) -> Optional[str]:
+        """Create one pre-warmed idle bot pod. Uses the 'meeting' profile's
+        image/resources/gpu settings — pool slots are always plain meeting
+        bots; agent/browser-session profiles aren't pooled."""
+        profile_def = get_profile(POOL_PROFILE)
+        if not profile_def:
+            logger.warning(f"Pool: profile '{POOL_PROFILE}' not found, skipping spawn")
+            return None
+
+        pool_name = f"pool-{uuid.uuid4().hex[:12]}"
+        env = {
+            "POOL_SLOT": "true",
+            "POOL_REDIS_URL": config.BOT_REDIS_URL,
+            "RUNPOD_POD_NAME": pool_name,
+            **profile_def.get("env", {}),
+        }
+        client = self._get_client()
+        base_payload: dict = {
+            "name": pool_name,
+            "imageName": profile_def["image"],
+            "containerDiskInGb": config.RUNPOD_CONTAINER_DISK_GB,
+            "env": env,
+            "ports": ["22/tcp"],
+            "supportPublicIp": True,
+        }
+        gpu_types = list(config.RUNPOD_GPU_TYPES) or [config.RUNPOD_GPU_TYPE]
+        for gpu_type in gpu_types:
+            payload = {
+                **base_payload,
+                "computeType": "GPU",
+                "gpuCount": 1,
+                "gpuTypeIds": [gpu_type],
+                "cloudType": config.RUNPOD_CLOUD_TYPE,
+                "volumeInGb": 0,
+            }
+            try:
+                resp = await client.post("/pods", json=payload)
+            except Exception as e:
+                logger.warning(f"Pool: spawn request failed for {pool_name}: {e}")
+                continue
+            if resp.is_success:
+                pod = resp.json()
+                pod_id = pod["id"]
+                pool_data = {
+                    "pod_id": pod_id,
+                    "name": pool_name,
+                    "image": profile_def["image"],
+                    "labels": {MANAGED_LABEL: "true", "runtime.pool": "true"},
+                    "env_keys": list(env.keys()),
+                    "created_at": time.time(),
+                    "status": "pool_idle",
+                    "gpu_type": gpu_type,
+                }
+                await self._redis.set(f"{RUNPOD_PREFIX}{pool_name}", json.dumps(pool_data))
+                await self._redis.sadd(POOL_IDLE_SET, pool_name)
+                logger.info(f"Pool: spawned idle slot {pool_name} ({pod_id}) using GPU {gpu_type}")
+                return pod_id
+
+            error_text = self._extract_error_text(resp)
+            if not self._is_capacity_error(error_text):
+                logger.warning(f"Pool: spawn failed for {pool_name}: {error_text}")
+                return None
+        logger.warning(f"Pool: no GPU capacity available across {gpu_types} for {pool_name}")
+        return None
+
+    async def _claim_pool_slot(self, spec: ContainerSpec) -> Optional[str]:
+        """Hand a pre-warmed idle pod a real BOT_CONFIG instead of cold-spawning.
+        Returns the claimed pod_id, or None if no slot was available (caller
+        falls back to a normal create())."""
+        pool_name = await self._redis.spop(POOL_IDLE_SET)
+        if not pool_name:
+            return None
+        raw = await self._redis.get(f"{RUNPOD_PREFIX}{pool_name}")
+        if not raw:
+            return None
+        data = json.loads(raw)
+        pod_id = data.get("pod_id")
+        if not pod_id:
+            return None
+
+        bot_config_str = spec.env.get("BOT_CONFIG", "{}")
+        await self._redis.rpush(f"pool:assign:{pod_id}", bot_config_str)
+
+        # Re-key under the real meeting name so stop/inspect/list work exactly
+        # as if this pod had been created fresh under spec.name.
+        new_data = {
+            **data,
+            "name": spec.name,
+            "labels": {**spec.labels, MANAGED_LABEL: "true"},
+            "env_keys": list(spec.env.keys()),
+            "status": "pending",
+            "claimed_at": time.time(),
+        }
+        await self._redis.set(f"{RUNPOD_PREFIX}{spec.name}", json.dumps(new_data))
+        await self._redis.delete(f"{RUNPOD_PREFIX}{pool_name}")
+
+        logger.info(f"Pool: claimed idle slot {pool_name} ({pod_id}) for {spec.name} — no cold RunPod spawn")
+        asyncio.create_task(self._top_up_pool())
+        return pod_id
+
+    async def _top_up_pool(self) -> None:
+        """Spawn one replacement idle pod after a claim, keeping pool size steady."""
+        try:
+            await self._spawn_idle_slot()
+        except Exception as e:
+            logger.warning(f"Pool top-up failed: {e}")
 
     async def _reap_dead(self, on_exit: callable) -> None:
         if not self._redis:

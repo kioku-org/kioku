@@ -1,4 +1,18 @@
 #!/bin/bash
+# Warm-pool slot: this pod was pre-spawned idle (image already pulled) ahead
+# of any real meeting, per MIN_BOT_POOL. Block here until runtime-api-runpod
+# claims it and pushes a real BOT_CONFIG, instead of exiting for lack of one.
+if [ "${POOL_SLOT:-}" = "true" ] && [ -z "${BOT_CONFIG:-}" ]; then
+  echo "[entrypoint] Pool slot ready — waiting for meeting assignment..."
+  ASSIGNED_CONFIG=$(node /app/vexa-bot/core/pool-wait.js)
+  if [ $? -ne 0 ] || [ -z "$ASSIGNED_CONFIG" ]; then
+    echo "[entrypoint] Pool wait failed or timed out — exiting"
+    exit 1
+  fi
+  export BOT_CONFIG="$ASSIGNED_CONFIG"
+  echo "[entrypoint] Pool slot assigned a meeting — proceeding"
+fi
+
 # Set up Zoom SDK library paths
 SDK_LIB_DIR="/app/vexa-bot/core/src/platforms/zoom/native/zoom_meeting_sdk"
 if [ -f "${SDK_LIB_DIR}/libmeetingsdk.so" ]; then
