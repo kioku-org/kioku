@@ -101,7 +101,7 @@ src/
     recordings.rs
     knowledge.rs
     prompts.rs
-  meeting_links.rs        # Pure parser and its unit tests
+    parser.rs        # Pure parser and its unit tests
 ```
 
 Do not create a generic backend client that erases Hivemind and Vexa authentication

@@ -1,14 +1,4 @@
-//! All MCP tools for Kioku, consolidated. Two backends, forwarded to as thin proxies:
-//!   - `KIOKU_API_URL` (api-gateway): meeting/bot/recording lifecycle — needs the caller's
-//!     Vexa API key (`X-API-Key`), exchanged once from their Kioku credential via Hivemind's
-//!     `/vexa/token` (mirrors services/mcp/main.py's `_exchange_for_vexa_key`).
-//!   - `HIVEMIND_API_URL` (hivemind): knowledge-base/RAG tools — the caller's original Kioku
-//!     Bearer token is forwarded as-is; hivemind validates it itself (same as before, when
-//!     these tools lived inside hivemind's own MCP server).
-//! `parse_meeting_link` is the one exception: pure local logic, no backend call.
-
 use crate::config::Config;
-use crate::parse_meeting_link::parse_meeting_url;
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, GetPromptRequestParams, GetPromptResult, JsonObject,
     ListPromptsResult, ListToolsResult, PaginatedRequestParams, Prompt, PromptArgument,
@@ -43,7 +33,9 @@ fn or_none(s: &str) -> &str {
     }
 }
 
-fn parse_args<T: serde::de::DeserializeOwned + Default>(args: Option<&JsonObject>) -> Result<T, ErrorData> {
+fn parse_args<T: serde::de::DeserializeOwned + Default>(
+    args: Option<&JsonObject>,
+) -> Result<T, ErrorData> {
     match args {
         None => Ok(T::default()),
         Some(obj) => serde_json::from_value(Value::Object(obj.clone()))
@@ -60,7 +52,14 @@ pub struct KiokuMcpService {
 impl KiokuMcpService {
     async fn resolve_vexa_key(&self, token: &str) -> String {
         let url = format!("{}/vexa/token", self.config.hivemind_api_url);
-        match self.http.get(&url).bearer_auth(token).timeout(std::time::Duration::from_secs(10)).send().await {
+        match self
+            .http
+            .get(&url)
+            .bearer_auth(token)
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await
+        {
             Ok(resp) if resp.status().is_success() => {
                 if let Ok(v) = resp.json::<Value>().await {
                     if let Some(key) = v.get("vexa_api_key").and_then(|k| k.as_str()) {
@@ -73,13 +72,28 @@ impl KiokuMcpService {
         }
     }
 
-    async fn gateway(&self, method: reqwest::Method, path: &str, vexa_key: &str, body: Option<Value>, query: &[(&str, String)]) -> Result<Value, String> {
+    async fn gateway(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        vexa_key: &str,
+        body: Option<Value>,
+        query: &[(&str, String)],
+    ) -> Result<Value, String> {
         let url = format!("{}{}", self.config.kioku_api_url, path);
-        let mut req = self.http.request(method, &url).header("X-API-Key", vexa_key).query(query);
+        let mut req = self
+            .http
+            .request(method, &url)
+            .header("X-API-Key", vexa_key)
+            .query(query);
         if let Some(b) = body {
             req = req.json(&b);
         }
-        let resp = req.timeout(std::time::Duration::from_secs(15)).send().await.map_err(|e| format!("Request failed: {e}"))?;
+        let resp = req
+            .timeout(std::time::Duration::from_secs(15))
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {e}"))?;
         let status = resp.status();
         let body: Value = resp.json().await.unwrap_or(json!({}));
         if !status.is_success() {
@@ -92,11 +106,20 @@ impl KiokuMcpService {
     /// relative URLs get the gateway base prefixed; internal `minio:`/`minio/` URLs get their
     /// host swapped for the gateway's so external callers can actually reach them.
     fn rewrite_download_url(&self, data: &mut Value) {
-        let Some(dl) = data.get("download_url").and_then(Value::as_str).map(str::to_string) else { return };
+        let Some(dl) = data
+            .get("download_url")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+        else {
+            return;
+        };
         if dl.starts_with('/') {
             data["download_url"] = json!(format!("{}{}", self.config.kioku_api_url, dl));
         } else if dl.contains("minio:") || dl.contains("minio/") {
-            if let (Ok(base), Ok(parsed)) = (url::Url::parse(&self.config.kioku_api_url), url::Url::parse(&dl)) {
+            if let (Ok(base), Ok(parsed)) = (
+                url::Url::parse(&self.config.kioku_api_url),
+                url::Url::parse(&dl),
+            ) {
                 let mut rewritten = base;
                 rewritten.set_path(parsed.path());
                 data["download_url"] = json!(rewritten.to_string());
@@ -104,13 +127,23 @@ impl KiokuMcpService {
         }
     }
 
-    async fn hivemind(&self, method: reqwest::Method, path: &str, token: &str, body: Option<Value>) -> Result<Value, String> {
+    async fn hivemind(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        token: &str,
+        body: Option<Value>,
+    ) -> Result<Value, String> {
         let url = format!("{}{}", self.config.hivemind_api_url, path);
         let mut req = self.http.request(method, &url).bearer_auth(token);
         if let Some(b) = body {
             req = req.json(&b);
         }
-        let resp = req.timeout(std::time::Duration::from_secs(15)).send().await.map_err(|e| format!("Request failed: {e}"))?;
+        let resp = req
+            .timeout(std::time::Duration::from_secs(15))
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {e}"))?;
         let status = resp.status();
         let body: Value = resp.json().await.unwrap_or(json!({}));
         if !status.is_success() {
@@ -124,10 +157,18 @@ impl KiokuMcpService {
 /// `Authorization: <token>` value (back-compat), then fall back to `X-API-Key`.
 fn bearer_token_from_context(context: &RequestContext<RoleServer>) -> Option<String> {
     let parts = context.extensions.get::<axum::http::request::Parts>()?;
-    if let Some(auth) = parts.headers.get(axum::http::header::AUTHORIZATION).and_then(|v| v.to_str().ok()) {
+    if let Some(auth) = parts
+        .headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+    {
         return Some(auth.strip_prefix("Bearer ").unwrap_or(auth).to_string());
     }
-    parts.headers.get("x-api-key").and_then(|v| v.to_str().ok()).map(str::to_string)
+    parts
+        .headers
+        .get("x-api-key")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string)
 }
 
 fn to_result(r: Result<Value, String>) -> CallToolResult {
@@ -293,7 +334,9 @@ struct IngestMeetingArgs {
 }
 
 fn prompt_arg(name: &str, description: &str, required: bool) -> PromptArgument {
-    PromptArgument::new(name).with_description(description).with_required(required)
+    PromptArgument::new(name)
+        .with_description(description)
+        .with_required(required)
 }
 
 fn all_prompts() -> Vec<Prompt> {
@@ -302,10 +345,26 @@ fn all_prompts() -> Vec<Prompt> {
             "vexa.meeting_prep",
             Some("Parse link, request bot, and attach meeting notes/metadata."),
             Some(vec![
-                prompt_arg("meeting_url", "Full meeting URL (recommended for Teams/Zoom).", false),
-                prompt_arg("meeting_platform", "google_meet | teams | zoom (optional if meeting_url is provided).", false),
-                prompt_arg("meeting_id", "Native meeting ID (optional if meeting_url is provided).", false),
-                prompt_arg("notes", "Optional notes/agenda/context to store on the meeting.", false),
+                prompt_arg(
+                    "meeting_url",
+                    "Full meeting URL (recommended for Teams/Zoom).",
+                    false,
+                ),
+                prompt_arg(
+                    "meeting_platform",
+                    "google_meet | teams | zoom (optional if meeting_url is provided).",
+                    false,
+                ),
+                prompt_arg(
+                    "meeting_id",
+                    "Native meeting ID (optional if meeting_url is provided).",
+                    false,
+                ),
+                prompt_arg(
+                    "notes",
+                    "Optional notes/agenda/context to store on the meeting.",
+                    false,
+                ),
             ]),
         )
         .with_title("Kioku: Meeting Prep"),
@@ -330,7 +389,11 @@ fn all_prompts() -> Vec<Prompt> {
         Prompt::new(
             "vexa.teams_link_help",
             Some("Supported Teams links and passcode requirements (issues #105/#110)."),
-            Some(vec![prompt_arg("meeting_url", "Teams meeting URL from the user", false)]),
+            Some(vec![prompt_arg(
+                "meeting_url",
+                "Teams meeting URL from the user",
+                false,
+            )]),
         )
         .with_title("Kioku: Teams Link Help"),
     ]
@@ -491,31 +554,59 @@ impl ServerHandler for KiokuMcpService {
         &self,
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<ListToolsResult, ErrorData>> + rmcp::service::MaybeSendFuture + '_ {
-        async move { Ok(ListToolsResult { tools: all_tools(), meta: None, next_cursor: None }) }
+    ) -> impl std::future::Future<Output = Result<ListToolsResult, ErrorData>>
+           + rmcp::service::MaybeSendFuture
+           + '_ {
+        async move {
+            Ok(ListToolsResult {
+                tools: all_tools(),
+                meta: None,
+                next_cursor: None,
+            })
+        }
     }
 
     fn list_prompts(
         &self,
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<ListPromptsResult, ErrorData>> + rmcp::service::MaybeSendFuture + '_ {
-        async move { Ok(ListPromptsResult { prompts: all_prompts(), next_cursor: None, meta: None }) }
+    ) -> impl std::future::Future<Output = Result<ListPromptsResult, ErrorData>>
+           + rmcp::service::MaybeSendFuture
+           + '_ {
+        async move {
+            Ok(ListPromptsResult {
+                prompts: all_prompts(),
+                next_cursor: None,
+                meta: None,
+            })
+        }
     }
 
     fn get_prompt(
         &self,
         request: GetPromptRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<GetPromptResult, ErrorData>> + rmcp::service::MaybeSendFuture + '_ {
+    ) -> impl std::future::Future<Output = Result<GetPromptResult, ErrorData>>
+           + rmcp::service::MaybeSendFuture
+           + '_ {
         async move {
             let args = request.arguments.unwrap_or_default();
-            let get = |k: &str| args.get(k).and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+            let get = |k: &str| {
+                args.get(k)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string()
+            };
 
             match request.name.as_str() {
                 "vexa.meeting_prep" => {
-                    let (meeting_url, meeting_platform, meeting_id, notes) =
-                        (get("meeting_url"), get("meeting_platform"), get("meeting_id"), get("notes"));
+                    let (meeting_url, meeting_platform, meeting_id, notes) = (
+                        get("meeting_url"),
+                        get("meeting_platform"),
+                        get("meeting_id"),
+                        get("notes"),
+                    );
                     Ok(GetPromptResult::new(vec![prompt_text(format!(
                             "You are helping me prepare a meeting using Kioku.\n\n\
                              Goals:\n1. Identify meeting platform + native meeting id (+ passcode if needed).\n\
@@ -533,7 +624,8 @@ impl ServerHandler for KiokuMcpService {
                         ))]).with_description("Meeting prep flow using Kioku MCP tools.".to_string()))
                 }
                 "vexa.during_meeting" => {
-                    let (meeting_platform, meeting_id) = (get("meeting_platform"), get("meeting_id"));
+                    let (meeting_platform, meeting_id) =
+                        (get("meeting_platform"), get("meeting_id"));
                     Ok(GetPromptResult::new(vec![prompt_text(format!(
                             "You are my during-meeting assistant using Kioku.\n\n\
                              Meeting: platform={meeting_platform}, id={meeting_id}\n\n\
@@ -545,7 +637,8 @@ impl ServerHandler for KiokuMcpService {
                         ))]).with_description("During-meeting helper prompt using Kioku MCP tools.".to_string()))
                 }
                 "vexa.post_meeting" => {
-                    let (meeting_platform, meeting_id) = (get("meeting_platform"), get("meeting_id"));
+                    let (meeting_platform, meeting_id) =
+                        (get("meeting_platform"), get("meeting_id"));
                     Ok(GetPromptResult::new(vec![prompt_text(format!(
                             "You are my post-meeting assistant using Kioku.\n\n\
                              Meeting: platform={meeting_platform}, id={meeting_id}\n\n\
@@ -570,7 +663,10 @@ impl ServerHandler for KiokuMcpService {
                             if meeting_url.is_empty() { "(none provided)".to_string() } else { meeting_url }
                         ))]).with_description("Teams link troubleshooting prompt.".to_string()))
                 }
-                other => Err(ErrorData::invalid_params(format!("Unknown prompt: {other}"), None)),
+                other => Err(ErrorData::invalid_params(
+                    format!("Unknown prompt: {other}"),
+                    None,
+                )),
             }
         }
     }
@@ -579,12 +675,16 @@ impl ServerHandler for KiokuMcpService {
         &self,
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<CallToolResult, ErrorData>> + rmcp::service::MaybeSendFuture + '_ {
+    ) -> impl std::future::Future<Output = Result<CallToolResult, ErrorData>>
+           + rmcp::service::MaybeSendFuture
+           + '_ {
         async move {
             let name = request.name.clone();
             let args = request.arguments.as_ref();
             let Some(token) = bearer_token_from_context(&context) else {
-                return Ok(error_result("Missing credentials (send Authorization: Bearer <token>)."));
+                return Ok(error_result(
+                    "Missing credentials (send Authorization: Bearer <token>).",
+                ));
             };
 
             match name.as_ref() {
@@ -603,8 +703,13 @@ impl ServerHandler for KiokuMcpService {
                         match parse_meeting_url(&url) {
                             Ok(parsed) => {
                                 payload.insert("platform".into(), json!(parsed.platform));
-                                payload.insert("native_meeting_id".into(), json!(parsed.native_meeting_id));
-                                payload.entry("passcode".to_string()).or_insert(json!(parsed.passcode));
+                                payload.insert(
+                                    "native_meeting_id".into(),
+                                    json!(parsed.native_meeting_id),
+                                );
+                                payload
+                                    .entry("passcode".to_string())
+                                    .or_insert(json!(parsed.passcode));
                                 if let Some(mu) = parsed.meeting_url {
                                     payload.insert("meeting_url".into(), json!(mu));
                                 }
@@ -615,20 +720,45 @@ impl ServerHandler for KiokuMcpService {
                             Err(e) => return Ok(error_result(e)),
                         }
                     }
-                    match self.gateway(reqwest::Method::POST, "/bots", &vexa_key, Some(Value::Object(payload.clone())), &[]).await {
-                        Ok(v) => Ok(text_result(serde_json::to_string_pretty(&v).unwrap_or_default())),
+                    match self
+                        .gateway(
+                            reqwest::Method::POST,
+                            "/bots",
+                            &vexa_key,
+                            Some(Value::Object(payload.clone())),
+                            &[],
+                        )
+                        .await
+                    {
+                        Ok(v) => Ok(text_result(
+                            serde_json::to_string_pretty(&v).unwrap_or_default(),
+                        )),
                         // Idempotency case, matching main.py: a 409 means the meeting already
                         // exists for this key — look it up and return it as a soft success
                         // instead of surfacing a hard tool error, since `vexa.meeting_prep`
                         // documents `request_meeting_bot` as idempotent.
                         Err(e) if e.starts_with("HTTP 409") => {
-                            let platform = payload.get("platform").and_then(Value::as_str).map(str::to_string);
-                            let native_id = payload.get("native_meeting_id").and_then(Value::as_str).map(str::to_string);
-                            let meetings = self.gateway(reqwest::Method::GET, "/meetings", &vexa_key, None, &[]).await.ok();
+                            let platform = payload
+                                .get("platform")
+                                .and_then(Value::as_str)
+                                .map(str::to_string);
+                            let native_id = payload
+                                .get("native_meeting_id")
+                                .and_then(Value::as_str)
+                                .map(str::to_string);
+                            let meetings = self
+                                .gateway(reqwest::Method::GET, "/meetings", &vexa_key, None, &[])
+                                .await
+                                .ok();
                             let found = match (&meetings, &platform, &native_id) {
                                 (Some(Value::Array(list)), Some(pl), Some(nid)) => list
                                     .iter()
-                                    .find(|m| m.get("platform").and_then(Value::as_str) == Some(pl.as_str()) && m.get("native_meeting_id").and_then(Value::as_str) == Some(nid.as_str()))
+                                    .find(|m| {
+                                        m.get("platform").and_then(Value::as_str)
+                                            == Some(pl.as_str())
+                                            && m.get("native_meeting_id").and_then(Value::as_str)
+                                                == Some(nid.as_str())
+                                    })
                                     .cloned(),
                                 _ => None,
                             };
@@ -636,7 +766,9 @@ impl ServerHandler for KiokuMcpService {
                                 Some(m) => json!({"status": "already_exists", "meeting": m}),
                                 None => json!({"status": "already_exists", "detail": e}),
                             };
-                            Ok(text_result(serde_json::to_string_pretty(&body).unwrap_or_default()))
+                            Ok(text_result(
+                                serde_json::to_string_pretty(&body).unwrap_or_default(),
+                            ))
                         }
                         Err(e) => Ok(error_result(e)),
                     }
@@ -645,55 +777,99 @@ impl ServerHandler for KiokuMcpService {
                     let p: MeetingPlatformIdArgs = parse_args(args)?;
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     let path = format!("/transcripts/{}/{}", p.meeting_platform, p.meeting_id);
-                    Ok(to_result(self.gateway(reqwest::Method::GET, &path, &vexa_key, None, &[]).await))
+                    Ok(to_result(
+                        self.gateway(reqwest::Method::GET, &path, &vexa_key, None, &[])
+                            .await,
+                    ))
                 }
                 "list_recordings" => {
                     let p: ListRecordingsArgs = parse_args(args)?;
                     let vexa_key = self.resolve_vexa_key(&token).await;
-                    let mut query = vec![("limit", p.limit.to_string()), ("offset", p.offset.to_string())];
+                    let mut query = vec![
+                        ("limit", p.limit.to_string()),
+                        ("offset", p.offset.to_string()),
+                    ];
                     if let Some(id) = p.meeting_db_id {
                         query.push(("meeting_id", id.to_string()));
                     }
-                    Ok(to_result(self.gateway(reqwest::Method::GET, "/recordings", &vexa_key, None, &query).await))
+                    Ok(to_result(
+                        self.gateway(reqwest::Method::GET, "/recordings", &vexa_key, None, &query)
+                            .await,
+                    ))
                 }
                 "get_recording" => {
                     let p: RecordingIdArgs = parse_args(args)?;
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     let path = format!("/recordings/{}", p.recording_id);
-                    Ok(to_result(self.gateway(reqwest::Method::GET, &path, &vexa_key, None, &[]).await))
+                    Ok(to_result(
+                        self.gateway(reqwest::Method::GET, &path, &vexa_key, None, &[])
+                            .await,
+                    ))
                 }
                 "delete_recording" => {
                     let p: RecordingIdArgs = parse_args(args)?;
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     let path = format!("/recordings/{}", p.recording_id);
-                    Ok(to_result(self.gateway(reqwest::Method::DELETE, &path, &vexa_key, None, &[]).await))
+                    Ok(to_result(
+                        self.gateway(reqwest::Method::DELETE, &path, &vexa_key, None, &[])
+                            .await,
+                    ))
                 }
                 "get_recording_media_download" => {
                     let p: RecordingMediaDownloadArgs = parse_args(args)?;
                     let vexa_key = self.resolve_vexa_key(&token).await;
-                    let path = format!("/recordings/{}/media/{}/download", p.recording_id, p.media_file_id);
-                    match self.gateway(reqwest::Method::GET, &path, &vexa_key, None, &[]).await {
+                    let path = format!(
+                        "/recordings/{}/media/{}/download",
+                        p.recording_id, p.media_file_id
+                    );
+                    match self
+                        .gateway(reqwest::Method::GET, &path, &vexa_key, None, &[])
+                        .await
+                    {
                         Ok(mut v) => {
                             self.rewrite_download_url(&mut v);
-                            Ok(text_result(serde_json::to_string_pretty(&v).unwrap_or_default()))
+                            Ok(text_result(
+                                serde_json::to_string_pretty(&v).unwrap_or_default(),
+                            ))
                         }
                         Err(e) => Ok(error_result(e)),
                     }
                 }
                 "get_recording_config" => {
                     let vexa_key = self.resolve_vexa_key(&token).await;
-                    Ok(to_result(self.gateway(reqwest::Method::GET, "/recording-config", &vexa_key, None, &[]).await))
+                    Ok(to_result(
+                        self.gateway(
+                            reqwest::Method::GET,
+                            "/recording-config",
+                            &vexa_key,
+                            None,
+                            &[],
+                        )
+                        .await,
+                    ))
                 }
                 "update_recording_config" => {
                     let p: RecordingConfigUpdateArgs = parse_args(args)?;
                     let vexa_key = self.resolve_vexa_key(&token).await;
-                    Ok(to_result(self.gateway(reqwest::Method::PUT, "/recording-config", &vexa_key, Some(Value::Object(p.rest)), &[]).await))
+                    Ok(to_result(
+                        self.gateway(
+                            reqwest::Method::PUT,
+                            "/recording-config",
+                            &vexa_key,
+                            Some(Value::Object(p.rest)),
+                            &[],
+                        )
+                        .await,
+                    ))
                 }
                 "get_meeting_bundle" => {
                     let p: MeetingBundleArgs = parse_args(args)?;
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     let path = format!("/transcripts/{}/{}", p.meeting_platform, p.meeting_id);
-                    let mut result = match self.gateway(reqwest::Method::GET, &path, &vexa_key, None, &[]).await {
+                    let mut result = match self
+                        .gateway(reqwest::Method::GET, &path, &vexa_key, None, &[])
+                        .await
+                    {
                         Ok(v) => v,
                         Err(e) => return Ok(error_result(e)),
                     };
@@ -709,12 +885,29 @@ impl ServerHandler for KiokuMcpService {
                         if let Value::Object(ref mut obj) = result {
                             if let Some(Value::Array(recs)) = obj.get_mut("recordings") {
                                 for rec in recs.iter_mut() {
-                                    let Some(rid) = rec.get("id").and_then(Value::as_i64) else { continue };
-                                    let Some(Value::Array(mfs)) = rec.get_mut("media_files") else { continue };
+                                    let Some(rid) = rec.get("id").and_then(Value::as_i64) else {
+                                        continue;
+                                    };
+                                    let Some(Value::Array(mfs)) = rec.get_mut("media_files") else {
+                                        continue;
+                                    };
                                     for mf in mfs.iter_mut() {
-                                        let Some(mf_id) = mf.get("id").and_then(Value::as_i64) else { continue };
-                                        let path = format!("/recordings/{rid}/media/{mf_id}/download");
-                                        let outcome = match self.gateway(reqwest::Method::GET, &path, &vexa_key, None, &[]).await {
+                                        let Some(mf_id) = mf.get("id").and_then(Value::as_i64)
+                                        else {
+                                            continue;
+                                        };
+                                        let path =
+                                            format!("/recordings/{rid}/media/{mf_id}/download");
+                                        let outcome = match self
+                                            .gateway(
+                                                reqwest::Method::GET,
+                                                &path,
+                                                &vexa_key,
+                                                None,
+                                                &[],
+                                            )
+                                            .await
+                                        {
                                             Ok(mut dl) => {
                                                 self.rewrite_download_url(&mut dl);
                                                 ("download", dl)
@@ -734,8 +927,12 @@ impl ServerHandler for KiokuMcpService {
                         if let Some(ttl) = p.share_ttl_seconds {
                             query.push(("ttl_seconds", ttl.to_string()));
                         }
-                        let share_path = format!("/transcripts/{}/{}/share", p.meeting_platform, p.meeting_id);
-                        match self.gateway(reqwest::Method::POST, &share_path, &vexa_key, None, &query).await {
+                        let share_path =
+                            format!("/transcripts/{}/{}/share", p.meeting_platform, p.meeting_id);
+                        match self
+                            .gateway(reqwest::Method::POST, &share_path, &vexa_key, None, &query)
+                            .await
+                        {
                             Ok(share) => {
                                 if let Value::Object(ref mut obj) = result {
                                     obj.insert("share_link".to_string(), share);
@@ -748,7 +945,9 @@ impl ServerHandler for KiokuMcpService {
                             }
                         }
                     }
-                    Ok(text_result(serde_json::to_string_pretty(&result).unwrap_or_default()))
+                    Ok(text_result(
+                        serde_json::to_string_pretty(&result).unwrap_or_default(),
+                    ))
                 }
                 "create_transcript_share_link" => {
                     let p: ShareLinkArgs = parse_args(args)?;
@@ -760,49 +959,80 @@ impl ServerHandler for KiokuMcpService {
                     if let Some(ttl) = p.ttl_seconds {
                         query.push(("ttl_seconds", ttl.to_string()));
                     }
-                    let path = format!("/transcripts/{}/{}/share", p.meeting_platform, p.meeting_id);
-                    Ok(to_result(self.gateway(reqwest::Method::POST, &path, &vexa_key, None, &query).await))
+                    let path =
+                        format!("/transcripts/{}/{}/share", p.meeting_platform, p.meeting_id);
+                    Ok(to_result(
+                        self.gateway(reqwest::Method::POST, &path, &vexa_key, None, &query)
+                            .await,
+                    ))
                 }
                 "get_bot_status" => {
                     let vexa_key = self.resolve_vexa_key(&token).await;
-                    Ok(to_result(self.gateway(reqwest::Method::GET, "/bots/status", &vexa_key, None, &[]).await))
+                    Ok(to_result(
+                        self.gateway(reqwest::Method::GET, "/bots/status", &vexa_key, None, &[])
+                            .await,
+                    ))
                 }
                 "update_bot_config" => {
                     let p: UpdateBotConfigArgs = parse_args(args)?;
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     let path = format!("/bots/{}/{}/config", p.meeting_platform, p.meeting_id);
-                    Ok(to_result(self.gateway(reqwest::Method::PUT, &path, &vexa_key, Some(Value::Object(p.rest)), &[]).await))
+                    Ok(to_result(
+                        self.gateway(
+                            reqwest::Method::PUT,
+                            &path,
+                            &vexa_key,
+                            Some(Value::Object(p.rest)),
+                            &[],
+                        )
+                        .await,
+                    ))
                 }
                 "stop_bot" => {
                     let p: MeetingPlatformIdArgs = parse_args(args)?;
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     let path = format!("/bots/{}/{}", p.meeting_platform, p.meeting_id);
-                    Ok(to_result(self.gateway(reqwest::Method::DELETE, &path, &vexa_key, None, &[]).await))
+                    Ok(to_result(
+                        self.gateway(reqwest::Method::DELETE, &path, &vexa_key, None, &[])
+                            .await,
+                    ))
                 }
                 "list_meetings" => {
                     let p: ListMeetingsArgs = parse_args(args)?;
                     let vexa_key = self.resolve_vexa_key(&token).await;
-                    let mut query = vec![("limit", p.limit.to_string()), ("offset", p.offset.to_string())];
+                    let mut query = vec![
+                        ("limit", p.limit.to_string()),
+                        ("offset", p.offset.to_string()),
+                    ];
                     if let Some(s) = &p.status {
                         query.push(("status", s.clone()));
                     }
                     if let Some(pl) = &p.platform {
                         query.push(("platform", pl.clone()));
                     }
-                    Ok(to_result(self.gateway(reqwest::Method::GET, "/meetings", &vexa_key, None, &query).await))
+                    Ok(to_result(
+                        self.gateway(reqwest::Method::GET, "/meetings", &vexa_key, None, &query)
+                            .await,
+                    ))
                 }
                 "update_meeting_data" => {
                     let p: UpdateMeetingDataArgs = parse_args(args)?;
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     let path = format!("/meetings/{}/{}", p.meeting_platform, p.meeting_id);
                     let payload = json!({"data": p.rest});
-                    Ok(to_result(self.gateway(reqwest::Method::PATCH, &path, &vexa_key, Some(payload), &[]).await))
+                    Ok(to_result(
+                        self.gateway(reqwest::Method::PATCH, &path, &vexa_key, Some(payload), &[])
+                            .await,
+                    ))
                 }
                 "delete_meeting" => {
                     let p: MeetingPlatformIdArgs = parse_args(args)?;
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     let path = format!("/meetings/{}/{}", p.meeting_platform, p.meeting_id);
-                    Ok(to_result(self.gateway(reqwest::Method::DELETE, &path, &vexa_key, None, &[]).await))
+                    Ok(to_result(
+                        self.gateway(reqwest::Method::DELETE, &path, &vexa_key, None, &[])
+                            .await,
+                    ))
                 }
                 "search" => {
                     let p: SearchArgs = parse_args(args)?;
@@ -811,34 +1041,75 @@ impl ServerHandler for KiokuMcpService {
                     if query.is_empty() {
                         return Ok(text_result("Query is empty"));
                     }
-                    Ok(to_result(self.hivemind(reqwest::Method::POST, "/knowledge/search", &token, Some(json!({"query": query, "limit": limit}))).await))
+                    Ok(to_result(
+                        self.hivemind(
+                            reqwest::Method::POST,
+                            "/knowledge/search",
+                            &token,
+                            Some(json!({"query": query, "limit": limit})),
+                        )
+                        .await,
+                    ))
                 }
-                "meetings" => Ok(to_result(self.hivemind(reqwest::Method::GET, "/meetings", &token, None).await)),
+                "meetings" => Ok(to_result(
+                    self.hivemind(reqwest::Method::GET, "/meetings", &token, None)
+                        .await,
+                )),
                 "transcript" => {
                     let p: MeetingIdArgs = parse_args(args)?;
                     let path = format!("/meetings/{}/transcript", p.meeting_id);
-                    Ok(to_result(self.hivemind(reqwest::Method::GET, &path, &token, None).await))
+                    Ok(to_result(
+                        self.hivemind(reqwest::Method::GET, &path, &token, None)
+                            .await,
+                    ))
                 }
                 "meeting_get" => {
                     let p: MeetingIdArgs = parse_args(args)?;
                     let path = format!("/meetings/{}", p.meeting_id);
-                    Ok(to_result(self.hivemind(reqwest::Method::GET, &path, &token, None).await))
+                    Ok(to_result(
+                        self.hivemind(reqwest::Method::GET, &path, &token, None)
+                            .await,
+                    ))
                 }
-                "documents" => Ok(to_result(self.hivemind(reqwest::Method::GET, "/knowledge/documents", &token, None).await)),
+                "documents" => Ok(to_result(
+                    self.hivemind(reqwest::Method::GET, "/knowledge/documents", &token, None)
+                        .await,
+                )),
                 "document_delete" => {
                     let p: DocumentIdArgs = parse_args(args)?;
                     let path = format!("/knowledge/documents/{}", p.document_id);
-                    Ok(to_result(self.hivemind(reqwest::Method::DELETE, &path, &token, None).await))
+                    Ok(to_result(
+                        self.hivemind(reqwest::Method::DELETE, &path, &token, None)
+                            .await,
+                    ))
                 }
                 "session" => {
                     let p: IngestSessionArgs = parse_args(args)?;
-                    Ok(to_result(self.hivemind(reqwest::Method::POST, "/knowledge/sessions", &token, Some(Value::Object(p.rest))).await))
+                    Ok(to_result(
+                        self.hivemind(
+                            reqwest::Method::POST,
+                            "/knowledge/sessions",
+                            &token,
+                            Some(Value::Object(p.rest)),
+                        )
+                        .await,
+                    ))
                 }
                 "meeting" => {
                     let p: IngestMeetingArgs = parse_args(args)?;
-                    Ok(to_result(self.hivemind(reqwest::Method::POST, "/meetings", &token, Some(Value::Object(p.rest))).await))
+                    Ok(to_result(
+                        self.hivemind(
+                            reqwest::Method::POST,
+                            "/meetings",
+                            &token,
+                            Some(Value::Object(p.rest)),
+                        )
+                        .await,
+                    ))
                 }
-                _ => Err(ErrorData::method_not_found::<rmcp::model::CallToolRequestMethod>()),
+                _ => Err(ErrorData::method_not_found::<
+                    rmcp::model::CallToolRequestMethod,
+                >()),
             }
         }
     }
@@ -851,7 +1122,11 @@ mod tests {
     fn service() -> KiokuMcpService {
         KiokuMcpService {
             http: reqwest::Client::new(),
-            config: Arc::new(Config { kioku_api_url: "https://api.kioku.chat".to_string(), hivemind_api_url: String::new(), port: 0 }),
+            config: Arc::new(Config {
+                kioku_api_url: "https://api.kioku.chat".to_string(),
+                hivemind_api_url: String::new(),
+                port: 0,
+            }),
         }
     }
 
@@ -860,7 +1135,10 @@ mod tests {
         let svc = service();
         let mut v = json!({"download_url": "/recordings/1/media/2/download/raw"});
         svc.rewrite_download_url(&mut v);
-        assert_eq!(v["download_url"], "https://api.kioku.chat/recordings/1/media/2/download/raw");
+        assert_eq!(
+            v["download_url"],
+            "https://api.kioku.chat/recordings/1/media/2/download/raw"
+        );
     }
 
     #[test]
@@ -868,7 +1146,10 @@ mod tests {
         let svc = service();
         let mut v = json!({"download_url": "http://minio:9000/vexa-recordings/foo.wav"});
         svc.rewrite_download_url(&mut v);
-        assert_eq!(v["download_url"], "https://api.kioku.chat/vexa-recordings/foo.wav");
+        assert_eq!(
+            v["download_url"],
+            "https://api.kioku.chat/vexa-recordings/foo.wav"
+        );
     }
 
     #[test]
