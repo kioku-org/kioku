@@ -188,17 +188,24 @@ URLs without a deployment review.
 
 ## Frozen boundary: meeting-link parsing
 
-Do not change `src/parse_meeting_link.rs` or the behavior of `parse_meeting_url()` as part of
-this refactor. It contains user-maintained platform-specific rules and already has focused unit
-tests. Treat it as a stable dependency of the `parse_meeting_link` tool.
+`src/parse_meeting_link.rs` and its MCP adapter are consolidated into a single `tools/parser.rs`,
+colocated with the unit tests that pin its behavior (see step 6, "co-locate schemas and input
+models"). There is no separate top-level parser file and no `tools/parse_links.rs` — the pure
+`parse_meeting_url()` function and its tests live in one module.
 
-You may move the MCP adapter that calls the parser into `tools/parse_links.rs`, but only when
-the following remain identical:
+The behavior of `parse_meeting_url()` itself is still frozen during this refactor. It contains
+user-maintained platform-specific rules. Moving it into `tools/parser.rs` must not change:
 
 - accepted URLs and rejected URLs
-- returned `platform`, `native_meeting_id`, `passcode`, and warnings
+- returned `platform`, `native_meeting_id`, `passcode`, `teams_base_host`, `meeting_url`, and
+  warnings
 - Teams URL hashing and warning behavior
 - error messages relied on by MCP clients
+
+The MCP-facing tool adapter (schema plus the dispatch handler that turns a
+`ParseMeetingLinkResponse` into a `CallToolResult`) is a thin wrapper around
+`parser::parse_meeting_url()`. Keep it thin — it does not gain new logic just because it now
+lives next to the parser it wraps.
 
 Any parser behavior change belongs in its own reviewed change with new tests.
 
@@ -341,7 +348,9 @@ success. Preserve that behavior and test it directly.
 
 - Add `tools/knowledge.rs`.
 - Move one tool at a time, with tests after each move.
-- Leave meeting-link parsing untouched.
+- Meeting-link parsing already lives in `tools/parser.rs` (pure logic plus tests). Wire its MCP
+  adapter in its own narrow change, not bundled with knowledge-tool moves, and do not change
+  `parse_meeting_url()`'s behavior while doing so.
 
 ### PR 5: move Vexa tools
 
@@ -376,7 +385,7 @@ upstream call behind a client boundary rather than adding more generic helper fu
 - Changing tool schemas while moving code.
 - Returning raw upstream bodies that contain credentials or internal deployment details.
 - Making CORS, timeout, or URL-default changes in a mechanical file move.
-- Refactoring `parse_meeting_link.rs` together with unrelated tool dispatch work.
+- Refactoring `tools/parser.rs`'s parsing logic together with unrelated tool dispatch work.
 
 ## Definition of done
 
@@ -386,6 +395,6 @@ The refactor is complete when:
 - Hivemind, Vexa, and credential-resolution code have separate tested modules.
 - Every public tool has a typed input model or a documented pass-through payload reason.
 - The tool and prompt contracts are tested.
-- The meeting-link parser is unchanged and its tests still pass.
+- The meeting-link parser's behavior (`tools/parser.rs`) is unchanged and its tests still pass.
 - `cargo fmt --check`, `cargo clippy -- -W clippy::all`, and `cargo test` pass.
 - A diff review shows no unintended API, schema, credential, or deployment changes.

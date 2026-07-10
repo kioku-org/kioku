@@ -1,4 +1,7 @@
+use crate::clients::hivemind::HivemindClient;
+use crate::clients::vexa::VexaClient;
 use crate::config::Config;
+use crate::tools::parser::parse_meeting_url;
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, GetPromptRequestParams, GetPromptResult, JsonObject,
     ListPromptsResult, ListToolsResult, PaginatedRequestParams, Prompt, PromptArgument,
@@ -47,6 +50,8 @@ fn parse_args<T: serde::de::DeserializeOwned + Default>(
 pub struct KiokuMcpService {
     pub http: reqwest::Client,
     pub config: Arc<Config>,
+    pub hivemind: HivemindClient,
+    pub vexa: VexaClient,
 }
 
 impl KiokuMcpService {
@@ -72,39 +77,6 @@ impl KiokuMcpService {
         }
     }
 
-    async fn gateway(
-        &self,
-        method: reqwest::Method,
-        path: &str,
-        vexa_key: &str,
-        body: Option<Value>,
-        query: &[(&str, String)],
-    ) -> Result<Value, String> {
-        let url = format!("{}{}", self.config.kioku_api_url, path);
-        let mut req = self
-            .http
-            .request(method, &url)
-            .header("X-API-Key", vexa_key)
-            .query(query);
-        if let Some(b) = body {
-            req = req.json(&b);
-        }
-        let resp = req
-            .timeout(std::time::Duration::from_secs(15))
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {e}"))?;
-        let status = resp.status();
-        let body: Value = resp.json().await.unwrap_or(json!({}));
-        if !status.is_success() {
-            return Err(format!("HTTP {status}: {body}"));
-        }
-        Ok(body)
-    }
-
-    /// Faithful port of main.py's download_url rewrite in `get_recording_media_download`:
-    /// relative URLs get the gateway base prefixed; internal `minio:`/`minio/` URLs get their
-    /// host swapped for the gateway's so external callers can actually reach them.
     fn rewrite_download_url(&self, data: &mut Value) {
         let Some(dl) = data
             .get("download_url")
@@ -126,35 +98,8 @@ impl KiokuMcpService {
             }
         }
     }
-
-    async fn hivemind(
-        &self,
-        method: reqwest::Method,
-        path: &str,
-        token: &str,
-        body: Option<Value>,
-    ) -> Result<Value, String> {
-        let url = format!("{}{}", self.config.hivemind_api_url, path);
-        let mut req = self.http.request(method, &url).bearer_auth(token);
-        if let Some(b) = body {
-            req = req.json(&b);
-        }
-        let resp = req
-            .timeout(std::time::Duration::from_secs(15))
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {e}"))?;
-        let status = resp.status();
-        let body: Value = resp.json().await.unwrap_or(json!({}));
-        if !status.is_success() {
-            return Err(format!("HTTP {status}: {body}"));
-        }
-        Ok(body)
-    }
 }
 
-/// Matches main.py's `get_api_key`: prefer `Authorization: Bearer <token>`, then a raw
-/// `Authorization: <token>` value (back-compat), then fall back to `X-API-Key`.
 fn bearer_token_from_context(context: &RequestContext<RoleServer>) -> Option<String> {
     let parts = context.extensions.get::<axum::http::request::Parts>()?;
     if let Some(auth) = parts
@@ -177,8 +122,6 @@ fn to_result(r: Result<Value, String>) -> CallToolResult {
         Err(e) => error_result(e),
     }
 }
-
-// ---- Argument shapes (only the fields these tools actually use) ----
 
 #[derive(Debug, Default, Deserialize)]
 struct ParseMeetingLinkArgs {
@@ -250,8 +193,6 @@ struct MeetingBundleArgs {
     share_ttl_seconds: Option<i64>,
 }
 
-// #[derive(Default)] would give include_recordings/include_share_link `false`, which is wrong
-// for `parse_args`'s `None` (no-arguments-object) case — Python's defaults are both `True`.
 impl Default for MeetingBundleArgs {
     fn default() -> Self {
         Self {
@@ -721,7 +662,8 @@ impl ServerHandler for KiokuMcpService {
                         }
                     }
                     match self
-                        .gateway(
+                        .vexa
+                        .http_request(
                             reqwest::Method::POST,
                             "/bots",
                             &vexa_key,
@@ -747,7 +689,14 @@ impl ServerHandler for KiokuMcpService {
                                 .and_then(Value::as_str)
                                 .map(str::to_string);
                             let meetings = self
-                                .gateway(reqwest::Method::GET, "/meetings", &vexa_key, None, &[])
+                                .vexa
+                                .http_request(
+                                    reqwest::Method::GET,
+                                    "/meetings",
+                                    &vexa_key,
+                                    None,
+                                    &[],
+                                )
                                 .await
                                 .ok();
                             let found = match (&meetings, &platform, &native_id) {
@@ -778,7 +727,8 @@ impl ServerHandler for KiokuMcpService {
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     let path = format!("/transcripts/{}/{}", p.meeting_platform, p.meeting_id);
                     Ok(to_result(
-                        self.gateway(reqwest::Method::GET, &path, &vexa_key, None, &[])
+                        self.vexa
+                            .http_request(reqwest::Method::GET, &path, &vexa_key, None, &[])
                             .await,
                     ))
                 }
@@ -793,7 +743,14 @@ impl ServerHandler for KiokuMcpService {
                         query.push(("meeting_id", id.to_string()));
                     }
                     Ok(to_result(
-                        self.gateway(reqwest::Method::GET, "/recordings", &vexa_key, None, &query)
+                        self.vexa
+                            .http_request(
+                                reqwest::Method::GET,
+                                "/recordings",
+                                &vexa_key,
+                                None,
+                                &query,
+                            )
                             .await,
                     ))
                 }
@@ -802,7 +759,8 @@ impl ServerHandler for KiokuMcpService {
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     let path = format!("/recordings/{}", p.recording_id);
                     Ok(to_result(
-                        self.gateway(reqwest::Method::GET, &path, &vexa_key, None, &[])
+                        self.vexa
+                            .http_request(reqwest::Method::GET, &path, &vexa_key, None, &[])
                             .await,
                     ))
                 }
@@ -811,7 +769,8 @@ impl ServerHandler for KiokuMcpService {
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     let path = format!("/recordings/{}", p.recording_id);
                     Ok(to_result(
-                        self.gateway(reqwest::Method::DELETE, &path, &vexa_key, None, &[])
+                        self.vexa
+                            .http_request(reqwest::Method::DELETE, &path, &vexa_key, None, &[])
                             .await,
                     ))
                 }
@@ -823,7 +782,8 @@ impl ServerHandler for KiokuMcpService {
                         p.recording_id, p.media_file_id
                     );
                     match self
-                        .gateway(reqwest::Method::GET, &path, &vexa_key, None, &[])
+                        .vexa
+                        .http_request(reqwest::Method::GET, &path, &vexa_key, None, &[])
                         .await
                     {
                         Ok(mut v) => {
@@ -838,28 +798,30 @@ impl ServerHandler for KiokuMcpService {
                 "get_recording_config" => {
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     Ok(to_result(
-                        self.gateway(
-                            reqwest::Method::GET,
-                            "/recording-config",
-                            &vexa_key,
-                            None,
-                            &[],
-                        )
-                        .await,
+                        self.vexa
+                            .http_request(
+                                reqwest::Method::GET,
+                                "/recording-config",
+                                &vexa_key,
+                                None,
+                                &[],
+                            )
+                            .await,
                     ))
                 }
                 "update_recording_config" => {
                     let p: RecordingConfigUpdateArgs = parse_args(args)?;
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     Ok(to_result(
-                        self.gateway(
-                            reqwest::Method::PUT,
-                            "/recording-config",
-                            &vexa_key,
-                            Some(Value::Object(p.rest)),
-                            &[],
-                        )
-                        .await,
+                        self.vexa
+                            .http_request(
+                                reqwest::Method::PUT,
+                                "/recording-config",
+                                &vexa_key,
+                                Some(Value::Object(p.rest)),
+                                &[],
+                            )
+                            .await,
                     ))
                 }
                 "get_meeting_bundle" => {
@@ -867,7 +829,8 @@ impl ServerHandler for KiokuMcpService {
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     let path = format!("/transcripts/{}/{}", p.meeting_platform, p.meeting_id);
                     let mut result = match self
-                        .gateway(reqwest::Method::GET, &path, &vexa_key, None, &[])
+                        .vexa
+                        .http_request(reqwest::Method::GET, &path, &vexa_key, None, &[])
                         .await
                     {
                         Ok(v) => v,
@@ -899,7 +862,8 @@ impl ServerHandler for KiokuMcpService {
                                         let path =
                                             format!("/recordings/{rid}/media/{mf_id}/download");
                                         let outcome = match self
-                                            .gateway(
+                                            .vexa
+                                            .http_request(
                                                 reqwest::Method::GET,
                                                 &path,
                                                 &vexa_key,
@@ -930,7 +894,14 @@ impl ServerHandler for KiokuMcpService {
                         let share_path =
                             format!("/transcripts/{}/{}/share", p.meeting_platform, p.meeting_id);
                         match self
-                            .gateway(reqwest::Method::POST, &share_path, &vexa_key, None, &query)
+                            .vexa
+                            .http_request(
+                                reqwest::Method::POST,
+                                &share_path,
+                                &vexa_key,
+                                None,
+                                &query,
+                            )
                             .await
                         {
                             Ok(share) => {
@@ -962,14 +933,22 @@ impl ServerHandler for KiokuMcpService {
                     let path =
                         format!("/transcripts/{}/{}/share", p.meeting_platform, p.meeting_id);
                     Ok(to_result(
-                        self.gateway(reqwest::Method::POST, &path, &vexa_key, None, &query)
+                        self.vexa
+                            .http_request(reqwest::Method::POST, &path, &vexa_key, None, &query)
                             .await,
                     ))
                 }
                 "get_bot_status" => {
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     Ok(to_result(
-                        self.gateway(reqwest::Method::GET, "/bots/status", &vexa_key, None, &[])
+                        self.vexa
+                            .http_request(
+                                reqwest::Method::GET,
+                                "/bots/status",
+                                &vexa_key,
+                                None,
+                                &[],
+                            )
                             .await,
                     ))
                 }
@@ -978,14 +957,15 @@ impl ServerHandler for KiokuMcpService {
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     let path = format!("/bots/{}/{}/config", p.meeting_platform, p.meeting_id);
                     Ok(to_result(
-                        self.gateway(
-                            reqwest::Method::PUT,
-                            &path,
-                            &vexa_key,
-                            Some(Value::Object(p.rest)),
-                            &[],
-                        )
-                        .await,
+                        self.vexa
+                            .http_request(
+                                reqwest::Method::PUT,
+                                &path,
+                                &vexa_key,
+                                Some(Value::Object(p.rest)),
+                                &[],
+                            )
+                            .await,
                     ))
                 }
                 "stop_bot" => {
@@ -993,7 +973,8 @@ impl ServerHandler for KiokuMcpService {
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     let path = format!("/bots/{}/{}", p.meeting_platform, p.meeting_id);
                     Ok(to_result(
-                        self.gateway(reqwest::Method::DELETE, &path, &vexa_key, None, &[])
+                        self.vexa
+                            .http_request(reqwest::Method::DELETE, &path, &vexa_key, None, &[])
                             .await,
                     ))
                 }
@@ -1011,7 +992,14 @@ impl ServerHandler for KiokuMcpService {
                         query.push(("platform", pl.clone()));
                     }
                     Ok(to_result(
-                        self.gateway(reqwest::Method::GET, "/meetings", &vexa_key, None, &query)
+                        self.vexa
+                            .http_request(
+                                reqwest::Method::GET,
+                                "/meetings",
+                                &vexa_key,
+                                None,
+                                &query,
+                            )
                             .await,
                     ))
                 }
@@ -1021,7 +1009,14 @@ impl ServerHandler for KiokuMcpService {
                     let path = format!("/meetings/{}/{}", p.meeting_platform, p.meeting_id);
                     let payload = json!({"data": p.rest});
                     Ok(to_result(
-                        self.gateway(reqwest::Method::PATCH, &path, &vexa_key, Some(payload), &[])
+                        self.vexa
+                            .http_request(
+                                reqwest::Method::PATCH,
+                                &path,
+                                &vexa_key,
+                                Some(payload),
+                                &[],
+                            )
                             .await,
                     ))
                 }
@@ -1030,7 +1025,8 @@ impl ServerHandler for KiokuMcpService {
                     let vexa_key = self.resolve_vexa_key(&token).await;
                     let path = format!("/meetings/{}/{}", p.meeting_platform, p.meeting_id);
                     Ok(to_result(
-                        self.gateway(reqwest::Method::DELETE, &path, &vexa_key, None, &[])
+                        self.vexa
+                            .http_request(reqwest::Method::DELETE, &path, &vexa_key, None, &[])
                             .await,
                     ))
                 }
@@ -1042,24 +1038,27 @@ impl ServerHandler for KiokuMcpService {
                         return Ok(text_result("Query is empty"));
                     }
                     Ok(to_result(
-                        self.hivemind(
-                            reqwest::Method::POST,
-                            "/knowledge/search",
-                            &token,
-                            Some(json!({"query": query, "limit": limit})),
-                        )
-                        .await,
+                        self.hivemind
+                            .http_request(
+                                reqwest::Method::POST,
+                                "/knowledge/search",
+                                &token,
+                                Some(json!({"query": query, "limit": limit})),
+                            )
+                            .await,
                     ))
                 }
                 "meetings" => Ok(to_result(
-                    self.hivemind(reqwest::Method::GET, "/meetings", &token, None)
+                    self.hivemind
+                        .http_request(reqwest::Method::GET, "/meetings", &token, None)
                         .await,
                 )),
                 "transcript" => {
                     let p: MeetingIdArgs = parse_args(args)?;
                     let path = format!("/meetings/{}/transcript", p.meeting_id);
                     Ok(to_result(
-                        self.hivemind(reqwest::Method::GET, &path, &token, None)
+                        self.hivemind
+                            .http_request(reqwest::Method::GET, &path, &token, None)
                             .await,
                     ))
                 }
@@ -1067,44 +1066,49 @@ impl ServerHandler for KiokuMcpService {
                     let p: MeetingIdArgs = parse_args(args)?;
                     let path = format!("/meetings/{}", p.meeting_id);
                     Ok(to_result(
-                        self.hivemind(reqwest::Method::GET, &path, &token, None)
+                        self.hivemind
+                            .http_request(reqwest::Method::GET, &path, &token, None)
                             .await,
                     ))
                 }
                 "documents" => Ok(to_result(
-                    self.hivemind(reqwest::Method::GET, "/knowledge/documents", &token, None)
+                    self.hivemind
+                        .http_request(reqwest::Method::GET, "/knowledge/documents", &token, None)
                         .await,
                 )),
                 "document_delete" => {
                     let p: DocumentIdArgs = parse_args(args)?;
                     let path = format!("/knowledge/documents/{}", p.document_id);
                     Ok(to_result(
-                        self.hivemind(reqwest::Method::DELETE, &path, &token, None)
+                        self.hivemind
+                            .http_request(reqwest::Method::DELETE, &path, &token, None)
                             .await,
                     ))
                 }
                 "session" => {
                     let p: IngestSessionArgs = parse_args(args)?;
                     Ok(to_result(
-                        self.hivemind(
-                            reqwest::Method::POST,
-                            "/knowledge/sessions",
-                            &token,
-                            Some(Value::Object(p.rest)),
-                        )
-                        .await,
+                        self.hivemind
+                            .http_request(
+                                reqwest::Method::POST,
+                                "/knowledge/sessions",
+                                &token,
+                                Some(Value::Object(p.rest)),
+                            )
+                            .await,
                     ))
                 }
                 "meeting" => {
                     let p: IngestMeetingArgs = parse_args(args)?;
                     Ok(to_result(
-                        self.hivemind(
-                            reqwest::Method::POST,
-                            "/meetings",
-                            &token,
-                            Some(Value::Object(p.rest)),
-                        )
-                        .await,
+                        self.hivemind
+                            .http_request(
+                                reqwest::Method::POST,
+                                "/meetings",
+                                &token,
+                                Some(Value::Object(p.rest)),
+                            )
+                            .await,
                     ))
                 }
                 _ => Err(ErrorData::method_not_found::<
@@ -1120,13 +1124,17 @@ mod tests {
     use super::*;
 
     fn service() -> KiokuMcpService {
+        let http = reqwest::Client::new();
+        let config = Arc::new(Config {
+            kioku_api_url: "https://api.kioku.chat".to_string(),
+            hivemind_api_url: String::new(),
+            port: 0,
+        });
         KiokuMcpService {
-            http: reqwest::Client::new(),
-            config: Arc::new(Config {
-                kioku_api_url: "https://api.kioku.chat".to_string(),
-                hivemind_api_url: String::new(),
-                port: 0,
-            }),
+            hivemind: HivemindClient::new(http.clone(), config.hivemind_api_url.clone()),
+            vexa: VexaClient::new(http.clone(), config.kioku_api_url.clone()),
+            http,
+            config,
         }
     }
 

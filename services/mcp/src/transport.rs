@@ -1,3 +1,5 @@
+use crate::clients::hivemind::HivemindClient;
+use crate::clients::vexa::VexaClient;
 use crate::config::Config;
 use crate::handler::KiokuMcpService;
 use axum::Router;
@@ -20,8 +22,18 @@ pub fn mcp_routes(http: reqwest::Client, config: Arc<Config>) -> Router {
         .with_json_response(true)
         .with_cancellation_token(ct);
 
+    let hivemind = HivemindClient::new(http.clone(), config.hivemind_api_url.clone());
+    let vexa = VexaClient::new(http.clone(), config.kioku_api_url.clone());
+
     let service: McpService = StreamableHttpService::new(
-        move || Ok(KiokuMcpService { http: http.clone(), config: config.clone() }),
+        move || {
+            Ok(KiokuMcpService {
+                http: http.clone(),
+                config: config.clone(),
+                hivemind: hivemind.clone(),
+                vexa: vexa.clone(),
+            })
+        },
         session_manager,
         server_config,
     );

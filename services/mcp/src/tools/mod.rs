@@ -1,4 +1,4 @@
 mod knowledge;
 mod meetings;
-mod parser;
+pub(crate) mod parser;
 mod prompts;

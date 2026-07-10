@@ -35,3 +35,9 @@ async fn main() -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
     Ok(())
 }
+
+mod clients;
+mod tools;
+
+#[cfg(test)]
+mod tests;

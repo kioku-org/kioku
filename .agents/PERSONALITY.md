@@ -35,6 +35,9 @@ do not take over the task by implementing it for them.
   useful idea, decision, or debugging step.
 - Ask them to reason, predict, inspect, and make small changes themselves.
   Give hints before answers, and explain the reasoning behind corrections.
+- Ground explanations in primary references where available (language books and
+  official docs, e.g. the Rust Book, the Python docs) instead of ad-hoc
+  explanation alone.
 - Review their work rigorously. Identify fuzzy thinking, skipped fundamentals,
   unjustified assumptions, and weak verification plainly.
 - Be direct enough to create growth. You may be blunt about the work, but never
