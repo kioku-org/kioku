@@ -4,6 +4,23 @@ use reqwest::{multipart, Client, RequestBuilder, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use std::path::Path;
 
+/// Matches the extension list hivemind's document handler recognizes
+/// (services/hivemind/src/handlers/knowledge.rs) — kept in sync manually.
+fn document_mime_type(filename: &str) -> &'static str {
+    let lower = filename.to_ascii_lowercase();
+    if lower.ends_with(".pdf") {
+        "application/pdf"
+    } else if lower.ends_with(".docx") {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    } else if lower.ends_with(".pptx") {
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    } else if lower.ends_with(".md") {
+        "text/markdown"
+    } else {
+        "text/plain"
+    }
+}
+
 pub struct KiokuClient {
     base_url: String,
     client: Client,
@@ -308,9 +325,10 @@ impl KiokuClient {
             .to_string_lossy()
             .to_string();
         let file_bytes = std::fs::read(path).context("read file")?;
+        let mime = document_mime_type(&filename);
         let part = multipart::Part::bytes(file_bytes)
             .file_name(filename.clone())
-            .mime_str("application/pdf")
+            .mime_str(mime)
             .unwrap();
         let form = multipart::Form::new().part("file", part);
 
@@ -541,5 +559,35 @@ impl KiokuClient {
             .await
             .context("create workspace invite failed")?;
         Self::parse(resp, "invalid invite response").await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::document_mime_type;
+
+    #[test]
+    fn document_mime_type_matches_extension() {
+        assert_eq!(document_mime_type("report.pdf"), "application/pdf");
+        assert_eq!(
+            document_mime_type("REPORT.PDF"),
+            "application/pdf",
+            "extension match should be case-insensitive"
+        );
+        assert_eq!(
+            document_mime_type("notes.docx"),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
+        assert_eq!(
+            document_mime_type("slides.pptx"),
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        );
+        assert_eq!(document_mime_type("readme.md"), "text/markdown");
+        assert_eq!(document_mime_type("plain.txt"), "text/plain");
+        assert_eq!(
+            document_mime_type("no_extension"),
+            "text/plain",
+            "unknown/missing extension should fall back to text/plain, not a wrong-but-specific type"
+        );
     }
 }
