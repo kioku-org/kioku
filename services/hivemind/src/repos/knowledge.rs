@@ -20,6 +20,7 @@ impl KnowledgeRepo {
         workspace_id: Uuid,
         user_id: Uuid,
         filename: &str,
+        content_type: &str,
         file_size: i64,
         status: &str,
         now: i64,
@@ -31,7 +32,7 @@ impl KnowledgeRepo {
         .bind(workspace_id)
         .bind(user_id)
         .bind(filename)
-        .bind("application/pdf")
+        .bind(content_type)
         .bind(file_size)
         .bind(status)
         .bind(now)
