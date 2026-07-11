@@ -34,9 +34,9 @@ See [Contributing Guide](https://docs.kioku.chat/contributing) for development s
 
 <a href="https://www.star-history.com/?repos=kioku-org%2Fkioku&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=kioku-org/kioku&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=kioku-org/kioku&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=kioku-org/kioku&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=kioku-org/kioku&type=date&theme=dark&legend=top-left&sealed_token=VLI33vzCVx_wtk-rUKm3jHG5siqXsFLBrR-9mwctB3y-CtGQDqJbRX_OxmdA0di4A8rmCHcpGM5DJFkFeyoRb2c_Z4u7O8Q24lEOm4nBf9lHkaRpUrTJEUIWRcawaZIshvPnYl3ticG4rAwL0mLzZUDEmZYbsH59g1QPZrZjIsaCAnmRP0_cgP3XbIC0" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=kioku-org/kioku&type=date&legend=top-left&sealed_token=VLI33vzCVx_wtk-rUKm3jHG5siqXsFLBrR-9mwctB3y-CtGQDqJbRX_OxmdA0di4A8rmCHcpGM5DJFkFeyoRb2c_Z4u7O8Q24lEOm4nBf9lHkaRpUrTJEUIWRcawaZIshvPnYl3ticG4rAwL0mLzZUDEmZYbsH59g1QPZrZjIsaCAnmRP0_cgP3XbIC0" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=kioku-org/kioku&type=date&legend=top-left&sealed_token=VLI33vzCVx_wtk-rUKm3jHG5siqXsFLBrR-9mwctB3y-CtGQDqJbRX_OxmdA0di4A8rmCHcpGM5DJFkFeyoRb2c_Z4u7O8Q24lEOm4nBf9lHkaRpUrTJEUIWRcawaZIshvPnYl3ticG4rAwL0mLzZUDEmZYbsH59g1QPZrZjIsaCAnmRP0_cgP3XbIC0" />
  </picture>
 </a>
 
