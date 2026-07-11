@@ -128,6 +128,29 @@ exit 1
 PULLSCRIPT
 chmod +x /usr/local/bin/kioku-pull-models.sh
 
+# hivemind probes the embedding model once at startup and, on a fresh pod,
+# races kioku-pull-models.sh (which is still downloading the ~1GB model in
+# parallel via a separate supervisor program). If hivemind loses that race it
+# silently creates its Qdrant collection with a wrong fallback dimension,
+# permanently — a hivemind restart afterwards does not fix an
+# already-created collection. Block hivemind's actual start on the model
+# being present instead of racing them (issue #94).
+cat > /usr/local/bin/kioku-wait-for-embedding-model.sh <<'WAITSCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "[KIOKU] Waiting for embedding model before starting hivemind..."
+for _ in $(seq 1 60); do
+    if curl -fsS http://127.0.0.1:11434/api/tags 2>/dev/null | grep -q 'nomic-embed-text-v2-moe'; then
+        echo "[KIOKU] Embedding model present, starting hivemind."
+        exit 0
+    fi
+    sleep 5
+done
+echo "[KIOKU] Embedding model still not present after 5 minutes — starting hivemind anyway (it will fall back to a wrong embedding dimension)."
+exit 0
+WAITSCRIPT
+chmod +x /usr/local/bin/kioku-wait-for-embedding-model.sh
+
 cat > /usr/local/bin/kioku-init-minio.sh <<MINIO_INIT
 #!/usr/bin/env bash
 set -euo pipefail
@@ -283,7 +306,7 @@ stderr_logfile=/var/log/runtime-api-runpod.err
 # ── Kioku-owned services ──────────────────────────────────────────────────────
 
 [program:hivemind]
-command=/usr/local/bin/kioku-hivemind
+command=/bin/bash -c '/usr/local/bin/kioku-wait-for-embedding-model.sh; exec /usr/local/bin/kioku-hivemind'
 environment=DB_HOST="localhost",DB_PORT="5432",DB_NAME="${DB_NAME}",DB_USER="${DB_USER}",DB_PASSWORD="${DB_PASSWORD}",DB_MAX_CONNECTIONS="10",DB_SCHEMA="hivemind",JWT_SECRET="${HIVEMIND_JWT_SECRET}",JWT_TTL_SECONDS="2592000",ENCRYPTION_SECRET="${HIVEMIND_ENCRYPTION_SECRET}",INTERNAL_SECRET="${INTERNAL_API_SECRET:-}",VEXA_API_URL="http://localhost:8056",VEXA_ADMIN_API_URL="http://localhost:8001",VEXA_ADMIN_TOKEN="${VEXA_ADMIN_API_TOKEN}",HOST="0.0.0.0",PORT="9100",EMBEDDING_API_URL="http://localhost:11434",EMBEDDING_MODEL="nomic-embed-text-v2-moe",QDRANT_URL="http://localhost:6335",QDRANT_API_KEY="${QDRANT_API_KEY:-}",PPTX_EXTRACT_SCRIPT="/opt/hivemind/scripts/extract_pptx.py"
 autostart=true
 autorestart=true
