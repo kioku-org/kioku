@@ -28,6 +28,24 @@ fn chunk_type_for_filename(filename: &str) -> Option<&'static str> {
         .map(|(_, chunk_type)| *chunk_type)
 }
 
+/// Real MIME type for storage/display, keyed off the same extension list as
+/// `chunk_type_for_filename` — callers only reach this after that check
+/// already passed, so the fallback branch is unreachable in practice.
+fn content_type_for_filename(filename: &str) -> &'static str {
+    let lower = filename.to_lowercase();
+    if lower.ends_with(".pdf") {
+        "application/pdf"
+    } else if lower.ends_with(".docx") {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    } else if lower.ends_with(".pptx") {
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    } else if lower.ends_with(".md") {
+        "text/markdown"
+    } else {
+        "text/plain"
+    }
+}
+
 /// DOCX/PPTX are zip containers; neither docx-rs nor python-pptx cap uncompressed size, so an
 /// untrusted upload could be a zip bomb (small compressed file, huge decompressed footprint).
 /// Reject before decompression if the archive *claims* more than this — read from the zip
@@ -152,6 +170,7 @@ pub async fn upload_document(
         auth.workspace_id,
         auth.user_id,
         &filename,
+        content_type_for_filename(&filename),
         file_data.len() as i64,
         "processing",
         now,
