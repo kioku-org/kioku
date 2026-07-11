@@ -19,6 +19,7 @@ impl HivemindClient {
         body: Option<Value>,
     ) -> Result<Value, String> {
         let url = format!("{}{}", self.base_url, path);
+        tracing::debug!(%method, %url, "hivemind request");
         let mut req = self.http.request(method, &url).bearer_auth(token);
 
         if let Some(b) = body {
@@ -32,6 +33,7 @@ impl HivemindClient {
             .map_err(|e| format!("Request failed: {e}"))?;
 
         let status = resp.status();
+        tracing::debug!(%status, %url, "hivemind response");
 
         let body: Value = resp.json().await.unwrap_or(json!({}));
 

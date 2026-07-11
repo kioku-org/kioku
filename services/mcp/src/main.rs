@@ -1,5 +1,9 @@
+mod app;
+mod auth;
+mod clients;
 mod config;
-mod handler;
+mod error;
+mod tools;
 mod transport;
 
 use axum::{routing::get, Json, Router};
@@ -35,9 +39,3 @@ async fn main() -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
     Ok(())
 }
-
-mod clients;
-mod tools;
-
-#[cfg(test)]
-mod tests;

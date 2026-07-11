@@ -1,7 +1,7 @@
+use crate::app::KiokuMcpService;
 use crate::clients::hivemind::HivemindClient;
 use crate::clients::vexa::VexaClient;
 use crate::config::Config;
-use crate::handler::KiokuMcpService;
 use axum::Router;
 use rmcp::transport::streamable_http_server::{
     session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,

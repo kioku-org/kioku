@@ -1,4 +1,8 @@
-use serde::Serialize;
+use crate::error::{error_result, text_result};
+use crate::tools::parse_args;
+use rmcp::model::{CallToolResult, JsonObject};
+use rmcp::ErrorData;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use url::Url;
 
@@ -12,6 +16,21 @@ pub struct ParseMeetingLinkResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub meeting_url: Option<String>,
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ParseMeetingLinkArgs {
+    meeting_url: String,
+}
+
+pub(crate) fn parse_meeting_link_tool(
+    args: Option<&JsonObject>,
+) -> Result<CallToolResult, ErrorData> {
+    let p: ParseMeetingLinkArgs = parse_args(args)?;
+    Ok(match parse_meeting_url(&p.meeting_url) {
+        Ok(r) => text_result(serde_json::to_string_pretty(&r).unwrap_or_default()),
+        Err(e) => error_result(e),
+    })
 }
 
 fn is_teams_enterprise_host(host: &str) -> bool {
