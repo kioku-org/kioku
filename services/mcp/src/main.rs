@@ -1,6 +1,9 @@
+mod app;
+mod auth;
+mod clients;
 mod config;
-mod handler;
-mod parse_meeting_link;
+mod error;
+mod tools;
 mod transport;
 
 use axum::{routing::get, Json, Router};
@@ -31,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(CorsLayer::permissive());
 
     let addr = format!("0.0.0.0:{port}");
-    tracing::info!("kioku-mcp listening on {addr}");
+    tracing::info!("mcp service istening on {addr}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
