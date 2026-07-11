@@ -38,6 +38,12 @@ BOT_IMAGE="${BOT_IMAGE:-ghcr.io/kioku-org/kioku-stateless:latest}"
 BROWSER_IMAGE="${BROWSER_IMAGE:-$BOT_IMAGE}"
 RUNPOD_ACCOUNT_API_KEY="${RUNPOD_ACCOUNT_API_KEY:-$RUNPOD_API_KEY}"
 RUNPOD_GPU_TYPES="${RUNPOD_GPU_TYPES:-NVIDIA GeForce RTX 3090,NVIDIA GeForce RTX 5090,NVIDIA RTX A5000,NVIDIA RTX A4000}"
+# Stateful only needs a GPU for ollama's embedding model (nomic-embed-text-v2-moe
+# is an MoE model — pathologically slow on CPU, confirmed live: a single tiny
+# embed call took minutes). Everything else on this pod is CPU-only work.
+# Default stays CPU; set STATEFUL_COMPUTE_TYPE=GPU to opt in.
+STATEFUL_COMPUTE_TYPE="${STATEFUL_COMPUTE_TYPE:-CPU}"
+STATEFUL_GPU_TYPE="${STATEFUL_GPU_TYPE:-${RUNPOD_GPU_TYPES%%,*}}"
 
 export BOT_IMAGE
 export BROWSER_IMAGE
@@ -48,7 +54,7 @@ export STATEFUL_RUNPOD_CLOUD_TYPE
 echo "Deploying $POD_NAME..."
 echo "Image:          $IMAGE"
 echo "Cloud:          $STATEFUL_RUNPOD_CLOUD_TYPE"
-echo "Compute:        CPU"
+echo "Compute:        $STATEFUL_COMPUTE_TYPE$([ "$STATEFUL_COMPUTE_TYPE" = "GPU" ] && echo " ($STATEFUL_GPU_TYPE)")"
 echo "Container disk: ${CONTAINER_DISK}GB"
 echo "Volume:         ${VOLUME_SIZE}GB → /data"
 echo ""
@@ -149,7 +155,7 @@ CMD=(
     runpodctl pod create
     --name "$POD_NAME"
     --image "$IMAGE"
-    --compute-type CPU
+    --compute-type "$STATEFUL_COMPUTE_TYPE"
     --cloud-type "$STATEFUL_RUNPOD_CLOUD_TYPE"
     --container-disk-in-gb "$CONTAINER_DISK"
     --volume-in-gb "$VOLUME_SIZE"
@@ -160,6 +166,10 @@ CMD=(
 
 if [[ "$STATEFUL_RUNPOD_CLOUD_TYPE" == "COMMUNITY" ]]; then
     CMD+=(--public-ip)
+fi
+
+if [[ "$STATEFUL_COMPUTE_TYPE" == "GPU" ]]; then
+    CMD+=(--gpu-id "$STATEFUL_GPU_TYPE" --gpu-count 1)
 fi
 
 "${CMD[@]}"
