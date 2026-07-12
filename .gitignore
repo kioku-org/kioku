@@ -35,5 +35,5 @@ services/dashboard/next-env.d.ts
 services/dashboard/src/lib/release-version.generated.json
 
 
-.claude
-.playwright-mcp
+.claude/
+.playwright-mcp/
