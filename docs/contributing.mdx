@@ -7,37 +7,40 @@ Development setup, testing, and git workflow.
 
 ```
 kioku/
-├── apps/
-│   └── cli/                    # Kioku CLI (Rust)
-│       ├── crates/
-│       │   ├── cc-cli/         # Binary: kioku
-│       │   ├── cc-kioku/       # HTTP client
-│       │   ├── cc-auth/        # Auth file management
-│       │   └── cc-upgrade/     # Self-update
-│       └── AGENTS.md           # Rust agent guidelines
 ├── services/
-│   ├── hivemind/               # Core API server (Rust/axum)
-│   │   ├── src/
-│   │   │   ├── handlers/      # HTTP handlers
-│   │   │   ├── repos/          # Data access layer
-│   │   │   ├── services/       # Business logic
-│   │   │   └── mcp/            # MCP server
-│   │   ├── migrations/         # SQL migrations
-│   │   └── tests/              # Integration tests
-│   └── vexa/                   # Vexa meeting-bot platform (Git submodule)
+│   ├── cli/                    # Kioku CLI (Rust)
+│   │   ├── crates/
+│   │   │   ├── cc-cli/         # Binary: kioku
+│   │   │   ├── cc-kioku/       # HTTP client
+│   │   │   ├── cc-auth/        # Auth file management
+│   │   │   └── cc-upgrade/     # Self-update
+│   │   └── AGENTS.md           # Rust agent guidelines
+│   ├── hivemind/                # Core API server (Rust/axum) — auth, workspaces,
+│   │   ├── src/                 # knowledge base, meeting ingestion
+│   │   │   ├── handlers/        # HTTP handlers
+│   │   │   ├── repos/           # Data access layer
+│   │   │   └── services/        # Business logic
+│   │   └── migrations/          # SQL migrations
+│   ├── mcp/                     # MCP server (Rust) — search/meetings/docs tools
+│   ├── meeting-api/             # Meeting lifecycle + transcript collection (Python)
+│   ├── api-gateway/             # Public Vexa-compatible gateway (Rust)
+│   ├── admin-api/                # Admin/billing API (Python)
+│   ├── agent-api/                # AI agent chat backend (Python)
+│   ├── runtime-api/              # Bot pod orchestration — local Docker or RunPod (Python)
+│   ├── dashboard/                 # Next.js web dashboard
+│   └── cookie/                    # Google session cookie service (Python)
 ├── deployment/
-│   ├── docker/                 # Docker Compose deployment
-│   └── runpod/                 # RunPod pod deployment
+│   └── docker/
+│       ├── Dockerfile.stateful     # Always-on monolith image (all services above)
+│       ├── Dockerfile.stateless    # Ephemeral per-meeting bot pod image
+│       └── scripts/runpod/         # deploy.sh / destroy.sh — see "RunPod Deployment" below
 └── docs/                       # This documentation
 ```
 
+`services/vexa` was a Git submodule historically; it's since been fully absorbed —
+all source now lives directly under `services/`, no submodule init needed.
+
 ## Development
-
-Initialize the Vexa submodule before working on the stack:
-
-```bash
-git submodule update --init --recursive
-```
 
 ### Hivemind (Rust)
 
@@ -60,6 +63,68 @@ cargo build                         # Debug build
 
 See `services/cli/AGENTS.md` for Rust coding guidelines.
 
+### CLI Releases
+
+Releases are plain GitHub Releases (`gh release create`) — there's no separate CI
+release workflow yet, so build and upload manually:
+
+```bash
+cd services/cli
+cargo build --release -p kioku-cli
+# binary at target/release/kioku
+```
+
+Package the binary into a tarball named `kioku-<version>-<target>.tar.gz` — the
+`kioku.chat/install.sh` installer resolves the release tag and builds the download
+URL from it, so the asset filename **must** include the version:
+
+```bash
+mkdir -p /tmp/kioku-release && cp target/release/kioku /tmp/kioku-release/
+cd /tmp/kioku-release
+tar -czf kioku-v0.1.2-dev.5-x86_64-unknown-linux-gnu.tar.gz kioku
+```
+
+Only `x86_64-unknown-linux-gnu` is built today; other targets need cross-compilation
+before release.
+
+**Dev release** — for testing a not-yet-stable build, tag under the `cli/` namespace
+and mark it a pre-release so it never becomes the resolved "latest":
+
+```bash
+gh release create cli/v0.1.2-dev.5 \
+  kioku-v0.1.2-dev.5-x86_64-unknown-linux-gnu.tar.gz \
+  --repo kioku-org/kioku \
+  --title "kioku CLI v0.1.2-dev.5" \
+  --prerelease
+```
+
+Install and test it explicitly by tag:
+
+```bash
+KIOKU_VERSION=cli/v0.1.2-dev.5 curl -fsSL https://kioku.chat/install.sh | sh
+```
+
+**Stable release** — tag without the `cli/` prefix (e.g. `v0.1.1`) and don't pass
+`--prerelease`, so it becomes GitHub's "Latest" release:
+
+```bash
+gh release create v0.1.1 \
+  kioku-v0.1.1-x86_64-unknown-linux-gnu.tar.gz \
+  --repo kioku-org/kioku \
+  --title "kioku CLI v0.1.1"
+```
+
+The plain install command (no `KIOKU_VERSION`) always resolves whichever release is
+currently marked "Latest" on GitHub, so verify with it after a stable cut:
+
+```bash
+curl -fsSL https://kioku.chat/install.sh | sh
+```
+
+`kioku.chat/install.sh` itself lives in the `kioku-web` repo
+(`public/install.sh`), not this one — if the installer itself needs changing,
+that's where.
+
 ## Git Workflow
 
 1. Create a feature branch: `feat/description` or `fix/description`
@@ -72,11 +137,86 @@ See `services/cli/AGENTS.md` for Rust coding guidelines.
 
 | Workflow | Trigger | Description |
 |---|---|---|
-| `build-images.yml` | Push to master | Build + push Docker images to Docker Hub |
-| `runpod-test.yml` | After build completes or manual `workflow_dispatch` | Deploy pod on RunPod, run live API + CLI integration tests, validate stateless pod spawn, cleanup |
+| `ci.yml` | Push to `main`/`master`, or a published release | `build-stateful` + `build-stateless` push images to `ghcr.io/kioku-org/kioku-stateful` and `kioku-stateless`; `test` runs a live RunPod smoke test (needs a real `RUNPOD_API_KEY` secret in this repo's Actions settings — currently unset, so this job is expected to fail on every run; the image build jobs still succeed independently) |
+| `service-tests.yml` | Push to `main`/`master`, path-filtered per service | Per-service lint/build/unit jobs (`hivemind-lint`, `hivemind-build`, `cli-lint`, `cli-unit`, `dashboard-unit`, `dashboard-build`, `mcp-unit`, `mcp-lint`) plus an `integration` job |
 
-To manually validate a published RunPod image SHA:
+To manually trigger a CI run (e.g. to rebuild images without a new commit):
 
 ```bash
-gh workflow run "RunPod Integration Test" -f image_sha=<short-or-full-git-sha>
+gh workflow run ci.yml -f skip_tests=false
 ```
+
+## RunPod Deployment
+
+`deployment/docker/scripts/runpod/deploy.sh` stands up a live `kioku-stateful` pod
+directly on RunPod via `runpodctl` — the same images `ci.yml` builds, not a separate
+deploy path. Useful for e2e-testing a change against real infrastructure before it
+reaches whatever's running in production.
+
+### One-time setup
+
+```bash
+cd deployment/docker/scripts/runpod
+cp .env.example .env
+```
+
+Fill in `.env`:
+- `RUNPOD_API_KEY` — from your RunPod account (or read it out of `runpodctl`'s own
+  config at `~/.runpod/config.toml` if you're already authenticated there)
+- `HIVEMIND_JWT_SECRET`, `HIVEMIND_ENCRYPTION_SECRET`, `VEXA_ADMIN_API_TOKEN` — any
+  random values for a throwaway test pod (`openssl rand -hex 32`); these don't need
+  to match production
+
+### Deploying
+
+```bash
+./deploy.sh
+```
+
+By default this deploys **CPU-only** (`STATEFUL_COMPUTE_TYPE` unset → `CPU`,
+~$0.06/hr) — sufficient for everything except the embedding model hivemind's ollama
+runs. `nomic-embed-text-v2-moe` is a mixture-of-experts model and is pathologically
+slow on CPU (confirmed live: a single tiny embed call took 3+ minutes; real document
+uploads and search queries never completed within any normal timeout). If you're
+testing document ingestion or knowledge search, deploy on GPU instead:
+
+```bash
+STATEFUL_COMPUTE_TYPE=GPU ./deploy.sh
+```
+
+This requests the first GPU type listed in `RUNPOD_GPU_TYPES` (override with
+`STATEFUL_GPU_TYPE`), ~$0.22/hr on an RTX 3090. On GPU the same embed call drops to
+~20 seconds and document/search flows work end-to-end.
+
+Other relevant `.env` knobs:
+- `MIN_BOT_POOL` — how many stateless bot pods to keep pre-spawned and idle so a
+  real meeting request claims one instantly instead of cold-spawning (default `0`
+  = disabled; each idle slot costs its own GPU-pod $/hr while unclaimed — leave this
+  at `0` unless you're specifically testing meeting-join latency)
+- `STATEFUL_RUNPOD_CLOUD_TYPE` — `COMMUNITY` (default, cheaper, less availability
+  guarantee) or `SECURE`
+
+### Checking on it
+
+```bash
+runpodctl pod list              # running pods + $/hr
+ssh -i ~/.runpod/ssh/runpodctl-ssh-key root@<ip> -p <port>   # from `runpodctl pod get <id>`
+```
+
+Inside the pod, `supervisorctl` doesn't work (no RPC socket configured in the
+generated `/etc/supervisor/conf.d/kioku.conf`) — check individual service health
+directly instead, e.g. `curl localhost:9100/health` for hivemind, or tail
+`/var/log/<service>.log` / `.err`.
+
+### Tearing down
+
+RunPod bills per pod-second — destroy pods you're not actively using:
+
+```bash
+./destroy.sh <pod-id>          # prompts for confirmation
+```
+
+A stateful pod's own bot-pool reaper only runs while that pod is alive — destroying
+the stateful pod before its pool bots orphans them (they keep billing with nothing
+managing them anymore). Check `runpodctl pod list` after and destroy any leftover
+`pool-*` pods too.
