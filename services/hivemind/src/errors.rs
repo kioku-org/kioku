@@ -54,21 +54,12 @@ impl IntoResponse for AppError {
 impl From<sqlx::Error> for AppError {
     fn from(err: sqlx::Error) -> Self {
         match &err {
-            sqlx::Error::Database(db_err) => {
-                let msg = db_err.message();
-                // Check for unique constraint violations
-                if msg.contains("unique")
-                    || msg.contains("duplicate")
-                    || msg.contains("already exists")
-                    || msg.contains("UNIQUE")
-                {
-                    return AppError::Conflict(msg.to_string());
-                }
-                // Check for foreign key violations
-                if msg.contains("foreign key") || msg.contains("violates") {
-                    return AppError::BadRequest(msg.to_string());
-                }
-                AppError::Internal(err.into())
+            // Generic client messages: raw db_err.message() leaks table/column names
+            sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
+                AppError::Conflict("resource already exists".to_string())
+            }
+            sqlx::Error::Database(db_err) if db_err.is_foreign_key_violation() => {
+                AppError::BadRequest("referenced resource does not exist".to_string())
             }
             _ => AppError::Internal(err.into()),
         }
