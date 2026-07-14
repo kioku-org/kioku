@@ -58,8 +58,11 @@ RUN npm run build
 # install went to /opt/microsoft in this stage, which the runtime never copied).
 # The base image pre-installs all browsers at /ms-playwright; delete the unused
 # ones so the runtime COPY below doesn't inherit ~1GB of dead browsers.
+# chromium_headless_shell can go too: every launch site is headless:false
+# (headed under Xvfb) — re-add it if a headless:true path ever ships.
 RUN npx playwright install --with-deps chromium && \
-    rm -rf /ms-playwright/firefox-* /ms-playwright/webkit-*
+    rm -rf /ms-playwright/firefox-* /ms-playwright/webkit-* \
+           /ms-playwright/chromium_headless_shell-*
 # Builds are done — drop dev deps (typescript etc.) from every node_modules the
 # runtime stage copies. Source is ~2MB; unpruned this shipped >1GB.
 RUN for m in shared/whisper shared/buffer gmeet/capture gmeet/pipeline \
@@ -67,11 +70,17 @@ RUN for m in shared/whisper shared/buffer gmeet/capture gmeet/pipeline \
              recording join remote-browser recorder; do \
       (cd /modules/$m && npm prune --omit=dev --ignore-scripts) || exit 1; \
     done && npm prune --omit=dev --ignore-scripts
+# onnxruntime/@huggingface under core's node_modules are unreachable duplicates
+# (~660MB): only modules/mixed/pipeline imports them, and Node resolves the
+# @vexa/* symlinks to /modules/**, whose own node_modules carry their own copies.
+RUN rm -rf node_modules/onnxruntime-node node_modules/onnxruntime-web \
+           node_modules/onnxruntime-common node_modules/@huggingface
 
 # ─── Stage 3: Runtime (Playwright + Whisper) ──────────────────────────────────
 # Plain ubuntu base instead of nvidia/cuda:12.3.2-cudnn9-runtime (~3.2GB of CUDA
 # layers). The only GPU consumer is faster-whisper/ctranslate2, which needs just
-# cuBLAS + cuDNN — installed via pip below (faster-whisper's documented setup).
+# cuBLAS + cuDNN — installed as targeted apt packages below (same 12.3/cudnn9
+# versions the old base shipped, minus NCCL/NPP/cuSPARSE/NVTX dead weight).
 # Driver libs are injected by the NVIDIA container runtime at run time.
 FROM ubuntu:22.04
 
@@ -126,12 +135,20 @@ COPY services/vexa-bot/core/entrypoint.sh /app/vexa-bot/entrypoint.sh
 COPY services/vexa-bot/core/pool-wait.js /app/vexa-bot/core/pool-wait.js
 RUN chmod +x /app/vexa-bot/entrypoint.sh
 
-# Install Whisper transcription service (GPU). cuBLAS/cuDNN come from pip
-# (replaces the CUDA base image); ctranslate2 finds them via LD_LIBRARY_PATH.
+# cuBLAS + cuDNN for faster-whisper/ctranslate2, from NVIDIA's apt repo (the
+# pip nvidia-* wheels are ~2.3GB vs ~1.5GB here; apt installs to the default
+# linker path, so no LD_LIBRARY_PATH needed). Pinned to the same major versions
+# the old nvidia/cuda:12.3.2-cudnn9 base provided.
+RUN curl -fsSLO https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb \
+    && dpkg -i cuda-keyring_1.1-1_all.deb && rm cuda-keyring_1.1-1_all.deb \
+    && apt-get update && apt-get install -y --no-install-recommends \
+       libcublas-12-3 libcudnn9-cuda-12 \
+    && rm -rf /var/lib/apt/lists/* \
+    && echo "/usr/local/cuda-12.3/lib64" > /etc/ld.so.conf.d/cuda.conf && ldconfig
+
+# Install Whisper transcription service (GPU)
 COPY services/transcription-service/requirements.txt /opt/transcription/
-RUN pip3 install --no-cache-dir -r /opt/transcription/requirements.txt \
-    nvidia-cublas-cu12 "nvidia-cudnn-cu12>=9,<10"
-ENV LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/nvidia/cublas/lib:/usr/local/lib/python3.10/dist-packages/nvidia/cudnn/lib
+RUN pip3 install --no-cache-dir -r /opt/transcription/requirements.txt
 COPY services/transcription-service/main.py /opt/transcription/
 
 # Copy entrypoint
