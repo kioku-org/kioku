@@ -54,16 +54,31 @@ RUN cd /modules/shared/whisper       && npm install --ignore-scripts && npm run 
 COPY services/vexa-bot/core/src/ ./src/
 
 RUN npm run build
-RUN npx playwright install-deps && npx playwright install --with-deps
-RUN arch=$(uname -m) && if [ "$arch" = "x86_64" ] || [ "$arch" = "amd64" ]; then \
-    npx playwright install msedge; \
-    else echo "Skipping msedge on $arch"; fi
+# chromium only — the bot never launches firefox/webkit (and the old msedge
+# install went to /opt/microsoft in this stage, which the runtime never copied).
+# The base image pre-installs all browsers at /ms-playwright; delete the unused
+# ones so the runtime COPY below doesn't inherit ~1GB of dead browsers.
+RUN npx playwright install --with-deps chromium && \
+    rm -rf /ms-playwright/firefox-* /ms-playwright/webkit-*
+# Builds are done — drop dev deps (typescript etc.) from every node_modules the
+# runtime stage copies. Source is ~2MB; unpruned this shipped >1GB.
+RUN for m in shared/whisper shared/buffer gmeet/capture gmeet/pipeline \
+             mixed/capture/zoom mixed/capture/teams mixed/pipeline \
+             recording join remote-browser recorder; do \
+      (cd /modules/$m && npm prune --omit=dev --ignore-scripts) || exit 1; \
+    done && npm prune --omit=dev --ignore-scripts
 
-# ─── Stage 3: Runtime (CUDA + Playwright + Whisper) ───────────────────────────
-FROM nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04
+# ─── Stage 3: Runtime (Playwright + Whisper) ──────────────────────────────────
+# Plain ubuntu base instead of nvidia/cuda:12.3.2-cudnn9-runtime (~3.2GB of CUDA
+# layers). The only GPU consumer is faster-whisper/ctranslate2, which needs just
+# cuBLAS + cuDNN — installed via pip below (faster-whisper's documented setup).
+# Driver libs are injected by the NVIDIA container runtime at run time.
+FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    DISPLAY=:99
+    DISPLAY=:99 \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl gnupg \
@@ -111,9 +126,12 @@ COPY services/vexa-bot/core/entrypoint.sh /app/vexa-bot/entrypoint.sh
 COPY services/vexa-bot/core/pool-wait.js /app/vexa-bot/core/pool-wait.js
 RUN chmod +x /app/vexa-bot/entrypoint.sh
 
-# Install Whisper transcription service (GPU)
+# Install Whisper transcription service (GPU). cuBLAS/cuDNN come from pip
+# (replaces the CUDA base image); ctranslate2 finds them via LD_LIBRARY_PATH.
 COPY services/transcription-service/requirements.txt /opt/transcription/
-RUN pip3 install --no-cache-dir -r /opt/transcription/requirements.txt
+RUN pip3 install --no-cache-dir -r /opt/transcription/requirements.txt \
+    nvidia-cublas-cu12 "nvidia-cudnn-cu12>=9,<10"
+ENV LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/nvidia/cublas/lib:/usr/local/lib/python3.10/dist-packages/nvidia/cudnn/lib
 COPY services/transcription-service/main.py /opt/transcription/
 
 # Copy entrypoint
