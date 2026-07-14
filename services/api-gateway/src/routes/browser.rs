@@ -63,6 +63,8 @@ async fn fire_touch(state: &AppState, container_name: &str, backend_url: &str) {
             }
         }
         debounce.insert(container_name.to_string(), Instant::now());
+        // ponytail: unbounded growth guard — stale entries evicted on insert
+        debounce.retain(|_, t| t.elapsed() < TOUCH_DEBOUNCE * 10);
     }
     let url = format!("{backend_url}/containers/{container_name}/touch");
     if let Err(e) = state.http.post(&url).timeout(Duration::from_secs(5)).send().await {
