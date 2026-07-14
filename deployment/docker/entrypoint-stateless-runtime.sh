@@ -1,16 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Shared-transcriber mode (whisper pool shard, see meeting_api/transcriber_pool.py):
+# run only the transcription service, no bot. Env-based because docker/runpod
+# backends pass Cmd as *arguments* to this entrypoint, not as a replacement.
+if [ "${WHISPER_ONLY:-}" = "true" ]; then
+  echo "[KIOKU-WHISPER] Shared transcriber mode"
+  cd /opt/transcription
+  exec python3 main.py
+fi
+
 echo "[KIOKU-BOT] Starting bot pod..."
 
-# Start Whisper transcription service in background
-echo "[KIOKU-BOT] Starting transcription service..."
-cd /opt/transcription
-python3 main.py &
-TRANS_PID=$!
+# Start the in-pod Whisper service unless BOT_CONFIG points transcription at a
+# remote (shared) instance — then skip it and save ~2.1GB VRAM per bot.
+# Pool-slot bots have no BOT_CONFIG yet at container start, so they keep the
+# local service as a safe fallback (empty/localhost URL → local).
+TX_URL=$(printf '%s' "${BOT_CONFIG:-}" | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("transcriptionServiceUrl") or "")
+except Exception: print("")' 2>/dev/null || echo "")
 
-# Give transcription service time to start
-sleep 3
+TRANS_PID=""
+case "$TX_URL" in
+  ""|http://localhost*|http://127.0.0.1*)
+    echo "[KIOKU-BOT] Starting transcription service..."
+    cd /opt/transcription
+    python3 main.py &
+    TRANS_PID=$!
+    # Give transcription service time to start
+    sleep 3
+    ;;
+  *)
+    echo "[KIOKU-BOT] Using shared transcription service at $TX_URL — skipping local whisper."
+    ;;
+esac
 
 # Start the vexa bot (foreground — blocks until bot exits)
 echo "[KIOKU-BOT] Starting vexa bot..."
@@ -24,9 +47,11 @@ EXIT_CODE=$?
 
 echo "[KIOKU-BOT] Bot exited with code $EXIT_CODE, cleaning up..."
 
-# Kill transcription service
-kill $TRANS_PID 2>/dev/null || true
-wait $TRANS_PID 2>/dev/null || true
+# Kill transcription service (if we started one)
+if [ -n "$TRANS_PID" ]; then
+  kill $TRANS_PID 2>/dev/null || true
+  wait $TRANS_PID 2>/dev/null || true
+fi
 
 echo "[KIOKU-BOT] Done."
 exit $EXIT_CODE

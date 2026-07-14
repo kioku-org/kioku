@@ -37,6 +37,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import attributes
 
+from . import transcriber_pool
 from .models import Meeting, MeetingSession
 from .schemas import MeetingStatus, MeetingCompletionReason
 
@@ -692,6 +693,17 @@ async def start_sweeps(
                 )
         except Exception as e:
             logger.error(f"[sweeps] iteration {sweep_iterations} aggregation-retry error: {e}", exc_info=True)
+
+        try:
+            async with db_session_factory() as db:
+                reaped = await transcriber_pool.sweep_idle_transcribers(db)
+            if reaped > 0:
+                logger.info(
+                    f"[sweeps] iteration {sweep_iterations}: "
+                    f"reaped {reaped} idle whisper shard(s)"
+                )
+        except Exception as e:
+            logger.error(f"[sweeps] iteration {sweep_iterations} transcriber-reap error: {e}", exc_info=True)
 
         try:
             finalized = await _sweep_unfinalized_recordings(db_session_factory)

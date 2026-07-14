@@ -100,12 +100,16 @@ class RunPodBackend(Backend):
         env = dict(spec.env)
         env["RUNPOD_POD_NAME"] = spec.name
 
+        # /http ports from the profile are exposed through RunPod's HTTP proxy
+        # (https://<pod-id>-<port>.proxy.runpod.net) — used by whisper shards.
+        # tcp ports stay unexposed (bots' 9222/6080 are debug-only, local-only).
+        http_ports = [p for p in (spec.ports or {}) if p.endswith("/http")]
         base_payload: dict = {
             "name": spec.name,
             "imageName": spec.image,
             "containerDiskInGb": config.RUNPOD_CONTAINER_DISK_GB,
             "env": env,
-            "ports": ["22/tcp"],
+            "ports": ["22/tcp", *http_ports],
             "supportPublicIp": True,
         }
 

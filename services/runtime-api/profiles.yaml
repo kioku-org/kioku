@@ -6,6 +6,34 @@
 # visibly — not silently use :latest or localhost.
 
 profiles:
+  # Shared-whisper pool shard (meeting_api/transcriber_pool.py): one instance
+  # serves up to BOTS_PER_TRANSCRIBER concurrent meetings on its backend.
+  # Reuses the bot image (ships transcription-service + CUDA libs already).
+  # Lifetime: created on demand at bot spawn, reaped by the idle sweep.
+  whisper:
+    image: "${BROWSER_IMAGE}"
+    # No command: the image entrypoint handles WHISPER_ONLY=true itself
+    # (docker/runpod pass Cmd as entrypoint *args*, so a command here would
+    # be ignored and the container would boot as a config-less bot and die).
+    gpu: true
+    idle_timeout: 0          # reaped by meeting-api's transcriber sweep
+    auto_remove: true
+    env:
+      WHISPER_ONLY: "true"
+      DEVICE: "cuda"
+      MODEL_SIZE: "${BOT_WHISPER_MODEL:-large-v3-turbo}"
+      COMPUTE_TYPE: "int8_float16"
+      # RunPod shards sit on a public proxy URL — require auth there.
+      # (Empty token = allow-all, acceptable on the private local network.)
+      API_TOKEN: "${INTERNAL_API_SECRET:-}"
+    # No mounts: runtime-api already binds BOT_MODEL_CACHE_DIR:/app/models
+    # into every container it creates — declaring it here too makes Docker
+    # reject the create with a duplicate mount point.
+    ports:
+      # RunPod-proxy exposure for remote shards; the docker backend skips
+      # /http ports (local bots reach shards by container-name DNS).
+      "8000/http": {}
+
   # Meeting bot — Playwright browser for meeting transcription
   # Lifetime: managed by meeting-api (scheduler max_bot_time + bot-side timers)
   meeting:
