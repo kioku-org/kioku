@@ -51,6 +51,9 @@ services:
       - BOT_MAX_TIME_LEFT_ALONE=${BOT_MAX_TIME_LEFT_ALONE:-}
       - BOT_MAX_WAIT_FOR_ADMISSION=${BOT_MAX_WAIT_FOR_ADMISSION:-}
       - BOT_NO_ONE_JOINED_TIMEOUT=${BOT_NO_ONE_JOINED_TIMEOUT:-}
+      # Shared whisper (see kioku-whisper service): set to http://kioku-whisper:8000
+      # to have all local bots use one transcription instance instead of per-pod models.
+      - BOT_TRANSCRIPTION_SERVICE_URL=${BOT_TRANSCRIPTION_SERVICE_URL:-}
       # ── RunPod ────────────────────────────────────────────────────────────────
       - RUNPOD_API_KEY=${RUNPOD_API_KEY:-}
       - RUNPOD_GPU_TYPES=${RUNPOD_GPU_TYPES:-NVIDIA GeForce RTX 3090,NVIDIA RTX A5000,NVIDIA RTX A4000}
@@ -125,7 +128,43 @@ services:
       retries: 5
       start_period: 90s
 
+  # One shared Whisper instance for all local bots (opt-in). Reuses the bot image
+  # (it already ships transcription-service + CUDA libs) with an entrypoint override
+  # so no extra image is needed. Enable with COMPOSE_PROFILES=shared-whisper and
+  # BOT_TRANSCRIPTION_SERVICE_URL=http://kioku-whisper:8000 in .env; a plain
+  # `docker compose up -d` without the profile deploys exactly as before.
+  # ponytail: local-backend only — RunPod bots can't reach this hostname and must
+  # keep their in-pod model (entrypoint-stateless falls back automatically).
+  kioku-whisper:
+    image: ${VEXA_BOT_IMAGE:-ghcr.io/kioku-org/kioku-stateless:latest}
+    container_name: kioku-whisper
+    profiles: ["shared-whisper"]
+    entrypoint: ["/bin/sh", "-c", "cd /opt/transcription && exec python3 main.py"]
+    environment:
+      - MODEL_SIZE=${BOT_WHISPER_MODEL:-large-v3-turbo}
+      - DEVICE=cuda
+    volumes:
+      - whisper-models:/app/models
+    networks:
+      - kioku-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
 volumes:
+  whisper-models:
+    name: kioku-whisper-models
   postgres-data:
     name: kioku-postgres-data
   qdrant-data:
