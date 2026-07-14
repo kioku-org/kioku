@@ -24,7 +24,7 @@ profiles:
       INTERNAL_API_SECRET: "${INTERNAL_API_SECRET:-}"
       TRANSCRIPTION_SERVICE_URL: "http://localhost:8000"
       MODEL_SIZE: "${BOT_WHISPER_MODEL:-large-v3-turbo}"
-      COMPUTE_TYPE: "int8"
+      COMPUTE_TYPE: "int8_float16"
       MODEL_PATH: "${BOT_MODEL_CACHE_DIR:-/opt/kioku/models}"
     ports:
       "9222/tcp": {}
@@ -43,7 +43,7 @@ profiles:
       WHISPER_ONLY: "true"
       DEVICE: "cuda"
       MODEL_SIZE: "${BOT_WHISPER_MODEL:-large-v3-turbo}"
-      COMPUTE_TYPE: "int8"
+      COMPUTE_TYPE: "int8_float16"
       # RunPod shards sit on a public proxy URL — require auth there.
       # (Empty token = allow-all, which is fine on the private local network.)
       API_TOKEN: "${INTERNAL_API_SECRET:-}"
