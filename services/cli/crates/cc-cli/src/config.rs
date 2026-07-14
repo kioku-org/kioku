@@ -21,6 +21,27 @@ pub fn resolve_server_url_from(server_override: Option<&str>, env_server: Option
         .to_string()
 }
 
+/// Vexa gateway (meetings API) base URL for a given kioku server. Same shape
+/// as [`resolve_dashboard_url`]: env override, hosted default, localhost port map.
+pub fn resolve_meetings_url(server_url: &str) -> anyhow::Result<String> {
+    if let Ok(v) = std::env::var("KIOKU_MEETINGS") {
+        return Ok(v);
+    }
+    if server_url.contains("api.kioku.chat") {
+        return Ok("https://meetings.kioku.chat".to_string());
+    }
+    if let Some(stripped) = server_url
+        .strip_prefix("http://localhost:")
+        .or_else(|| server_url.strip_prefix("http://127.0.0.1:"))
+    {
+        let prefix = &server_url[..server_url.len() - stripped.len()];
+        return Ok(format!("{}8056", prefix));
+    }
+    anyhow::bail!(
+        "cannot derive the meetings gateway URL from server `{server_url}` — set KIOKU_MEETINGS to your gateway base URL (e.g. https://meetings.example.com)"
+    )
+}
+
 pub fn resolve_dashboard_url(server_url: &str) -> String {
     if let Ok(v) = std::env::var("KIOKU_DASHBOARD") {
         return v;

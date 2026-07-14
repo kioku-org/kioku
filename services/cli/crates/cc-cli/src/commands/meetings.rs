@@ -101,6 +101,113 @@ pub async fn transcript(ctx: AppContext, meeting_id: String) -> Result<()> {
     Ok(())
 }
 
+/// Stable identity of a live segment for printed-set dedupe.
+/// ponytail: keyed by start time only — a segment whose text is later revised
+/// won't reprint; switch to (start, text-hash) + reprint markers if that matters.
+fn segment_key(seg: &serde_json::Value) -> Option<String> {
+    seg.get("start")
+        .or_else(|| seg.get("start_time"))
+        .or_else(|| seg.get("absolute_start_time"))
+        .map(|v| v.to_string())
+}
+
+fn print_segment(seg: &serde_json::Value, json: bool) {
+    if json {
+        println!("{seg}");
+        return;
+    }
+    let speaker = seg.get("speaker").and_then(|v| v.as_str()).unwrap_or("?");
+    let text = seg.get("text").and_then(|v| v.as_str()).unwrap_or("");
+    if !text.is_empty() {
+        println!("{speaker}: {text}");
+    }
+}
+
+/// Poll the gateway's live transcript for a running meeting, printing new
+/// segments as they confirm. Exits when the bot leaves the meeting.
+pub async fn follow(ctx: AppContext, target: String) -> Result<()> {
+    let auth = require_auth()?;
+    let client = make_client(&auth);
+
+    if uuid::Uuid::parse_str(&target).is_ok() {
+        anyhow::bail!(
+            "`--follow` streams live meetings — pass the meet code shown by `kioku meet` (e.g. abc-defg-hij), not a knowledge-base meeting UUID"
+        );
+    }
+
+    let bots = client.list_bot_status().await?;
+    let (platform, native_id) = resolve_bot_kill_target(&bots, &target)?;
+    let vexa_key = client.get_vexa_token().await?;
+    let gateway = crate::config::resolve_meetings_url(client.base_url())?;
+    let url = format!("{gateway}/transcripts/{platform}/{native_id}");
+
+    if !ctx.json {
+        eprintln!("Following {platform}/{native_id} — Ctrl-C to stop.");
+    }
+
+    let http = reqwest::Client::new();
+    let mut printed: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut polls_since_bot_check: u32 = 0;
+
+    loop {
+        let resp = http
+            .get(&url)
+            .header("X-API-Key", &vexa_key)
+            .timeout(std::time::Duration::from_secs(15))
+            .send()
+            .await;
+
+        match resp {
+            Ok(r) if r.status().is_success() => {
+                let body: serde_json::Value = r.json().await.unwrap_or_default();
+                if let Some(segments) = body.get("segments").and_then(|v| v.as_array()) {
+                    for seg in segments {
+                        if let Some(key) = segment_key(seg) {
+                            if printed.insert(key) {
+                                print_segment(seg, ctx.json);
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(r) => {
+                // 404 right away = wrong id; mid-stream = meeting torn down.
+                if printed.is_empty() {
+                    anyhow::bail!("live transcript not available ({}) for {platform}/{native_id}", r.status());
+                }
+                break;
+            }
+            Err(e) => {
+                // Transient network error — keep following.
+                tracing::debug!("follow poll failed: {e}");
+            }
+        }
+
+        polls_since_bot_check += 1;
+        if polls_since_bot_check >= 5 {
+            polls_since_bot_check = 0;
+            let still_running = client
+                .list_bot_status()
+                .await
+                .map(|bots| {
+                    bots.iter()
+                        .any(|b| b.native_meeting_id.as_deref() == Some(native_id.as_str()))
+                })
+                .unwrap_or(true);
+            if !still_running {
+                break;
+            }
+        }
+
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+
+    if !ctx.json {
+        eprintln!("Meeting ended. Once ingested, fetch the archived transcript via `kioku search` + `kioku meet --transcript <uuid>`.");
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,6 +248,16 @@ mod tests {
             err,
             "bot `zzz` not found — run `kioku meet` to inspect running bots"
         );
+    }
+
+    #[test]
+    fn segment_key_prefers_start_and_falls_back() {
+        let with_start = serde_json::json!({"start": 12.5, "text": "hi"});
+        assert_eq!(segment_key(&with_start).unwrap(), "12.5");
+        let with_start_time = serde_json::json!({"start_time": "2026-07-15T00:54:04"});
+        assert!(segment_key(&with_start_time).is_some());
+        let without = serde_json::json!({"text": "hi"});
+        assert!(segment_key(&without).is_none());
     }
 
     #[test]
