@@ -51,9 +51,14 @@ pub async fn run(cli: Cli) -> Result<()> {
             link,
             kill,
             transcript,
+            follow,
         }) => {
             if let Some(meeting_id) = transcript {
-                meetings::transcript(ctx, meeting_id).await
+                if follow {
+                    meetings::follow(ctx, meeting_id).await
+                } else {
+                    meetings::transcript(ctx, meeting_id).await
+                }
             } else {
                 meetings::run(ctx, link, kill).await
             }

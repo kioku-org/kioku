@@ -214,6 +214,22 @@ impl KiokuClient {
         Self::expect_ok(resp).await
     }
 
+    /// The caller's Vexa gateway API key (X-API-Key), minted/resolved server-side.
+    /// Used for endpoints only the gateway serves, e.g. live transcripts.
+    pub async fn get_vexa_token(&self) -> Result<String> {
+        let resp = self
+            .authed(self.client.get(self.url("/vexa/token")))
+            .send()
+            .await
+            .context("vexa token request failed")?;
+        let body: serde_json::Value = Self::parse(resp, "invalid vexa token response").await?;
+        body.get("vexa_api_key")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| anyhow::anyhow!("no vexa api key available for this account"))
+    }
+
     pub async fn whoami(&self) -> Result<AuthSession> {
         let resp = self
             .authed(self.client.get(self.url("/auth/me")))

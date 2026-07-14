@@ -87,6 +87,12 @@ pub enum Commands {
             help = "Print the transcript for a specific meeting"
         )]
         transcript: Option<String>,
+        #[arg(
+            long,
+            requires = "transcript",
+            help = "Stream new transcript segments of a live meeting as they confirm (pass the meet code, e.g. abc-defg-hij)"
+        )]
+        follow: bool,
     },
     #[command(about = "List Google Calendar meetings for today, the coming week, or a date")]
     Cal {
