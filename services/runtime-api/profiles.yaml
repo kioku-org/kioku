@@ -23,8 +23,9 @@ profiles:
       # RunPod shards sit on a public proxy URL — require auth there.
       # (Empty token = allow-all, acceptable on the private local network.)
       API_TOKEN: "${INTERNAL_API_SECRET:-}"
-    mounts:
-      - "kioku-whisper-models:/app/models"
+    # No mounts: runtime-api already binds BOT_MODEL_CACHE_DIR:/app/models
+    # into every container it creates — declaring it here too makes Docker
+    # reject the create with a duplicate mount point.
     ports:
       # RunPod-proxy exposure for remote shards; the docker backend skips
       # /http ports (local bots reach shards by container-name DNS).
