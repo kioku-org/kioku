@@ -27,6 +27,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import attributes
 
 from .database import get_db, async_session_local
+from . import transcriber_pool
 from .models import Meeting, MeetingSession
 from .schemas import (
     MeetingCreate,
@@ -1188,6 +1189,14 @@ async def request_bot(
     backend_url, backend_name = await choose_runtime_backend(db)
     meeting_data["runtime_backend"] = backend_name
 
+    # Shared-whisper pool: pick/start a transcriber shard with capacity.
+    # (None, None, None) when disabled or provisioning failed → legacy behavior.
+    tx_url, tx_shard, tx_token = await transcriber_pool.assign_transcriber(
+        db, backend_url, backend_name
+    )
+    if tx_shard:
+        meeting_data["transcriber_shard"] = tx_shard
+
     new_meeting = Meeting(
         user_id=current_user.id,
         platform=req.platform.value,
@@ -1302,6 +1311,11 @@ async def request_bot(
         "transcriptionServiceUrl": os.getenv("BOT_TRANSCRIPTION_SERVICE_URL") or os.getenv("TRANSCRIPTION_SERVICE_URL"),
         "transcriptionServiceToken": os.getenv("TRANSCRIPTION_SERVICE_TOKEN"),
     }
+    # Pool shard (assigned above) wins over the static env URL.
+    if tx_url:
+        bot_config["transcriptionServiceUrl"] = tx_url
+        if tx_token:
+            bot_config["transcriptionServiceToken"] = tx_token
     if req.recording_enabled is not None:
         bot_config["recordingEnabled"] = bool(req.recording_enabled)
     if req.voice_agent_enabled is not None:

@@ -159,8 +159,11 @@ class DockerBackend(Backend):
         }
         if spec.shm_size:
             host_config["ShmSize"] = spec.shm_size
-        if spec.ports:
-            host_config["PortBindings"] = {p: [{"HostPort": "0"}] for p in spec.ports}
+        # "/http" is a RunPod-proxy concept — locally those services are reached
+        # by container-name DNS on the shared network, so skip publishing them.
+        tcp_ports = [p for p in (spec.ports or {}) if not p.endswith("/http")]
+        if tcp_ports:
+            host_config["PortBindings"] = {p: [{"HostPort": "0"}] for p in tcp_ports}
         if spec.mounts:
             host_config["Binds"] = spec.mounts
 
@@ -188,8 +191,8 @@ class DockerBackend(Backend):
         }
         if spec.command:
             payload["Cmd"] = spec.command
-        if spec.ports:
-            payload["ExposedPorts"] = {p: {} for p in spec.ports}
+        if tcp_ports:
+            payload["ExposedPorts"] = {p: {} for p in tcp_ports}
 
         resp = session.post(f"{url}/containers/create?name={spec.name}", json=payload)
         if resp.status_code == 409:
