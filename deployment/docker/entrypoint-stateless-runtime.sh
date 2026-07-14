@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Shared-transcriber mode (whisper pool shard, see meeting_api/transcriber_pool.py):
+# run only the transcription service, no bot. Env-based because docker/runpod
+# backends pass Cmd as *arguments* to this entrypoint, not as a replacement.
+if [ "${WHISPER_ONLY:-}" = "true" ]; then
+  echo "[KIOKU-WHISPER] Shared transcriber mode"
+  cd /opt/transcription
+  exec python3 main.py
+fi
+
 echo "[KIOKU-BOT] Starting bot pod..."
 
 # Start the in-pod Whisper service unless BOT_CONFIG points transcription at a
