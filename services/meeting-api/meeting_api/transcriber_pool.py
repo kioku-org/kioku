@@ -121,9 +121,9 @@ async def assign_transcriber(
     if not url:
         return None, None, None
 
-    # RunPod shards are on a public proxy URL — bots must authenticate
-    # (the whisper profile sets API_TOKEN from the same secret).
-    token = os.getenv("INTERNAL_API_SECRET") if backend_name == "runpod" else None
+    # The whisper profile sets API_TOKEN from INTERNAL_API_SECRET, so every
+    # bot must present it — local shards enforce it too when the secret is set.
+    token = os.getenv("INTERNAL_API_SECRET") or None
     logger.info(f"transcriber pool: meeting assigned to {name} ({url})")
     return url, name, token
 
