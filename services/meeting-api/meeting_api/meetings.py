@@ -511,11 +511,15 @@ async def _stop_via_runtime_api(container_name: str, runtime_api_url: str) -> bo
 
 async def _get_running_bots_from_runtime(user_id: int) -> list:
     """Get running containers for a user from both backends + enrich with DB data."""
-    try:
-        client = _get_httpx_client()
-        containers = []
-        for backend_url in ({LOCAL_BACKEND_URL, RUNPOD_BACKEND_URL} if USE_LOCAL_RESOURCE else {RUNPOD_BACKEND_URL}):
-            for profile in ("meeting", "browser-session"):
+    client = _get_httpx_client()
+    containers = []
+    # Per-backend isolation: one backend being down (e.g. runpod runtime-api
+    # not started because RUNPOD_API_KEY is unset) must not blank out the
+    # other's results — a shared try here made /bots return [] while a local
+    # bot was live, blinding the CLI, MCP, and the dashboard alike.
+    for backend_url in ({LOCAL_BACKEND_URL, RUNPOD_BACKEND_URL} if USE_LOCAL_RESOURCE else {RUNPOD_BACKEND_URL}):
+        for profile in ("meeting", "browser-session"):
+            try:
                 resp = await client.get(
                     f"{backend_url}/containers",
                     params={"user_id": str(user_id), "profile": profile},
@@ -523,9 +527,8 @@ async def _get_running_bots_from_runtime(user_id: int) -> list:
                 )
                 if resp.status_code == 200:
                     containers.extend(resp.json())
-    except httpx.RequestError as e:
-        logger.error(f"Runtime API list failed for user {user_id}: {e}")
-        return []
+            except httpx.RequestError as e:
+                logger.warning(f"Runtime API list failed for {backend_url} (user {user_id}): {e}")
 
     # Parse container info and collect meeting IDs to fetch
     parsed_containers = []
