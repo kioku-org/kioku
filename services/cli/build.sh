@@ -17,12 +17,14 @@ shift
 TARGET="x86_64-unknown-linux-gnu"
 REPO="kioku-org/kioku"
 
-# Guard: released binary should match the workspace version
+# Sync the workspace version to the tag so the binary self-reports it —
+# every crate inherits [workspace.package] version from this Cargo.toml.
+BARE="${VERSION#v}"
 CARGO_VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
-case "$VERSION" in
-  "v$CARGO_VERSION"|"v$CARGO_VERSION"-*) ;;
-  *) echo "warning: $VERSION does not match Cargo.toml version $CARGO_VERSION" >&2 ;;
-esac
+if [ "$BARE" != "$CARGO_VERSION" ]; then
+  sed -i "0,/^version = \"$CARGO_VERSION\"/s//version = \"$BARE\"/" Cargo.toml
+  echo "synced Cargo.toml version: $CARGO_VERSION -> $BARE (remember to commit the bump)"
+fi
 
 cargo build --release -p kioku-cli
 
@@ -41,8 +43,8 @@ NOTES_ARGS=("$@")
 # --prerelease so install.sh's releases/latest never resolves to it.
 if [[ "$VERSION" == *-* ]]; then
   gh release create "cli/$VERSION" "$TARBALL" \
-    --repo "$REPO" --title "kioku CLI $VERSION" --prerelease "${NOTES_ARGS[@]}"
+    --repo "$REPO" --title "kioku $VERSION" --prerelease "${NOTES_ARGS[@]}"
 else
   gh release create "$VERSION" "$TARBALL" \
-    --repo "$REPO" --title "kioku CLI $VERSION" "${NOTES_ARGS[@]}"
+    --repo "$REPO" --title "kioku $VERSION" "${NOTES_ARGS[@]}"
 fi
