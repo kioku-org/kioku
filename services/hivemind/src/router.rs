@@ -50,6 +50,7 @@ pub fn build(state: AppState) -> Router {
             "/workspaces/:workspace_id/invites",
             post(workspace::create_invite),
         )
+        .route("/workspaces/:workspace_id/join", post(workspace::join))
         // Workspace API Keys (CLI auth)
         .route(
             "/workspace/auth-keys",

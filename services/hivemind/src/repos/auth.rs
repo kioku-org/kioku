@@ -23,6 +23,16 @@ impl AuthRepo {
         .map_err(AppError::from)
     }
 
+    pub async fn find_user_by_id(&self, user_id: Uuid) -> Result<Option<UserRecord>, AppError> {
+        sqlx::query_as::<_, UserRecord>(
+            r#"SELECT id, email, name, password_hash FROM users WHERE id = $1"#,
+        )
+        .bind(user_id)
+        .fetch_optional(&self.db)
+        .await
+        .map_err(AppError::from)
+    }
+
     pub async fn find_workspace_by_slug(
         &self,
         slug: &str,

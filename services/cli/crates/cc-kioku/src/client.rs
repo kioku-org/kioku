@@ -576,6 +576,20 @@ impl KiokuClient {
             .context("create workspace invite failed")?;
         Self::parse(resp, "invalid invite response").await
     }
+
+    /// Accept a pending invite to a workspace (by id or slug) as an existing
+    /// user. Returns a fresh token whose memberships include the workspace.
+    pub async fn join_workspace(&self, workspace_id_or_slug: &str) -> Result<WorkspaceCreateResponse> {
+        let resp = self
+            .authed(
+                self.client
+                    .post(self.url(&format!("/workspaces/{}/join", workspace_id_or_slug))),
+            )
+            .send()
+            .await
+            .context("join workspace failed")?;
+        Self::parse(resp, "invalid workspace response").await
+    }
 }
 
 #[cfg(test)]

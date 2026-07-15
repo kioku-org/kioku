@@ -149,6 +149,13 @@ pub enum Commands {
             help = "Invite an email into the workspace given by NAME"
         )]
         invite: Option<String>,
+        #[arg(
+            long,
+            value_name = "NAME",
+            conflicts_with_all = ["name", "create", "invite"],
+            help = "Accept a pending invite: join the workspace given by NAME and switch to it"
+        )]
+        join: Option<String>,
     },
 
     // ── Teammates (Pro/Teams tier) ───────────────────────────────────────────

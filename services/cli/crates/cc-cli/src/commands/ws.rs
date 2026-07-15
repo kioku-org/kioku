@@ -7,9 +7,29 @@ pub async fn run(
     name: Option<String>,
     create: Option<String>,
     invite: Option<String>,
+    join: Option<String>,
 ) -> Result<()> {
     let auth = require_auth()?;
     let client = make_client(&auth);
+
+    if let Some(target) = join {
+        let result = client.join_workspace(&target).await?;
+        let mut updated = auth;
+        updated.token = result.token;
+        updated.workspace_id = result.workspace.id.clone();
+        updated.role = result.workspace.role.clone();
+        updated.active_workspace_id = Some(result.workspace.id.clone());
+        updated.save()?;
+        if ctx.json {
+            println!("{}", serde_json::to_string_pretty(&result.workspace)?);
+        } else {
+            println!(
+                "Joined workspace `{}` and switched to it.",
+                result.workspace.name
+            );
+        }
+        return Ok(());
+    }
 
     if let Some(workspace_name) = create {
         let result = client.create_workspace(&workspace_name, None).await?;
@@ -39,7 +59,10 @@ pub async fn run(
         if ctx.json {
             println!("{}", serde_json::to_string_pretty(&inv)?);
         } else {
-            println!("Invited {} to workspace `{}`.", inv.email, target);
+            println!(
+                "Invited {} to workspace `{}` — existing accounts join with `kioku ws --join {}`; new users sign up first.",
+                inv.email, target, target
+            );
         }
         return Ok(());
     }

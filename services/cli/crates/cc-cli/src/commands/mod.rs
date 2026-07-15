@@ -76,7 +76,8 @@ pub async fn run(cli: Cli) -> Result<()> {
             name,
             create,
             invite,
-        }) => ws::run(ctx, name, create, invite).await,
+            join,
+        }) => ws::run(ctx, name, create, invite, join).await,
 
         Some(Commands::Invite { email, revoke }) => invite::run(ctx, email, revoke).await,
 
