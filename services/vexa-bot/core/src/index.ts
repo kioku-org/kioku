@@ -1583,11 +1583,25 @@ let lastParticipantCount = 0;
 /** Per-speaker last audio received timestamp (Node.js side) — for silence monitoring */
 const speakerLastAudioMs: Map<string, number> = new Map();
 
-/** Check if a name is already assigned to a different speaker in the SpeakerStreamManager. */
+/** A name-holding track with no audio for this long has left / been reassigned
+ * and releases its claim on the name (matches the pipeline's idle finalize). */
+const SPEAKER_NAME_HOLD_MS = 15_000;
+
+/** Check if a name is already assigned to a different, still-active speaker.
+ * Stale holders must release the name: buffers of departed tracks are never
+ * removed, so without the idle check a rejoining participant could never
+ * reclaim their own name and transcribed as "" for the rest of the meeting. */
 function isDuplicateSpeakerName(name: string, excludeSpeakerId: string): boolean {
   if (!speakerManager) return false;
+  const now = Date.now();
   for (const sid of speakerManager.getActiveSpeakers()) {
-    if (sid !== excludeSpeakerId && speakerManager.getSpeakerName(sid) === name) return true;
+    if (sid === excludeSpeakerId || speakerManager.getSpeakerName(sid) !== name) continue;
+    const lastAudio = speakerLastAudioMs.get(sid);
+    if (lastAudio !== undefined && now - lastAudio > SPEAKER_NAME_HOLD_MS) {
+      log(`[SpeakerIdentity] "${name}" held by idle track ${sid} (${Math.round((now - lastAudio) / 1000)}s silent) — releasing claim`);
+      continue;
+    }
+    return true;
   }
   return false;
 }
@@ -1645,7 +1659,7 @@ async function handlePerSpeakerAudioData(speakerIndex: number, audioDataArray: n
       const lockedName = getLockedMapping(speakerIndex);
       if (lockedName && lockedName !== currentName) {
         log(`[🔒 LOCK SYNC] Track ${speakerIndex}: "${currentName}" → "${lockedName}" (syncing locked name to buffer)`);
-        speakerManager.updateSpeakerName(speakerId, lockedName);
+        await speakerManager.renameSpeaker(speakerId, lockedName);
         if (!currentName) {
           await segmentPublisher.publishSpeakerEvent({
             speaker: lockedName,
@@ -1695,9 +1709,13 @@ async function handlePerSpeakerAudioData(speakerIndex: number, audioDataArray: n
       lastReResolveTime.set(speakerId, Date.now());
 
       const newName = await resolveSpeakerName(page, speakerIndex, platformKey, currentBotConfig?.botName);
+      if (newName && newName !== currentName && isDuplicateSpeakerName(newName, speakerId)) {
+        // Was a silent skip — made the ""-named-track failure undebuggable.
+        log(`[SpeakerIdentity] Track ${speakerIndex}: resolved "${newName}" but an active track holds it — keeping "${currentName}"`);
+      }
       if (newName && newName !== currentName && !isDuplicateSpeakerName(newName, speakerId)) {
         log(`[🔄 SPEAKER MAPPED] Track ${speakerIndex}: "${currentName}" → "${newName}"`);
-        speakerManager.updateSpeakerName(speakerId, newName);
+        await speakerManager.renameSpeaker(speakerId, newName);
         await segmentPublisher.publishSpeakerEvent({
           speaker: newName,
           type: 'joined',

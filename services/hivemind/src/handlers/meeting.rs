@@ -17,7 +17,15 @@ pub async fn ingest(
 ) -> Result<Json<MeetingOut>, AppError> {
     let repo = MeetingRepo::new(state.db.clone());
     let now = crate::util::now_ms();
-    let meeting_out = repo.create(auth.workspace_id, req.clone(), now).await?;
+    let (meeting_out, created) = repo.create(auth.workspace_id, req.clone(), now).await?;
+
+    // Duplicate ingest (post-meeting tasks re-fired) — the meeting is already
+    // in the knowledge base; re-embedding would double its chunks in search.
+    if !created {
+        tracing::info!(meeting_id = %meeting_out.id, vexa_meeting_id = ?meeting_out.vexa_meeting_id,
+            "Duplicate ingest — returning existing meeting, skipping re-embed");
+        return Ok(Json(meeting_out));
+    }
 
     // Embed transcript in the background so the HTTP response returns immediately
     let docs = KnowledgeService::chunk_transcript(&req.transcript, meeting_out.id, req.date);

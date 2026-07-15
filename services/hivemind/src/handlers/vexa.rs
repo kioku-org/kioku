@@ -103,7 +103,10 @@ async fn provision_vexa_token(
             state.settings.vexa_admin_api_url, vexa_user_id
         ))
         .header("X-Admin-API-Key", &state.settings.vexa_admin_token)
-        .query(&[("scope", "bot"), ("name", "hivemind-cli")])
+        // bot: manage bots (/bots); tx: read transcripts + meetings
+        // (/transcripts, /meetings) — the CLI's --follow and transcript
+        // fetches go through this key, so it needs both.
+        .query(&[("scopes", "bot,tx"), ("name", "hivemind-cli")])
         .send()
         .await
         .map_err(|e| AppError::Internal(e.into()))?;
