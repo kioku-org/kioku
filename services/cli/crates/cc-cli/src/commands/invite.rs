@@ -18,9 +18,18 @@ pub async fn run(ctx: AppContext, email: Option<String>, revoke: Option<String>)
             println!("{}", serde_json::to_string_pretty(&invite)?);
             return Ok(());
         }
+        // Best-effort slug lookup so the message names the workspace the
+        // invitee has to type; falls back to a generic hint.
+        let active_id = auth.active_workspace_id.as_deref().unwrap_or(&auth.workspace_id);
+        let slug = client
+            .list_workspaces()
+            .await
+            .ok()
+            .and_then(|ws| ws.into_iter().find(|w| w.id == active_id).map(|w| w.slug))
+            .unwrap_or_else(|| "<workspace>".to_string());
         println!(
-            "Invited {} — they can now sign up to join your workspace.",
-            invite.email
+            "Invited {} — existing accounts join with `kioku ws --join {}`; new users sign up to workspace `{}`.",
+            invite.email, slug, slug
         );
         return Ok(());
     }

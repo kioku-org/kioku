@@ -136,6 +136,83 @@ pub async fn create_invite(
     Ok(Json(invite))
 }
 
+/// Accept a pending invite as an already-registered user — the sibling of
+/// `auth::register_member`, which only serves brand-new emails. Consumes the
+/// invite matching the caller's email and returns a fresh token whose
+/// `memberships` includes the joined workspace.
+pub async fn join(
+    State(state): State<AppState>,
+    auth_ctx: AuthContext,
+    Path(workspace_id_or_slug): Path<String>,
+) -> Result<Json<WorkspaceCreateResponse>, AppError> {
+    let repo = AuthRepo::new(state.db.clone());
+    let workspace = resolve_workspace(&repo, &workspace_id_or_slug).await?;
+
+    if auth_ctx
+        .memberships
+        .iter()
+        .any(|m| m.workspace_id == workspace.id)
+    {
+        return Err(AppError::BadRequest(
+            "Already a member of this workspace".into(),
+        ));
+    }
+
+    let user = repo
+        .find_user_by_id(auth_ctx.user_id)
+        .await?
+        .ok_or_else(|| AppError::Unauthorized("User not found".into()))?;
+
+    let invite = repo
+        .find_invite(&user.email, workspace.id)
+        .await?
+        .ok_or_else(|| AppError::BadRequest("No invitation found".into()))?;
+
+    // Same defense in depth as auth::register_member: the tier may have
+    // changed after the invite was issued.
+    if workspace.is_free_tier() && repo.count_workspace_members(workspace.id).await? >= 1 {
+        return Err(AppError::Forbidden(
+            "Free tier is limited to 1 person — upgrade to Pro to add teammates".into(),
+        ));
+    }
+
+    let now = crate::util::now_ms();
+    repo.create_membership(Uuid::new_v4(), workspace.id, auth_ctx.user_id, &invite.role, now)
+        .await?;
+    repo.mark_invite_used(invite.id, now).await?;
+
+    let mut memberships: Vec<MembershipRecord> = auth_ctx
+        .memberships
+        .iter()
+        .map(|m| MembershipRecord {
+            workspace_id: m.workspace_id,
+            role: m.role.clone(),
+        })
+        .collect();
+    memberships.push(MembershipRecord {
+        workspace_id: workspace.id,
+        role: invite.role.clone(),
+    });
+
+    let token = auth::create_token(
+        &state.settings.jwt_secret,
+        auth_ctx.user_id,
+        workspace.id,
+        &invite.role,
+        &memberships,
+        state.settings.jwt_ttl_seconds,
+    )?;
+    let expires_at = now + (state.settings.jwt_ttl_seconds * 1000);
+    repo.create_auth_token(&token, auth_ctx.user_id, workspace.id, now, expires_at)
+        .await?;
+
+    let role = invite.role;
+    Ok(Json(WorkspaceCreateResponse {
+        workspace: to_workspace_out(workspace, role),
+        token,
+    }))
+}
+
 async fn resolve_workspace(repo: &AuthRepo, id_or_slug: &str) -> Result<WorkspaceRecord, AppError> {
     if let Ok(id) = Uuid::parse_str(id_or_slug) {
         return repo.find_workspace_by_id(id).await;
