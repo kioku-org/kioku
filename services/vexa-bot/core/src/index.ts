@@ -1645,7 +1645,7 @@ async function handlePerSpeakerAudioData(speakerIndex: number, audioDataArray: n
       const lockedName = getLockedMapping(speakerIndex);
       if (lockedName && lockedName !== currentName) {
         log(`[🔒 LOCK SYNC] Track ${speakerIndex}: "${currentName}" → "${lockedName}" (syncing locked name to buffer)`);
-        speakerManager.updateSpeakerName(speakerId, lockedName);
+        await speakerManager.renameSpeaker(speakerId, lockedName);
         if (!currentName) {
           await segmentPublisher.publishSpeakerEvent({
             speaker: lockedName,
@@ -1697,7 +1697,7 @@ async function handlePerSpeakerAudioData(speakerIndex: number, audioDataArray: n
       const newName = await resolveSpeakerName(page, speakerIndex, platformKey, currentBotConfig?.botName);
       if (newName && newName !== currentName && !isDuplicateSpeakerName(newName, speakerId)) {
         log(`[🔄 SPEAKER MAPPED] Track ${speakerIndex}: "${currentName}" → "${newName}"`);
-        speakerManager.updateSpeakerName(speakerId, newName);
+        await speakerManager.renameSpeaker(speakerId, newName);
         await segmentPublisher.publishSpeakerEvent({
           speaker: newName,
           type: 'joined',

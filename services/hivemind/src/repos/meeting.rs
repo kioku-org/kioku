@@ -13,12 +13,17 @@ impl MeetingRepo {
         Self { db }
     }
 
+    /// Insert a meeting, idempotently for vexa-linked ones: post-meeting
+    /// ingestion in meeting-api can fire more than once per meeting, so a
+    /// second ingest with the same (workspace, vexa_meeting_id) returns the
+    /// existing row with `created == false` instead of inserting a duplicate.
+    /// Backed by the partial unique index from migration 010.
     pub async fn create(
         &self,
         workspace_id: Uuid,
         req: crate::types::MeetingIngestRequest,
         now: i64,
-    ) -> Result<MeetingOut, AppError> {
+    ) -> Result<(MeetingOut, bool), AppError> {
         let id = Uuid::new_v4();
         let participants_json =
             serde_json::to_value(&req.participants).map_err(|e| AppError::Internal(e.into()))?;
@@ -26,11 +31,12 @@ impl MeetingRepo {
         let vexa_platform = req.vexa_platform.clone();
         let vexa_native_meeting_id = req.vexa_native_meeting_id.clone();
 
-        sqlx::query(
+        let inserted = sqlx::query(
             r#"
             INSERT INTO meetings (id, workspace_id, title, date, duration_seconds, participants, summary, created_at,
                                   vexa_meeting_id, vexa_platform, vexa_native_meeting_id)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            ON CONFLICT (workspace_id, vexa_meeting_id) WHERE vexa_meeting_id IS NOT NULL DO NOTHING
             "#,
         )
         .bind(id)
@@ -46,21 +52,39 @@ impl MeetingRepo {
         .bind(&vexa_native_meeting_id)
         .execute(&self.db)
         .await
-        .map_err(AppError::from)?;
+        .map_err(AppError::from)?
+        .rows_affected();
 
-        Ok(MeetingOut {
-            id,
-            workspace_id,
-            title: req.title,
-            date: req.date,
-            duration_seconds: req.duration_seconds,
-            participants: participants_json,
-            summary: None,
-            created_at: now,
-            vexa_meeting_id,
-            vexa_platform,
-            vexa_native_meeting_id,
-        })
+        if inserted == 0 {
+            let existing = sqlx::query(
+                r#"SELECT id, workspace_id, title, date, duration_seconds, participants, summary, created_at,
+                          vexa_meeting_id, vexa_platform, vexa_native_meeting_id
+                   FROM meetings WHERE workspace_id = $1 AND vexa_meeting_id = $2"#,
+            )
+            .bind(workspace_id)
+            .bind(vexa_meeting_id)
+            .fetch_one(&self.db)
+            .await
+            .map_err(AppError::from)?;
+            return Ok((row_to_meeting_out(existing), false));
+        }
+
+        Ok((
+            MeetingOut {
+                id,
+                workspace_id,
+                title: req.title,
+                date: req.date,
+                duration_seconds: req.duration_seconds,
+                participants: participants_json,
+                summary: None,
+                created_at: now,
+                vexa_meeting_id,
+                vexa_platform,
+                vexa_native_meeting_id,
+            },
+            true,
+        ))
     }
 
     pub async fn list(&self, workspace_id: Uuid) -> Result<Vec<MeetingOut>, AppError> {

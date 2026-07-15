@@ -376,6 +376,25 @@ export class SpeakerStreamManager {
     return true;
   }
 
+  /**
+   * Rename after a track re-resolution. updateSpeakerName is RETROACTIVE — it
+   * renames audio already buffered, which is correct only for unknown→name
+   * upgrades. But Meet reassigns audio tracks on join/leave: buffered audio may
+   * belong to the track's PREVIOUS occupant, and renaming it in place swaps
+   * speakers on the live transcript (worse the longer transcription latency
+   * holds windows in flight). This finalizes owned audio under the old name
+   * first, so only audio arriving after the rename gets the new one.
+   */
+  async renameSpeaker(speakerId: string, newName: string): Promise<boolean> {
+    const buffer = this.buffers.get(speakerId);
+    if (!buffer || buffer.speakerName === newName) return false;
+    if (buffer.speakerName && this.unconfirmedSamples(buffer) > 0) {
+      log(`[SpeakerStreams] Flushing "${buffer.speakerName}" before rename to "${newName}" (${speakerId})`);
+      await this.flushSpeaker(speakerId, true);
+    }
+    return this.updateSpeakerName(speakerId, newName);
+  }
+
   getSpeakerName(speakerId: string): string | undefined {
     return this.buffers.get(speakerId)?.speakerName;
   }
