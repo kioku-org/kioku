@@ -151,6 +151,7 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - CHIRP_MODEL=${CHIRP_MODEL:-google/chirp-3}
       - CHIRP_TARGET_RMS=${CHIRP_TARGET_RMS:-0.1}
+      - CHIRP_LANGUAGE_LABEL=${CHIRP_LANGUAGE_LABEL:-en}
     volumes:
       - whisper-models:/app/models
     networks:

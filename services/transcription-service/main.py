@@ -42,6 +42,11 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
 CHIRP_MODEL = os.getenv("CHIRP_MODEL", "google/chirp-3")
 CHIRP_TARGET_RMS = float(os.getenv("CHIRP_TARGET_RMS", "0.1"))
+# Label-only: chirp auto-detects the spoken language but OpenRouter neither
+# echoes the detection nor honors the language request param, so segments are
+# labeled with this code when the caller doesn't pin one. Must be a
+# whisper-valid code — meeting-api rejects anything else.
+CHIRP_LANGUAGE_LABEL = os.getenv("CHIRP_LANGUAGE_LABEL", "en").strip() or "en"
 
 # Debug: dump every request's decoded audio + result to this dir (wav + log.jsonl).
 DEBUG_DUMP_AUDIO_DIR = os.getenv("DEBUG_DUMP_AUDIO_DIR", "").strip()
@@ -229,8 +234,8 @@ def _transcribe_chirp(
         "text": text,
         # Chirp auto-detects but OpenRouter doesn't echo the language back, and
         # "unknown" is rejected by meeting-api's TranscriptionSegment validation
-        # (drops every segment from the transcript feed) — default to a valid code.
-        "language": language or "en",
+        # (drops every segment from the transcript feed) — label with a valid code.
+        "language": language or CHIRP_LANGUAGE_LABEL,
         "language_probability": 0.0,
         "duration": duration,
         "segments": segments,
