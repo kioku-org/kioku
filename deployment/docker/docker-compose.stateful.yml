@@ -145,15 +145,11 @@ services:
       - MODEL_SIZE=${BOT_WHISPER_MODEL:-large-v3-turbo}
       - DEVICE=cuda
       - COMPUTE_TYPE=${BOT_WHISPER_COMPUTE_TYPE:-int8_float32}
-      # STT_BACKEND=chirp routes transcription to Google Chirp 3 (Cloud Speech
-      # v2); no local model / GPU is used in that mode. Mount a service-account
-      # JSON and point GOOGLE_APPLICATION_CREDENTIALS at it (compose override).
+      # STT_BACKEND=chirp routes transcription to Google Chirp 3 via OpenRouter
+      # (needs OPENROUTER_API_KEY); no local model / GPU is used in that mode.
       - STT_BACKEND=${STT_BACKEND:-whisper}
-      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-}
-      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
-      - CHIRP_REGION=${CHIRP_REGION:-us}
-      - CHIRP_LANGUAGES=${CHIRP_LANGUAGES:-auto}
-      - CHIRP_TARGET_RMS=${CHIRP_TARGET_RMS:-0.1}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - CHIRP_MODEL=${CHIRP_MODEL:-google/chirp-3}
     volumes:
       - whisper-models:/app/models
     networks:
