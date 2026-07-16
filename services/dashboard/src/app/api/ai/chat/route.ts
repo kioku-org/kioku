@@ -207,10 +207,33 @@ export async function POST(request: Request) {
 
     const result = streamText({
       model,
-      system: systemPrompt,
-      messages: modelMessages,
+      // The system message below is server-built (never user input); this
+      // suppresses the SDK's prompt-injection warning for system-in-messages.
+      allowSystemInMessages: true,
+      messages: [
+        {
+          role: "system" as const,
+          content: systemPrompt,
+          // Anthropic prompt caching: the transcript context is resent on
+          // every turn; caching the system block serves it at ~0.1x input
+          // price on subsequent turns (5-minute TTL). Non-Anthropic
+          // providers ignore the anthropic providerOptions namespace.
+          providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+        },
+        ...modelMessages,
+      ],
       onError({ error }) {
         console.error("AI streaming error:", error);
+      },
+      onFinish({ providerMetadata }) {
+        const a = providerMetadata?.anthropic as
+          | { cacheReadInputTokens?: number; cacheCreationInputTokens?: number }
+          | undefined;
+        if (a) {
+          console.log(
+            `[ai/chat] prompt cache: read=${a.cacheReadInputTokens ?? 0} write=${a.cacheCreationInputTokens ?? 0}`,
+          );
+        }
       },
     });
 
