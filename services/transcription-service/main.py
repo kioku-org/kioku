@@ -41,6 +41,7 @@ STT_BACKEND = os.getenv("STT_BACKEND", "whisper").strip().lower()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
 CHIRP_MODEL = os.getenv("CHIRP_MODEL", "google/chirp-3")
+CHIRP_TARGET_RMS = float(os.getenv("CHIRP_TARGET_RMS", "0.1"))
 
 # Debug: dump every request's decoded audio + result to this dir (wav + log.jsonl).
 DEBUG_DUMP_AUDIO_DIR = os.getenv("DEBUG_DUMP_AUDIO_DIR", "").strip()
@@ -161,6 +162,15 @@ def _transcribe_chirp(
     confidence fields through and confirms on window stability instead of
     per-segment timestamps.
     """
+    # Chirp's front-end discards quiet audio that whisper handles fine (Meet
+    # capture sits around RMS 0.01): normalize to RMS 0.1 before sending.
+    # Calibrated on captured live-meeting windows — RMS 0.05 still
+    # under-transcribes. ponytail: hard clip after gain; a limiter is
+    # overkill for ASR input.
+    rms = float(np.sqrt(np.mean(audio_array ** 2))) if audio_array.size else 0.0
+    if 0.001 < rms < CHIRP_TARGET_RMS:
+        audio_array = np.clip(audio_array * (CHIRP_TARGET_RMS / rms), -1.0, 1.0)
+
     wav = io.BytesIO()
     sf.write(wav, audio_array, sample_rate, format="WAV", subtype="PCM_16")
     boundary = f"----chirp{int(time.time() * 1000):x}"

@@ -50,6 +50,29 @@ def test_chirp_returns_whisper_shape():
     assert b"RIFF" in req.data  # the WAV made it into the body
 
 
+def test_chirp_normalizes_quiet_audio():
+    import io as _io
+    import soundfile as _sf
+
+    t = np.arange(16000, dtype=np.float32) / 16000.0
+    audio = (0.01 * np.sin(2 * np.pi * 220 * t)).astype(np.float32)  # rms ~0.007
+    reply = {"text": "ok", "usage": {"seconds": 1, "cost": 0.0}}
+    with patch.object(main.urllib.request, "urlopen", return_value=_FakeResp(reply)) as mock_open:
+        main._transcribe_chirp(audio, 16000, None, None)
+    body = mock_open.call_args[0][0].data
+    wav = body[body.index(b"RIFF"):]
+    sent, _ = _sf.read(_io.BytesIO(wav), dtype="float32")
+    rms = float(np.sqrt((sent ** 2).mean()))
+    assert 0.08 < rms < 0.12  # boosted to CHIRP_TARGET_RMS, not left at 0.007
+
+    loud = (0.5 * np.sin(2 * np.pi * 220 * t)).astype(np.float32)  # already loud
+    with patch.object(main.urllib.request, "urlopen", return_value=_FakeResp(reply)) as mock_open:
+        main._transcribe_chirp(loud, 16000, None, None)
+    body = mock_open.call_args[0][0].data
+    sent, _ = _sf.read(_io.BytesIO(body[body.index(b"RIFF"):]), dtype="float32")
+    assert float(np.abs(sent).max()) > 0.4  # untouched
+
+
 def test_chirp_empty_reply_is_silence():
     audio = np.zeros(1600, dtype=np.float32)
     reply = {"text": "", "usage": {"seconds": 0, "cost": 0.0}}
