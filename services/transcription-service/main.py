@@ -42,6 +42,25 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
 CHIRP_MODEL = os.getenv("CHIRP_MODEL", "google/chirp-3")
 
+# Debug: dump every request's decoded audio + result to this dir (wav + log.jsonl).
+DEBUG_DUMP_AUDIO_DIR = os.getenv("DEBUG_DUMP_AUDIO_DIR", "").strip()
+
+def _debug_dump(audio_array: "np.ndarray", sample_rate: int, language: Optional[str],
+                prompt: Optional[str], response: Dict[str, Any]) -> None:
+    if not DEBUG_DUMP_AUDIO_DIR:
+        return
+    try:
+        os.makedirs(DEBUG_DUMP_AUDIO_DIR, exist_ok=True)
+        stamp = str(int(time.time() * 1000))
+        sf.write(os.path.join(DEBUG_DUMP_AUDIO_DIR, f"{stamp}.wav"), audio_array, sample_rate, subtype="PCM_16")
+        with open(os.path.join(DEBUG_DUMP_AUDIO_DIR, "log.jsonl"), "a") as fh:
+            fh.write(json.dumps({
+                "ts": stamp, "duration": response.get("duration"),
+                "language": language, "prompt": prompt, "text": response.get("text"),
+            }) + "\n")
+    except Exception as e:
+        logger.warning(f"debug audio dump failed: {e}")
+
 # Device detection: Use environment variable or default to cuda for GPU containers
 # CTranslate2 (used by faster-whisper) will automatically detect and use CUDA if available
 DEVICE = os.getenv("DEVICE", "cuda")
@@ -510,6 +529,7 @@ async def transcribe_audio(
                 f"Worker {WORKER_ID} chirp completed in {time.time() - start_time:.2f}s - "
                 f"Duration: {response['duration']:.2f}s, chars: {len(response['text'])}"
             )
+            _debug_dump(audio_array, sample_rate, language, prompt, response)
             return response
 
         # Transcribe (with optional temperature fallback)
