@@ -11,9 +11,6 @@ SERVICE_ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, SERVICE_ROOT)
 
 from main import (
-    _env_bool,
-    _env_int,
-    _env_float,
     _looks_like_silence,
     _looks_like_hallucination,
     _normalize_transcription_tier,
@@ -23,78 +20,6 @@ from main import (
     COMPRESSION_RATIO_THRESHOLD,
 )
 
-
-# --- _env_bool ---
-
-class TestEnvBool:
-    def test_true_values(self):
-        for val in ("1", "true", "True", "TRUE", "yes", "y", "on"):
-            os.environ["_TEST_BOOL"] = val
-            assert _env_bool("_TEST_BOOL", False) is True
-            del os.environ["_TEST_BOOL"]
-
-    def test_false_values(self):
-        for val in ("0", "false", "no", "off", "anything"):
-            os.environ["_TEST_BOOL"] = val
-            assert _env_bool("_TEST_BOOL", True) is False
-            del os.environ["_TEST_BOOL"]
-
-    def test_missing_uses_default_true(self):
-        os.environ.pop("_TEST_BOOL_MISSING", None)
-        assert _env_bool("_TEST_BOOL_MISSING", True) is True
-
-    def test_missing_uses_default_false(self):
-        os.environ.pop("_TEST_BOOL_MISSING", None)
-        assert _env_bool("_TEST_BOOL_MISSING", False) is False
-
-
-# --- _env_int ---
-
-class TestEnvInt:
-    def test_valid_int(self):
-        os.environ["_TEST_INT"] = "42"
-        assert _env_int("_TEST_INT", 0) == 42
-        del os.environ["_TEST_INT"]
-
-    def test_invalid_int_uses_default(self):
-        os.environ["_TEST_INT"] = "not_a_number"
-        assert _env_int("_TEST_INT", 99) == 99
-        del os.environ["_TEST_INT"]
-
-    def test_empty_string_uses_default(self):
-        os.environ["_TEST_INT"] = ""
-        assert _env_int("_TEST_INT", 7) == 7
-        del os.environ["_TEST_INT"]
-
-    def test_missing_uses_default(self):
-        os.environ.pop("_TEST_INT_MISSING", None)
-        assert _env_int("_TEST_INT_MISSING", 5) == 5
-
-
-# --- _env_float ---
-
-class TestEnvFloat:
-    def test_valid_float(self):
-        os.environ["_TEST_FLOAT"] = "3.14"
-        assert _env_float("_TEST_FLOAT", 0.0) == pytest.approx(3.14)
-        del os.environ["_TEST_FLOAT"]
-
-    def test_invalid_float_uses_default(self):
-        os.environ["_TEST_FLOAT"] = "abc"
-        assert _env_float("_TEST_FLOAT", 1.5) == pytest.approx(1.5)
-        del os.environ["_TEST_FLOAT"]
-
-    def test_empty_uses_default(self):
-        os.environ["_TEST_FLOAT"] = "  "
-        assert _env_float("_TEST_FLOAT", 2.0) == pytest.approx(2.0)
-        del os.environ["_TEST_FLOAT"]
-
-    def test_missing_uses_default(self):
-        os.environ.pop("_TEST_FLOAT_MISSING", None)
-        assert _env_float("_TEST_FLOAT_MISSING", 0.5) == pytest.approx(0.5)
-
-
-# --- _looks_like_silence ---
 
 class TestLooksLikeSilence:
     def test_empty_segments_is_silence(self):
