@@ -1,16 +1,18 @@
 """Chirp 3 STT via OpenRouter — cloud backend for /v1/audio/transcriptions.
 
-The whole integration is one JSON call: base64 WAV in, {"text": ...} out.
+The whole integration is one JSON call: base64 FLAC in, {"text": ...} out.
 OpenRouter limits (probed live 2026-07-16): response_format=json only — no
 timestamps and no confidence fields — and the `language` request param is
 ignored (chirp auto-detects internally but the detection isn't echoed back).
-The result therefore maps to ONE whole-window segment, labeled with
-CHIRP_LANGUAGE_LABEL when the caller doesn't pin a language.
+The plain text is split into sentence-shaped segments with pro-rated
+timestamps (see _segments), labeled with CHIRP_LANGUAGE_LABEL when the
+caller doesn't pin a language.
 """
 import base64
 import io
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional
@@ -31,6 +33,38 @@ TARGET_RMS = float(os.getenv("CHIRP_TARGET_RMS", "0.1"))
 LANGUAGE_LABEL = os.getenv("CHIRP_LANGUAGE_LABEL", "en").strip() or "en"
 
 
+def _segments(text: str, duration: float) -> List[Dict[str, Any]]:
+    """Sentence-shaped segments with timestamps pro-rated by character share.
+
+    Chirp returns no timestamps, and without per-segment ends the confirm
+    loop can't advance mid-turn: windows grow unboundedly and text only
+    confirms at turn close (12–28s latency measured live). Splitting the
+    text lets LocalAgreement confirm stable leading segments continuously.
+    Pro-rated boundaries are approximate — the confirm loop's stability
+    requirement and the collector's dedup absorb the seam error.
+    """
+    pieces = [p.strip() for p in re.findall(r"[^.!?…]+[.!?…]*", text) if p.strip()]
+    # Long unpunctuated runs (counting, dictation) also need confirmable
+    # leading segments: cap every piece at 12 words (~4s of speech).
+    split: List[str] = []
+    for p in pieces:
+        words = p.split()
+        for i in range(0, len(words), 12):
+            split.append(" ".join(words[i:i + 12]))
+    total = sum(len(p) for p in split) or 1
+    segs: List[Dict[str, Any]] = []
+    t = 0.0
+    for i, p in enumerate(split):
+        end = duration if i == len(split) - 1 else t + duration * len(p) / total
+        segs.append({
+            "id": i, "seek": 0, "start": round(t, 3), "end": round(end, 3),
+            "text": p, "tokens": [], "temperature": 0.0,
+            "audio_start": round(t, 3), "audio_end": round(end, 3),
+        })
+        t = end
+    return segs
+
+
 def transcribe(audio: np.ndarray, sample_rate: int, language: Optional[str] = None) -> Dict[str, Any]:
     """One OpenRouter round-trip. Returns the Whisper-shaped response dict."""
     rms = float(np.sqrt(np.mean(audio ** 2))) if audio.size else 0.0
@@ -38,13 +72,13 @@ def transcribe(audio: np.ndarray, sample_rate: int, language: Optional[str] = No
         # ponytail: hard clip after gain; a limiter is overkill for ASR input.
         audio = np.clip(audio * (TARGET_RMS / rms), -1.0, 1.0)
 
-    wav = io.BytesIO()
-    sf.write(wav, audio, sample_rate, format="WAV", subtype="PCM_16")
+    buf = io.BytesIO()
+    sf.write(buf, audio, sample_rate, format="FLAC", subtype="PCM_16")
     payload = json.dumps({
         "model": MODEL,
         "input_audio": {
-            "data": base64.b64encode(wav.getvalue()).decode("ascii"),
-            "format": "wav",
+            "data": base64.b64encode(buf.getvalue()).decode("ascii"),
+            "format": "flac",
         },
     }).encode("utf-8")
     req = urllib.request.Request(URL, data=payload, headers={
@@ -63,11 +97,7 @@ def transcribe(audio: np.ndarray, sample_rate: int, language: Optional[str] = No
 
     text = (data.get("text") or "").strip()
     duration = len(audio) / float(sample_rate) if sample_rate else 0.0
-    segments: List[Dict[str, Any]] = [{
-        "id": 0, "seek": 0, "start": 0.0, "end": duration,
-        "text": text, "tokens": [], "temperature": 0.0,
-        "audio_start": 0.0, "audio_end": duration,
-    }] if text else []
+    segments = _segments(text, duration) if text else []
     return {
         "text": text,
         "language": language or LANGUAGE_LABEL,

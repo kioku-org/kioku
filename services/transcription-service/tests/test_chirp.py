@@ -32,13 +32,13 @@ class _FakeResp:
         return False
 
 
-def _sent_wav(mock_open) -> np.ndarray:
-    """Decode the WAV that transcribe() base64'd into the request body."""
+def _sent_audio(mock_open) -> np.ndarray:
+    """Decode the FLAC that transcribe() base64'd into the request body."""
     req = mock_open.call_args[0][0]
     body = json.loads(req.data)
-    assert body["input_audio"]["format"] == "wav"
-    wav = base64.b64decode(body["input_audio"]["data"])
-    audio, _ = sf.read(io.BytesIO(wav), dtype="float32")
+    assert body["input_audio"]["format"] == "flac"
+    flac = base64.b64decode(body["input_audio"]["data"])
+    audio, _ = sf.read(io.BytesIO(flac), dtype="float32")
     return audio
 
 
@@ -54,6 +54,33 @@ def test_returns_whisper_shape():
     assert out["segments"][0]["end"] == 1.0
     req = mock_open.call_args[0][0]
     assert json.loads(req.data)["model"] == chirp.MODEL
+
+
+def test_sentences_get_prorated_timestamps():
+    audio = np.zeros(16000 * 10, dtype=np.float32)  # 10s
+    reply = {"text": "First sentence here. Second one! And a third?", "usage": {}}
+    with patch.object(chirp.urllib.request, "urlopen", return_value=_FakeResp(reply)):
+        out = chirp.transcribe(audio, 16000)
+    segs = out["segments"]
+    assert [s["text"] for s in segs] == ["First sentence here.", "Second one!", "And a third?"]
+    assert segs[0]["start"] == 0.0
+    assert segs[-1]["end"] == 10.0
+    # monotonic, contiguous boundaries
+    for a, b in zip(segs, segs[1:]):
+        assert a["end"] == b["start"]
+        assert a["start"] < a["end"]
+    assert out["text"] == reply["text"].strip()
+
+
+def test_long_unpunctuated_text_is_chunked():
+    audio = np.zeros(16000 * 20, dtype=np.float32)
+    reply = {"text": " ".join(str(n) for n in range(1, 31)), "usage": {}}  # 30 words, no punctuation
+    with patch.object(chirp.urllib.request, "urlopen", return_value=_FakeResp(reply)):
+        out = chirp.transcribe(audio, 16000)
+    segs = out["segments"]
+    assert len(segs) == 3  # 12 + 12 + 6 words
+    assert segs[0]["text"].split()[-1] == "12"
+    assert segs[-1]["end"] == 20.0
 
 
 def test_empty_reply_is_silence_and_label_defaults():
@@ -73,13 +100,13 @@ def test_normalizes_quiet_audio():
     reply = {"text": "ok", "usage": {}}
     with patch.object(chirp.urllib.request, "urlopen", return_value=_FakeResp(reply)) as mock_open:
         chirp.transcribe(quiet, 16000)
-    rms = float(np.sqrt((_sent_wav(mock_open) ** 2).mean()))
+    rms = float(np.sqrt((_sent_audio(mock_open) ** 2).mean()))
     assert 0.08 < rms < 0.12  # boosted to TARGET_RMS
 
     loud = (0.5 * np.sin(2 * np.pi * 220 * t)).astype(np.float32)
     with patch.object(chirp.urllib.request, "urlopen", return_value=_FakeResp(reply)) as mock_open:
         chirp.transcribe(loud, 16000)
-    assert float(np.abs(_sent_wav(mock_open)).max()) > 0.4  # untouched
+    assert float(np.abs(_sent_audio(mock_open)).max()) > 0.4  # untouched
 
 
 def test_http_error_maps_status():
