@@ -8,8 +8,6 @@ import time
 import logging
 import asyncio
 import json
-import urllib.error
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
@@ -34,14 +32,27 @@ WORKER_ID = os.getenv("WORKER_ID", "1")
 MODEL_SIZE = os.getenv("MODEL_SIZE", "large-v3-turbo")
 
 # STT backend: "whisper" (local faster-whisper, default) or "chirp" —
-# Google Chirp 3 proxied through OpenRouter chat completions. Chirp mode
-# loads no local model and needs no GPU; callers keep the same
-# Whisper-shaped /v1/audio/transcriptions API.
+# Google Chirp 3 via Cloud Speech-to-Text v2. Chirp mode loads no local
+# model and needs no GPU; callers keep the same Whisper-shaped
+# /v1/audio/transcriptions API. Auth: GOOGLE_APPLICATION_CREDENTIALS
+# (service-account JSON) or ambient ADC; GOOGLE_CLOUD_PROJECT required.
 STT_BACKEND = os.getenv("STT_BACKEND", "whisper").strip().lower()
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
-OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
-CHIRP_MODEL = os.getenv("CHIRP_MODEL", "google/chirp-3")
+GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
+CHIRP_REGION = os.getenv("CHIRP_REGION", "us").strip()
+CHIRP_MODEL = os.getenv("CHIRP_MODEL", "chirp_3")
+# Comma-separated default language codes; "auto" lets chirp detect.
+CHIRP_LANGUAGES = [l.strip() for l in os.getenv("CHIRP_LANGUAGES", "auto").split(",") if l.strip()]
 CHIRP_TARGET_RMS = float(os.getenv("CHIRP_TARGET_RMS", "0.1"))
+
+# Created at startup in chirp mode only (the SDK import stays out of whisper deployments).
+chirp_client = None
+
+def _make_chirp_client():
+    from google.cloud.speech_v2 import SpeechClient
+    from google.api_core.client_options import ClientOptions
+    return SpeechClient(client_options=ClientOptions(
+        api_endpoint=f"{CHIRP_REGION}-speech.googleapis.com",
+    ))
 
 # Debug: dump every request's decoded audio + result to this dir (wav + log.jsonl).
 DEBUG_DUMP_AUDIO_DIR = os.getenv("DEBUG_DUMP_AUDIO_DIR", "").strip()
@@ -154,14 +165,15 @@ def _transcribe_chirp(
     language: Optional[str],
     prompt: Optional[str],
 ) -> Dict[str, Any]:
-    """One OpenRouter /audio/transcriptions round-trip: multipart WAV in, text out.
+    """One Cloud Speech v2 recognize round-trip (chirp_3): WAV in, segments out.
 
-    Chirp only supports response_format=json — plain text, no timestamps or
-    confidence fields — so the result is one whole-window segment. Downstream
-    (transcription-client, chunked-transcriber) passes segments without
-    confidence fields through and confirms on window stability instead of
-    per-segment timestamps.
+    Word time offsets are requested, so the response maps to real
+    Whisper-shaped segments with timestamps (one per recognize result).
+    Chirp has no initial_prompt equivalent — `prompt` is ignored.
     """
+    from google.cloud.speech_v2.types import cloud_speech
+    from google.api_core import exceptions as gexc
+
     # Chirp's front-end discards quiet audio that whisper handles fine (Meet
     # capture sits around RMS 0.01): normalize to RMS 0.1 before sending.
     # Calibrated on captured live-meeting windows — RMS 0.05 still
@@ -173,62 +185,58 @@ def _transcribe_chirp(
 
     wav = io.BytesIO()
     sf.write(wav, audio_array, sample_rate, format="WAV", subtype="PCM_16")
-    boundary = f"----chirp{int(time.time() * 1000):x}"
+    duration = len(audio_array) / float(sample_rate) if sample_rate else 0.0
 
-    def form_field(name: str, value: str) -> bytes:
-        return (
-            f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
-            f"{value}\r\n"
-        ).encode("utf-8")
-
-    parts = [
-        (
-            f"--{boundary}\r\n"
-            'Content-Disposition: form-data; name="file"; filename="audio.wav"\r\n'
-            "Content-Type: audio/wav\r\n\r\n"
-        ).encode("ascii"),
-        wav.getvalue(),
-        b"\r\n",
-        form_field("model", CHIRP_MODEL),
-        form_field("response_format", "json"),
-    ]
-    if language:
-        parts.append(form_field("language", language))
-    if prompt:
-        parts.append(form_field("prompt", prompt))
-    parts.append(f"--{boundary}--\r\n".encode("ascii"))
-
-    req = urllib.request.Request(
-        f"{OPENROUTER_BASE_URL}/audio/transcriptions",
-        data=b"".join(parts),
-        headers={
-            "Content-Type": f"multipart/form-data; boundary={boundary}",
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        },
+    config = cloud_speech.RecognitionConfig(
+        auto_decoding_config=cloud_speech.AutoDetectDecodingConfig(),
+        language_codes=[language] if language else CHIRP_LANGUAGES,
+        model=CHIRP_MODEL,
+        features=cloud_speech.RecognitionFeatures(
+            enable_word_time_offsets=True,
+            enable_automatic_punctuation=True,
+        ),
     )
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")[:500]
-        # 429/503 stay retryable for the bot's transcription client; anything
-        # else (401 bad key, 400 bad payload) must fail fast, not retry-loop.
-        status = e.code if e.code in (429, 503) else 502
-        raise HTTPException(status_code=status, detail=f"OpenRouter {e.code}: {body}")
-    text = (data.get("text") or "").strip()
-    duration = len(audio_array) / float(sample_rate) if sample_rate else 0.0
+        resp = chirp_client.recognize(
+            request=cloud_speech.RecognizeRequest(
+                recognizer=f"projects/{GOOGLE_CLOUD_PROJECT}/locations/{CHIRP_REGION}/recognizers/_",
+                config=config,
+                content=wav.getvalue(),
+            ),
+            timeout=60,
+        )
+    except (gexc.TooManyRequests, gexc.ResourceExhausted) as e:
+        raise HTTPException(status_code=429, detail=f"Speech API quota: {e}")
+    except gexc.ServiceUnavailable as e:
+        raise HTTPException(status_code=503, detail=f"Speech API unavailable: {e}")
+    except gexc.GoogleAPICallError as e:
+        # Auth/config errors must fail fast, not retry-loop in the bot client.
+        raise HTTPException(status_code=502, detail=f"Speech API error: {e}")
+
     segments: List[Dict[str, Any]] = []
-    if text:
-        segments = [{
-            "id": 0, "seek": 0, "start": 0.0, "end": duration,
+    detected_language = None
+    for res in resp.results:
+        alt = res.alternatives[0] if res.alternatives else None
+        text = (alt.transcript if alt else "").strip()
+        if not text:
+            continue
+        detected_language = detected_language or (res.language_code or None)
+        words = list(alt.words) if alt.words else []
+        start = words[0].start_offset.total_seconds() if words else 0.0
+        end = words[-1].end_offset.total_seconds() if words else duration
+        segments.append({
+            "id": len(segments), "seek": 0, "start": start, "end": end,
             "text": text, "tokens": [], "temperature": 0.0,
-            "audio_start": 0.0, "audio_end": duration,
-        }]
+            "audio_start": start, "audio_end": end,
+            "words": [
+                {"word": w.word, "start": w.start_offset.total_seconds(),
+                 "end": w.end_offset.total_seconds(), "probability": w.confidence or 1.0}
+                for w in words
+            ],
+        })
     return {
-        "text": text,
-        # Chirp auto-detects language but OpenRouter doesn't echo it back.
-        "language": language or "unknown",
+        "text": " ".join(s["text"] for s in segments),
+        "language": (detected_language or language or "unknown").split("-")[0].lower(),
         "language_probability": 0.0,
         "duration": duration,
         "segments": segments,
@@ -326,12 +334,16 @@ def _deferred_capacity_available(active_rt: int, active_df: int) -> bool:
 @app.on_event("startup")
 async def startup_event():
     """Initialize Whisper model on startup"""
-    global model
+    global model, chirp_client
     logger.info(f"Worker {WORKER_ID} starting up...")
     if STT_BACKEND == "chirp":
-        if not OPENROUTER_API_KEY:
-            raise RuntimeError("STT_BACKEND=chirp requires OPENROUTER_API_KEY")
-        logger.info(f"Worker {WORKER_ID} ready - chirp backend ({CHIRP_MODEL} via OpenRouter), no local model")
+        if not GOOGLE_CLOUD_PROJECT:
+            raise RuntimeError("STT_BACKEND=chirp requires GOOGLE_CLOUD_PROJECT (and GCP credentials)")
+        chirp_client = _make_chirp_client()
+        logger.info(
+            f"Worker {WORKER_ID} ready - chirp backend ({CHIRP_MODEL} via Cloud Speech v2, "
+            f"region {CHIRP_REGION}, languages {CHIRP_LANGUAGES}), no local model"
+        )
         return
     logger.info(f"Device: {DEVICE}, Model: {MODEL_SIZE}, Compute: {COMPUTE_TYPE}")
     logger.info(
@@ -370,7 +382,7 @@ async def startup_event():
 @app.get("/health")
 async def health_check():
     """Health check endpoint for load balancer"""
-    ready = model is not None or STT_BACKEND == "chirp"
+    ready = model is not None or (STT_BACKEND == "chirp" and chirp_client is not None)
     health_status = {
         "status": "healthy" if ready else "unhealthy",
         "worker_id": WORKER_ID,
@@ -699,7 +711,7 @@ async def root():
         "backend": STT_BACKEND,
         "model": CHIRP_MODEL if STT_BACKEND == "chirp" else MODEL_SIZE,
         "device": DEVICE,
-        "status": "ready" if (model is not None or STT_BACKEND == "chirp") else "initializing",
+        "status": "ready" if (model is not None or chirp_client is not None) else "initializing",
         "endpoints": {
             "transcribe": "/v1/audio/transcriptions",
             "health": "/health"
