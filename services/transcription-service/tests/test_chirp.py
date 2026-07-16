@@ -79,7 +79,8 @@ def test_chirp_empty_reply_is_silence():
     with patch.object(main.urllib.request, "urlopen", return_value=_FakeResp(reply)):
         out = main._transcribe_chirp(audio, 16000, None, None)
     assert out["text"] == ""
-    assert out["language"] == "unknown"
+    # never "unknown" — meeting-api segment validation rejects it
+    assert out["language"] == "en"
     assert out["segments"] == []
 
 

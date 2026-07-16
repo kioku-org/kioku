@@ -227,8 +227,10 @@ def _transcribe_chirp(
         }]
     return {
         "text": text,
-        # Chirp auto-detects language but OpenRouter doesn't echo it back.
-        "language": language or "unknown",
+        # Chirp auto-detects but OpenRouter doesn't echo the language back, and
+        # "unknown" is rejected by meeting-api's TranscriptionSegment validation
+        # (drops every segment from the transcript feed) — default to a valid code.
+        "language": language or "en",
         "language_probability": 0.0,
         "duration": duration,
         "segments": segments,
