@@ -7,9 +7,6 @@ import io
 import time
 import logging
 import asyncio
-import json
-import urllib.error
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
@@ -20,117 +17,59 @@ from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 import uvicorn
 from faster_whisper import WhisperModel
-# faster-whisper uses CTranslate2 internally (no PyTorch needed)
 
-# Logging
+import chirp
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Configuration
 WORKER_ID = os.getenv("WORKER_ID", "1")
 MODEL_SIZE = os.getenv("MODEL_SIZE", "large-v3-turbo")
 
-# STT backend: "whisper" (local faster-whisper, default) or "chirp" —
-# Google Chirp 3 proxied through OpenRouter chat completions. Chirp mode
-# loads no local model and needs no GPU; callers keep the same
-# Whisper-shaped /v1/audio/transcriptions API.
+# "whisper" (local faster-whisper, default) or "chirp" (cloud, see chirp.py —
+# no local model / GPU needed).
 STT_BACKEND = os.getenv("STT_BACKEND", "whisper").strip().lower()
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
-OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
-CHIRP_MODEL = os.getenv("CHIRP_MODEL", "google/chirp-3")
-CHIRP_TARGET_RMS = float(os.getenv("CHIRP_TARGET_RMS", "0.1"))
-# Label-only: chirp auto-detects the spoken language but OpenRouter neither
-# echoes the detection nor honors the language request param, so segments are
-# labeled with this code when the caller doesn't pin one. Must be a
-# whisper-valid code — meeting-api rejects anything else.
-CHIRP_LANGUAGE_LABEL = os.getenv("CHIRP_LANGUAGE_LABEL", "en").strip() or "en"
-
-# Debug: dump every request's decoded audio + result to this dir (wav + log.jsonl).
-DEBUG_DUMP_AUDIO_DIR = os.getenv("DEBUG_DUMP_AUDIO_DIR", "").strip()
-
-def _debug_dump(audio_array: "np.ndarray", sample_rate: int, language: Optional[str],
-                prompt: Optional[str], response: Dict[str, Any]) -> None:
-    if not DEBUG_DUMP_AUDIO_DIR:
-        return
-    try:
-        os.makedirs(DEBUG_DUMP_AUDIO_DIR, exist_ok=True)
-        stamp = str(int(time.time() * 1000))
-        sf.write(os.path.join(DEBUG_DUMP_AUDIO_DIR, f"{stamp}.wav"), audio_array, sample_rate, subtype="PCM_16")
-        with open(os.path.join(DEBUG_DUMP_AUDIO_DIR, "log.jsonl"), "a") as fh:
-            fh.write(json.dumps({
-                "ts": stamp, "duration": response.get("duration"),
-                "language": language, "prompt": prompt, "text": response.get("text"),
-            }) + "\n")
-    except Exception as e:
-        logger.warning(f"debug audio dump failed: {e}")
-
-# Device detection: Use environment variable or default to cuda for GPU containers
-# CTranslate2 (used by faster-whisper) will automatically detect and use CUDA if available
 DEVICE = os.getenv("DEVICE", "cuda")
 
-# Compute type optimization: Use INT8 for optimal VRAM efficiency
-# Research shows: large-v3-turbo + INT8 = ~2.1 GB VRAM (validated)
-# Provides 50-60% VRAM reduction with minimal accuracy loss (~1-2% WER increase)
-COMPUTE_TYPE_ENV = os.getenv("COMPUTE_TYPE", "").strip().lower()
-if COMPUTE_TYPE_ENV:
-    COMPUTE_TYPE = COMPUTE_TYPE_ENV
-else:
-    # Default to INT8 for both GPU and CPU (optimal balance of speed, memory, and accuracy)
-    COMPUTE_TYPE = "int8"
+COMPUTE_TYPE = os.getenv("COMPUTE_TYPE", "").strip().lower() or "int8"
+CPU_THREADS = int(os.getenv("CPU_THREADS", "0"))
 
-# CPU threads configuration (for CPU mode optimization)
-CPU_THREADS = int(os.getenv("CPU_THREADS", "0"))  # 0 = auto-detect
+BEAM_SIZE = int(os.getenv("BEAM_SIZE", "5"))
+BEST_OF = int(os.getenv("BEST_OF", "5"))
+COMPRESSION_RATIO_THRESHOLD = float(
+    os.getenv("COMPRESSION_RATIO_THRESHOLD", "1.8")
+)
+LOG_PROB_THRESHOLD = float(os.getenv("LOG_PROB_THRESHOLD", "-1.0"))
+NO_SPEECH_THRESHOLD = float(os.getenv("NO_SPEECH_THRESHOLD", "0.6"))
+CONDITION_ON_PREVIOUS_TEXT = (
+    os.getenv("CONDITION_ON_PREVIOUS_TEXT", "false").strip().lower() == "true"
+)
+PROMPT_RESET_ON_TEMPERATURE = float(
+    os.getenv("PROMPT_RESET_ON_TEMPERATURE", "0.3")
+)
+REPETITION_PENALTY = float(os.getenv("REPETITION_PENALTY", "1.1"))
+NO_REPEAT_NGRAM_SIZE = int(os.getenv("NO_REPEAT_NGRAM_SIZE", "3"))
 
-# Quality / decoding parameters (optional)
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name, None)
-    if raw is None:
-        return default
-    return raw.strip().lower() in ("1", "true", "yes", "y", "on")
+VAD_FILTER = os.getenv("VAD_FILTER", "true").strip().lower() == "true"
+VAD_FILTER_THRESHOLD = float(os.getenv("VAD_FILTER_THRESHOLD", "0.5"))
+VAD_MIN_SILENCE_DURATION_MS = int(
+    os.getenv("VAD_MIN_SILENCE_DURATION_MS", "160")
+)
+VAD_MAX_SPEECH_DURATION_S = float(
+    os.getenv("VAD_MAX_SPEECH_DURATION_S", "15.0")
+)
 
-def _env_int(name: str, default: int) -> int:
-    raw = os.getenv(name, None)
-    if raw is None or raw.strip() == "":
-        return default
-    try:
-        return int(raw)
-    except ValueError:
-        logger.warning(f"Invalid int env {name}={raw!r}, using default {default}")
-        return default
-
-def _env_float(name: str, default: float) -> float:
-    raw = os.getenv(name, None)
-    if raw is None or raw.strip() == "":
-        return default
-    try:
-        return float(raw)
-    except ValueError:
-        logger.warning(f"Invalid float env {name}={raw!r}, using default {default}")
-        return default
-
-# Transcription defaults (can be overridden via env)
-BEAM_SIZE = _env_int("BEAM_SIZE", 5)
-BEST_OF = _env_int("BEST_OF", 5)
-COMPRESSION_RATIO_THRESHOLD = _env_float("COMPRESSION_RATIO_THRESHOLD", 1.8)
-LOG_PROB_THRESHOLD = _env_float("LOG_PROB_THRESHOLD", -1.0)
-NO_SPEECH_THRESHOLD = _env_float("NO_SPEECH_THRESHOLD", 0.6)
-CONDITION_ON_PREVIOUS_TEXT = _env_bool("CONDITION_ON_PREVIOUS_TEXT", False)
-PROMPT_RESET_ON_TEMPERATURE = _env_float("PROMPT_RESET_ON_TEMPERATURE", 0.3)
-REPETITION_PENALTY = _env_float("REPETITION_PENALTY", 1.1)
-NO_REPEAT_NGRAM_SIZE = _env_int("NO_REPEAT_NGRAM_SIZE", 3)
-
-# VAD parameters
-VAD_FILTER = _env_bool("VAD_FILTER", True)
-VAD_FILTER_THRESHOLD = _env_float("VAD_FILTER_THRESHOLD", 0.5)
-VAD_MIN_SILENCE_DURATION_MS = _env_int("VAD_MIN_SILENCE_DURATION_MS", 160)
-VAD_MAX_SPEECH_DURATION_S = _env_float("VAD_MAX_SPEECH_DURATION_S", 15.0)  # max segment length before forced split
-
-# Temperature fallback chain
-USE_TEMPERATURE_FALLBACK = _env_bool("USE_TEMPERATURE_FALLBACK", False)
+USE_TEMPERATURE_FALLBACK = (
+    os.getenv("USE_TEMPERATURE_FALLBACK", "false").strip().lower() == "true"
+)
 TEMPERATURE_FALLBACK_CHAIN = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+
+_VEXA_ENV = os.getenv("VEXA_ENV", "development")
+API_TOKEN = os.getenv("API_TOKEN", "").strip()
+API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 def _looks_like_silence(segments: List[Dict[str, Any]]) -> bool:
     """Heuristic: treat as silence if all segments look like no-speech."""
@@ -152,98 +91,6 @@ def _looks_like_hallucination(segments: List[Dict[str, Any]]) -> bool:
         if float(s.get("avg_logprob", 0.0)) < LOG_PROB_THRESHOLD:
             return True
     return False
-
-def _transcribe_chirp(
-    audio_array: np.ndarray,
-    sample_rate: int,
-    language: Optional[str],
-    prompt: Optional[str],
-) -> Dict[str, Any]:
-    """One OpenRouter /audio/transcriptions round-trip: multipart WAV in, text out.
-
-    Chirp only supports response_format=json — plain text, no timestamps or
-    confidence fields — so the result is one whole-window segment. Downstream
-    (transcription-client, chunked-transcriber) passes segments without
-    confidence fields through and confirms on window stability instead of
-    per-segment timestamps.
-    """
-    # Chirp's front-end discards quiet audio that whisper handles fine (Meet
-    # capture sits around RMS 0.01): normalize to RMS 0.1 before sending.
-    # Calibrated on captured live-meeting windows — RMS 0.05 still
-    # under-transcribes. ponytail: hard clip after gain; a limiter is
-    # overkill for ASR input.
-    rms = float(np.sqrt(np.mean(audio_array ** 2))) if audio_array.size else 0.0
-    if 0.001 < rms < CHIRP_TARGET_RMS:
-        audio_array = np.clip(audio_array * (CHIRP_TARGET_RMS / rms), -1.0, 1.0)
-
-    wav = io.BytesIO()
-    sf.write(wav, audio_array, sample_rate, format="WAV", subtype="PCM_16")
-    boundary = f"----chirp{int(time.time() * 1000):x}"
-
-    def form_field(name: str, value: str) -> bytes:
-        return (
-            f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
-            f"{value}\r\n"
-        ).encode("utf-8")
-
-    parts = [
-        (
-            f"--{boundary}\r\n"
-            'Content-Disposition: form-data; name="file"; filename="audio.wav"\r\n'
-            "Content-Type: audio/wav\r\n\r\n"
-        ).encode("ascii"),
-        wav.getvalue(),
-        b"\r\n",
-        form_field("model", CHIRP_MODEL),
-        form_field("response_format", "json"),
-    ]
-    if language:
-        parts.append(form_field("language", language))
-    if prompt:
-        parts.append(form_field("prompt", prompt))
-    parts.append(f"--{boundary}--\r\n".encode("ascii"))
-
-    req = urllib.request.Request(
-        f"{OPENROUTER_BASE_URL}/audio/transcriptions",
-        data=b"".join(parts),
-        headers={
-            "Content-Type": f"multipart/form-data; boundary={boundary}",
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        },
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")[:500]
-        # 429/503 stay retryable for the bot's transcription client; anything
-        # else (401 bad key, 400 bad payload) must fail fast, not retry-loop.
-        status = e.code if e.code in (429, 503) else 502
-        raise HTTPException(status_code=status, detail=f"OpenRouter {e.code}: {body}")
-    text = (data.get("text") or "").strip()
-    duration = len(audio_array) / float(sample_rate) if sample_rate else 0.0
-    segments: List[Dict[str, Any]] = []
-    if text:
-        segments = [{
-            "id": 0, "seek": 0, "start": 0.0, "end": duration,
-            "text": text, "tokens": [], "temperature": 0.0,
-            "audio_start": 0.0, "audio_end": duration,
-        }]
-    return {
-        "text": text,
-        # Chirp auto-detects but OpenRouter doesn't echo the language back, and
-        # "unknown" is rejected by meeting-api's TranscriptionSegment validation
-        # (drops every segment from the transcript feed) — label with a valid code.
-        "language": language or CHIRP_LANGUAGE_LABEL,
-        "language_probability": 0.0,
-        "duration": duration,
-        "segments": segments,
-    }
-
-# API Token Authentication
-API_TOKEN = os.getenv("API_TOKEN", "").strip()
-API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 async def verify_api_token(
     request: Request,
@@ -272,10 +119,9 @@ async def verify_api_token(
         detail="Invalid or missing API token"
     )
 
-_VEXA_ENV = os.getenv("VEXA_ENV", "development")
 _PUBLIC_DOCS = _VEXA_ENV != "production"
 app = FastAPI(
-    title="Vexa Transcription Service",
+    title="Transcription Service",
     description="OpenAI Whisper API compatible transcription service",
     version="1.0.0",
     docs_url="/docs" if _PUBLIC_DOCS else None,
@@ -292,15 +138,15 @@ model: Optional[WhisperModel] = None
 # RTX 4090 benchmarks (2026-03-08): 20 concurrent handles fine, latency ~3s worst case.
 # Set high enough to avoid artificial bottlenecks, low enough to bound queue latency.
 # MAX_ACTIVE_REQUESTS is the preferred name; MAX_CONCURRENT_TRANSCRIPTIONS is kept for compatibility.
-MAX_CONCURRENT_TRANSCRIPTIONS = _env_int("MAX_ACTIVE_REQUESTS", _env_int("MAX_CONCURRENT_TRANSCRIPTIONS", 20))
-MAX_QUEUE_SIZE = _env_int("MAX_QUEUE_SIZE", 10)  # Max requests waiting in queue
+MAX_CONCURRENT_TRANSCRIPTIONS = int(os.getenv("MAX_ACTIVE_REQUESTS", os.getenv("MAX_CONCURRENT_TRANSCRIPTIONS", "20")))
+MAX_QUEUE_SIZE = int(os.getenv("MAX_QUEUE_SIZE", "10"))  # Max requests waiting in queue
 
 # Backpressure strategy:
 # - If FAIL_FAST_WHEN_BUSY=true, we do NOT wait in a queue; we immediately return 503 so callers
 #   callers can keep buffering and submit a newer/larger window later.
-FAIL_FAST_WHEN_BUSY = _env_bool("FAIL_FAST_WHEN_BUSY", True)
-BUSY_RETRY_AFTER_S = _env_int("BUSY_RETRY_AFTER_S", 1)
-REALTIME_RESERVED_SLOTS = _env_int("REALTIME_RESERVED_SLOTS", 1)
+FAIL_FAST_WHEN_BUSY = os.getenv("FAIL_FAST_WHEN_BUSY", "true").strip().lower() == "true"
+BUSY_RETRY_AFTER_S = int(os.getenv("BUSY_RETRY_AFTER_S", "1"))
+REALTIME_RESERVED_SLOTS = int(os.getenv("REALTIME_RESERVED_SLOTS", "1"))
 
 # Semaphore to limit concurrent transcriptions (protects GPU/CPU from overload)
 transcription_semaphore = asyncio.Semaphore(MAX_CONCURRENT_TRANSCRIPTIONS)
@@ -336,9 +182,9 @@ async def startup_event():
     global model
     logger.info(f"Worker {WORKER_ID} starting up...")
     if STT_BACKEND == "chirp":
-        if not OPENROUTER_API_KEY:
+        if not chirp.API_KEY:
             raise RuntimeError("STT_BACKEND=chirp requires OPENROUTER_API_KEY")
-        logger.info(f"Worker {WORKER_ID} ready - chirp backend ({CHIRP_MODEL} via OpenRouter), no local model")
+        logger.info(f"Worker {WORKER_ID} ready - chirp backend ({chirp.MODEL} via OpenRouter), no local model")
         return
     logger.info(f"Device: {DEVICE}, Model: {MODEL_SIZE}, Compute: {COMPUTE_TYPE}")
     logger.info(
@@ -383,7 +229,7 @@ async def health_check():
         "worker_id": WORKER_ID,
         "timestamp": datetime.utcnow().isoformat(),
         "backend": STT_BACKEND,
-        "model": CHIRP_MODEL if STT_BACKEND == "chirp" else MODEL_SIZE,
+        "model": chirp.MODEL if STT_BACKEND == "chirp" else MODEL_SIZE,
         "device": DEVICE,
         "gpu_available": DEVICE == "cuda",
     }
@@ -540,13 +386,12 @@ async def transcribe_audio(
 
         if STT_BACKEND == "chirp":
             response = await asyncio.get_event_loop().run_in_executor(
-                transcription_executor, _transcribe_chirp, audio_array, sample_rate, language, prompt
+                transcription_executor, chirp.transcribe, audio_array, sample_rate, language
             )
             logger.info(
                 f"Worker {WORKER_ID} chirp completed in {time.time() - start_time:.2f}s - "
                 f"Duration: {response['duration']:.2f}s, chars: {len(response['text'])}"
             )
-            _debug_dump(audio_array, sample_rate, language, prompt, response)
             return response
 
         # Transcribe (with optional temperature fallback)
@@ -704,7 +549,7 @@ async def root():
         "service": "Vexa Transcription Service",
         "worker_id": WORKER_ID,
         "backend": STT_BACKEND,
-        "model": CHIRP_MODEL if STT_BACKEND == "chirp" else MODEL_SIZE,
+        "model": chirp.MODEL if STT_BACKEND == "chirp" else MODEL_SIZE,
         "device": DEVICE,
         "status": "ready" if (model is not None or STT_BACKEND == "chirp") else "initializing",
         "endpoints": {
