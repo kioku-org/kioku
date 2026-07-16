@@ -5,9 +5,12 @@ Implements OpenAI Whisper API format for seamless integration with Vexa
 import os
 import io
 import time
+import base64
 import logging
 import asyncio
 import json
+import urllib.error
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
@@ -30,6 +33,15 @@ logger = logging.getLogger(__name__)
 # Configuration
 WORKER_ID = os.getenv("WORKER_ID", "1")
 MODEL_SIZE = os.getenv("MODEL_SIZE", "large-v3-turbo")
+
+# STT backend: "whisper" (local faster-whisper, default) or "chirp" —
+# Google Chirp 3 proxied through OpenRouter chat completions. Chirp mode
+# loads no local model and needs no GPU; callers keep the same
+# Whisper-shaped /v1/audio/transcriptions API.
+STT_BACKEND = os.getenv("STT_BACKEND", "whisper").strip().lower()
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+CHIRP_MODEL = os.getenv("CHIRP_MODEL", "google/chirp-3")
 
 # Device detection: Use environment variable or default to cuda for GPU containers
 # CTranslate2 (used by faster-whisper) will automatically detect and use CUDA if available
@@ -116,6 +128,65 @@ def _looks_like_hallucination(segments: List[Dict[str, Any]]) -> bool:
         if float(s.get("avg_logprob", 0.0)) < LOG_PROB_THRESHOLD:
             return True
     return False
+
+def _transcribe_chirp(audio_array: np.ndarray, sample_rate: int, language: Optional[str]) -> Dict[str, Any]:
+    """One OpenRouter chat-completions round-trip: base64 WAV in, transcript out.
+
+    Chirp returns plain text — no timestamps, confidence fields, or
+    initial_prompt support — so the result is one whole-window segment.
+    Downstream (transcription-client, chunked-transcriber) passes segments
+    without confidence fields through and confirms on window stability
+    instead of per-segment timestamps.
+    """
+    buf = io.BytesIO()
+    sf.write(buf, audio_array, sample_rate, format="WAV", subtype="PCM_16")
+    payload = json.dumps({
+        "model": CHIRP_MODEL,
+        "messages": [{
+            "role": "user",
+            "content": [{
+                "type": "input_audio",
+                "input_audio": {
+                    "data": base64.b64encode(buf.getvalue()).decode("ascii"),
+                    "format": "wav",
+                },
+            }],
+        }],
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        f"{OPENROUTER_BASE_URL}/chat/completions",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")[:500]
+        # 429/503 stay retryable for the bot's transcription client; anything
+        # else (401 bad key, 400 bad payload) must fail fast, not retry-loop.
+        status = e.code if e.code in (429, 503) else 502
+        raise HTTPException(status_code=status, detail=f"OpenRouter {e.code}: {body}")
+    text = ((data.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
+    duration = len(audio_array) / float(sample_rate) if sample_rate else 0.0
+    segments: List[Dict[str, Any]] = []
+    if text:
+        segments = [{
+            "id": 0, "seek": 0, "start": 0.0, "end": duration,
+            "text": text, "tokens": [], "temperature": 0.0,
+            "audio_start": 0.0, "audio_end": duration,
+        }]
+    return {
+        "text": text,
+        # Chirp auto-detects language but OpenRouter doesn't echo it back.
+        "language": language or "unknown",
+        "language_probability": 0.0,
+        "duration": duration,
+        "segments": segments,
+    }
 
 # API Token Authentication
 API_TOKEN = os.getenv("API_TOKEN", "").strip()
@@ -211,6 +282,11 @@ async def startup_event():
     """Initialize Whisper model on startup"""
     global model
     logger.info(f"Worker {WORKER_ID} starting up...")
+    if STT_BACKEND == "chirp":
+        if not OPENROUTER_API_KEY:
+            raise RuntimeError("STT_BACKEND=chirp requires OPENROUTER_API_KEY")
+        logger.info(f"Worker {WORKER_ID} ready - chirp backend ({CHIRP_MODEL} via OpenRouter), no local model")
+        return
     logger.info(f"Device: {DEVICE}, Model: {MODEL_SIZE}, Compute: {COMPUTE_TYPE}")
     logger.info(
         "Quality params - "
@@ -248,20 +324,22 @@ async def startup_event():
 @app.get("/health")
 async def health_check():
     """Health check endpoint for load balancer"""
+    ready = model is not None or STT_BACKEND == "chirp"
     health_status = {
-        "status": "healthy" if model is not None else "unhealthy",
+        "status": "healthy" if ready else "unhealthy",
         "worker_id": WORKER_ID,
         "timestamp": datetime.utcnow().isoformat(),
-        "model": MODEL_SIZE,
+        "backend": STT_BACKEND,
+        "model": CHIRP_MODEL if STT_BACKEND == "chirp" else MODEL_SIZE,
         "device": DEVICE,
         "gpu_available": DEVICE == "cuda",
     }
-    
+
     if DEVICE == "cuda":
         # CTranslate2 (via faster-whisper) handles GPU automatically
         health_status["compute_type"] = COMPUTE_TYPE
-    
-    if model is None:
+
+    if not ready:
         return JSONResponse(content=health_status, status_code=503)
     
     return health_status
@@ -406,7 +484,17 @@ async def transcribe_audio(
         
         # Ensure audio is contiguous array
         audio_array = np.ascontiguousarray(audio_array, dtype=np.float32)
-        
+
+        if STT_BACKEND == "chirp":
+            response = await asyncio.get_event_loop().run_in_executor(
+                transcription_executor, _transcribe_chirp, audio_array, sample_rate, language
+            )
+            logger.info(
+                f"Worker {WORKER_ID} chirp completed in {time.time() - start_time:.2f}s - "
+                f"Duration: {response['duration']:.2f}s, chars: {len(response['text'])}"
+            )
+            return response
+
         # Transcribe (with optional temperature fallback)
         requested_temp = float(temperature) if temperature else 0.0
         temps = TEMPERATURE_FALLBACK_CHAIN if USE_TEMPERATURE_FALLBACK else [requested_temp]
@@ -561,9 +649,10 @@ async def root():
     return {
         "service": "Vexa Transcription Service",
         "worker_id": WORKER_ID,
-        "model": MODEL_SIZE,
+        "backend": STT_BACKEND,
+        "model": CHIRP_MODEL if STT_BACKEND == "chirp" else MODEL_SIZE,
         "device": DEVICE,
-        "status": "ready" if model is not None else "initializing",
+        "status": "ready" if (model is not None or STT_BACKEND == "chirp") else "initializing",
         "endpoints": {
             "transcribe": "/v1/audio/transcriptions",
             "health": "/health"
