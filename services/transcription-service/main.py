@@ -5,7 +5,6 @@ Implements OpenAI Whisper API format for seamless integration with Vexa
 import os
 import io
 import time
-import base64
 import logging
 import asyncio
 import json
@@ -129,35 +128,53 @@ def _looks_like_hallucination(segments: List[Dict[str, Any]]) -> bool:
             return True
     return False
 
-def _transcribe_chirp(audio_array: np.ndarray, sample_rate: int, language: Optional[str]) -> Dict[str, Any]:
-    """One OpenRouter chat-completions round-trip: base64 WAV in, transcript out.
+def _transcribe_chirp(
+    audio_array: np.ndarray,
+    sample_rate: int,
+    language: Optional[str],
+    prompt: Optional[str],
+) -> Dict[str, Any]:
+    """One OpenRouter /audio/transcriptions round-trip: multipart WAV in, text out.
 
-    Chirp returns plain text — no timestamps, confidence fields, or
-    initial_prompt support — so the result is one whole-window segment.
-    Downstream (transcription-client, chunked-transcriber) passes segments
-    without confidence fields through and confirms on window stability
-    instead of per-segment timestamps.
+    Chirp only supports response_format=json — plain text, no timestamps or
+    confidence fields — so the result is one whole-window segment. Downstream
+    (transcription-client, chunked-transcriber) passes segments without
+    confidence fields through and confirms on window stability instead of
+    per-segment timestamps.
     """
-    buf = io.BytesIO()
-    sf.write(buf, audio_array, sample_rate, format="WAV", subtype="PCM_16")
-    payload = json.dumps({
-        "model": CHIRP_MODEL,
-        "messages": [{
-            "role": "user",
-            "content": [{
-                "type": "input_audio",
-                "input_audio": {
-                    "data": base64.b64encode(buf.getvalue()).decode("ascii"),
-                    "format": "wav",
-                },
-            }],
-        }],
-    }).encode("utf-8")
+    wav = io.BytesIO()
+    sf.write(wav, audio_array, sample_rate, format="WAV", subtype="PCM_16")
+    boundary = f"----chirp{int(time.time() * 1000):x}"
+
+    def form_field(name: str, value: str) -> bytes:
+        return (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
+            f"{value}\r\n"
+        ).encode("utf-8")
+
+    parts = [
+        (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="file"; filename="audio.wav"\r\n'
+            "Content-Type: audio/wav\r\n\r\n"
+        ).encode("ascii"),
+        wav.getvalue(),
+        b"\r\n",
+        form_field("model", CHIRP_MODEL),
+        form_field("response_format", "json"),
+    ]
+    if language:
+        parts.append(form_field("language", language))
+    if prompt:
+        parts.append(form_field("prompt", prompt))
+    parts.append(f"--{boundary}--\r\n".encode("ascii"))
+
     req = urllib.request.Request(
-        f"{OPENROUTER_BASE_URL}/chat/completions",
-        data=payload,
+        f"{OPENROUTER_BASE_URL}/audio/transcriptions",
+        data=b"".join(parts),
         headers={
-            "Content-Type": "application/json",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         },
     )
@@ -170,7 +187,7 @@ def _transcribe_chirp(audio_array: np.ndarray, sample_rate: int, language: Optio
         # else (401 bad key, 400 bad payload) must fail fast, not retry-loop.
         status = e.code if e.code in (429, 503) else 502
         raise HTTPException(status_code=status, detail=f"OpenRouter {e.code}: {body}")
-    text = ((data.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
+    text = (data.get("text") or "").strip()
     duration = len(audio_array) / float(sample_rate) if sample_rate else 0.0
     segments: List[Dict[str, Any]] = []
     if text:
@@ -487,7 +504,7 @@ async def transcribe_audio(
 
         if STT_BACKEND == "chirp":
             response = await asyncio.get_event_loop().run_in_executor(
-                transcription_executor, _transcribe_chirp, audio_array, sample_rate, language
+                transcription_executor, _transcribe_chirp, audio_array, sample_rate, language, prompt
             )
             logger.info(
                 f"Worker {WORKER_ID} chirp completed in {time.time() - start_time:.2f}s - "
