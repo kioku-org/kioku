@@ -1,20 +1,23 @@
-"""Chirp 3 STT via OpenRouter — cloud backend for /v1/audio/transcriptions.
+"""Cloud STT via OpenRouter — backend for /v1/audio/transcriptions.
 
-The whole integration is one JSON call: base64 FLAC in, {"text": ...} out.
+One multipart call: FLAC in, {"text": ...} out. Serves google/chirp-3
+(default) and openai/gpt-4o-transcribe (STT_BACKEND=gpt4o) — multipart
+because OpenRouter's JSON input_audio path hangs indefinitely for the
+gpt-4o models on >1s audio (probed live 2026-07-17; chirp works on both).
 OpenRouter limits (probed live 2026-07-16): response_format=json only — no
 timestamps and no confidence fields — and the `language` request param is
-ignored (chirp auto-detects internally but the detection isn't echoed back).
+ignored (models auto-detect internally but the detection isn't echoed back).
 The plain text is split into sentence-shaped segments with pro-rated
 timestamps (see _segments), labeled with CHIRP_LANGUAGE_LABEL when the
 caller doesn't pin a language.
 """
-import base64
 import io
 import json
 import os
 import re
 import urllib.error
 import urllib.request
+import uuid
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -31,6 +34,9 @@ TARGET_RMS = float(os.getenv("CHIRP_TARGET_RMS", "0.1"))
 # Label only — must be a whisper-valid code; meeting-api's segment validation
 # rejects anything else (e.g. "unknown"), silently emptying the transcript.
 LANGUAGE_LABEL = os.getenv("CHIRP_LANGUAGE_LABEL", "en").strip() or "en"
+# chirp-3 answers in ~2-5s; gpt-4o-transcribe swings 1-80s+ on OpenRouter
+# (measured 2026-07-17), so gpt4o deploys may need this raised.
+TIMEOUT_S = float(os.getenv("OPENROUTER_TIMEOUT_S", "60"))
 
 
 def _segments(text: str, duration: float) -> List[Dict[str, Any]]:
@@ -65,7 +71,8 @@ def _segments(text: str, duration: float) -> List[Dict[str, Any]]:
     return segs
 
 
-def transcribe(audio: np.ndarray, sample_rate: int, language: Optional[str] = None) -> Dict[str, Any]:
+def transcribe(audio: np.ndarray, sample_rate: int, language: Optional[str] = None,
+               model: Optional[str] = None) -> Dict[str, Any]:
     """One OpenRouter round-trip. Returns the Whisper-shaped response dict."""
     rms = float(np.sqrt(np.mean(audio ** 2))) if audio.size else 0.0
     if 0.001 < rms < TARGET_RMS:
@@ -74,19 +81,25 @@ def transcribe(audio: np.ndarray, sample_rate: int, language: Optional[str] = No
 
     buf = io.BytesIO()
     sf.write(buf, audio, sample_rate, format="FLAC", subtype="PCM_16")
-    payload = json.dumps({
-        "model": MODEL,
-        "input_audio": {
-            "data": base64.b64encode(buf.getvalue()).decode("ascii"),
-            "format": "flac",
-        },
-    }).encode("utf-8")
+    boundary = uuid.uuid4().hex
+    payload = (
+        (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="model"\r\n\r\n'
+            f"{model or MODEL}\r\n"
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="file"; filename="audio.flac"\r\n'
+            "Content-Type: audio/flac\r\n\r\n"
+        ).encode("utf-8")
+        + buf.getvalue()
+        + f"\r\n--{boundary}--\r\n".encode("utf-8")
+    )
     req = urllib.request.Request(URL, data=payload, headers={
-        "Content-Type": "application/json",
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
         "Authorization": f"Bearer {API_KEY}",
     })
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
             data = json.loads(resp.read())
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")[:500]
