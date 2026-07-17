@@ -147,6 +147,7 @@ services:
       - COMPUTE_TYPE=${BOT_WHISPER_COMPUTE_TYPE:-int8_float32}
       # STT_BACKEND=chirp routes transcription to Google Chirp 3 via OpenRouter
       # (needs OPENROUTER_API_KEY); no local model / GPU is used in that mode.
+      # GPU-less host? Add -f docker-compose.cpu.yml to drop the nvidia reservations.
       - STT_BACKEND=${STT_BACKEND:-whisper}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - CHIRP_MODEL=${CHIRP_MODEL:-google/chirp-3}
