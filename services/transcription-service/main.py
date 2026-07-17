@@ -29,9 +29,14 @@ logger = logging.getLogger(__name__)
 WORKER_ID = os.getenv("WORKER_ID", "1")
 MODEL_SIZE = os.getenv("MODEL_SIZE", "large-v3-turbo")
 
-# "whisper" (local faster-whisper, default) or "chirp" (cloud, see chirp.py —
-# no local model / GPU needed).
+# "whisper" (local faster-whisper, default) or a cloud backend via OpenRouter
+# (see chirp.py — no local model / GPU needed): "chirp" (google/chirp-3) or
+# "gpt4o" (openai/gpt-4o-transcribe).
 STT_BACKEND = os.getenv("STT_BACKEND", "whisper").strip().lower()
+CLOUD_MODEL = {
+    "chirp": chirp.MODEL,
+    "gpt4o": os.getenv("GPT4O_MODEL", "openai/gpt-4o-mini-transcribe"),
+}.get(STT_BACKEND)
 DEVICE = os.getenv("DEVICE", "cuda")
 
 COMPUTE_TYPE = os.getenv("COMPUTE_TYPE", "").strip().lower() or "int8"
@@ -181,10 +186,10 @@ async def startup_event():
     """Initialize Whisper model on startup"""
     global model
     logger.info(f"Worker {WORKER_ID} starting up...")
-    if STT_BACKEND == "chirp":
+    if CLOUD_MODEL:
         if not chirp.API_KEY:
-            raise RuntimeError("STT_BACKEND=chirp requires OPENROUTER_API_KEY")
-        logger.info(f"Worker {WORKER_ID} ready - chirp backend ({chirp.MODEL} via OpenRouter), no local model")
+            raise RuntimeError(f"STT_BACKEND={STT_BACKEND} requires OPENROUTER_API_KEY")
+        logger.info(f"Worker {WORKER_ID} ready - {STT_BACKEND} backend ({CLOUD_MODEL} via OpenRouter), no local model")
         return
     logger.info(f"Device: {DEVICE}, Model: {MODEL_SIZE}, Compute: {COMPUTE_TYPE}")
     logger.info(
@@ -223,13 +228,13 @@ async def startup_event():
 @app.get("/health")
 async def health_check():
     """Health check endpoint for load balancer"""
-    ready = model is not None or STT_BACKEND == "chirp"
+    ready = model is not None or CLOUD_MODEL is not None
     health_status = {
         "status": "healthy" if ready else "unhealthy",
         "worker_id": WORKER_ID,
         "timestamp": datetime.utcnow().isoformat(),
         "backend": STT_BACKEND,
-        "model": chirp.MODEL if STT_BACKEND == "chirp" else MODEL_SIZE,
+        "model": CLOUD_MODEL or MODEL_SIZE,
         "device": DEVICE,
         "gpu_available": DEVICE == "cuda",
     }
@@ -384,12 +389,12 @@ async def transcribe_audio(
         # Ensure audio is contiguous array
         audio_array = np.ascontiguousarray(audio_array, dtype=np.float32)
 
-        if STT_BACKEND == "chirp":
+        if CLOUD_MODEL:
             response = await asyncio.get_event_loop().run_in_executor(
-                transcription_executor, chirp.transcribe, audio_array, sample_rate, language
+                transcription_executor, chirp.transcribe, audio_array, sample_rate, language, CLOUD_MODEL
             )
             logger.info(
-                f"Worker {WORKER_ID} chirp completed in {time.time() - start_time:.2f}s - "
+                f"Worker {WORKER_ID} {STT_BACKEND} completed in {time.time() - start_time:.2f}s - "
                 f"Duration: {response['duration']:.2f}s, chars: {len(response['text'])}"
             )
             return response
@@ -549,9 +554,9 @@ async def root():
         "service": "Vexa Transcription Service",
         "worker_id": WORKER_ID,
         "backend": STT_BACKEND,
-        "model": chirp.MODEL if STT_BACKEND == "chirp" else MODEL_SIZE,
+        "model": CLOUD_MODEL or MODEL_SIZE,
         "device": DEVICE,
-        "status": "ready" if (model is not None or STT_BACKEND == "chirp") else "initializing",
+        "status": "ready" if (model is not None or CLOUD_MODEL is not None) else "initializing",
         "endpoints": {
             "transcribe": "/v1/audio/transcriptions",
             "health": "/health"

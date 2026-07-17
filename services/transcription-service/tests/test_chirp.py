@@ -1,5 +1,4 @@
-"""Unit tests for the chirp (OpenRouter) backend — mocked HTTP, no network."""
-import base64
+"""Unit tests for the OpenRouter cloud STT backend — mocked HTTP, no network."""
 import io
 import json
 import os
@@ -32,13 +31,21 @@ class _FakeResp:
         return False
 
 
-def _sent_audio(mock_open) -> np.ndarray:
-    """Decode the FLAC that transcribe() base64'd into the request body."""
+def _parts(mock_open) -> dict:
+    """Parse the multipart body transcribe() sent: {field-name: bytes}."""
     req = mock_open.call_args[0][0]
-    body = json.loads(req.data)
-    assert body["input_audio"]["format"] == "flac"
-    flac = base64.b64decode(body["input_audio"]["data"])
-    audio, _ = sf.read(io.BytesIO(flac), dtype="float32")
+    boundary = req.headers["Content-type"].split("boundary=")[1].encode()
+    parts = {}
+    for chunk in req.data.split(b"--" + boundary)[1:-1]:
+        headers, _, value = chunk.strip(b"\r\n").partition(b"\r\n\r\n")
+        name = headers.split(b'name="')[1].split(b'"')[0].decode()
+        parts[name] = value
+    return parts
+
+
+def _sent_audio(mock_open) -> np.ndarray:
+    """Decode the FLAC that transcribe() put in the multipart request body."""
+    audio, _ = sf.read(io.BytesIO(_parts(mock_open)["file"]), dtype="float32")
     return audio
 
 
@@ -52,8 +59,15 @@ def test_returns_whisper_shape():
     assert out["duration"] == 1.0
     assert out["segments"][0]["start"] == 0.0
     assert out["segments"][0]["end"] == 1.0
-    req = mock_open.call_args[0][0]
-    assert json.loads(req.data)["model"] == chirp.MODEL
+    assert _parts(mock_open)["model"].decode() == chirp.MODEL
+
+
+def test_model_override_for_gpt4o_backend():
+    audio = np.zeros(16000, dtype=np.float32)
+    reply = {"text": "hi", "usage": {}}
+    with patch.object(chirp.urllib.request, "urlopen", return_value=_FakeResp(reply)) as mock_open:
+        chirp.transcribe(audio, 16000, None, "openai/gpt-4o-transcribe")
+    assert _parts(mock_open)["model"].decode() == "openai/gpt-4o-transcribe"
 
 
 def test_sentences_get_prorated_timestamps():
