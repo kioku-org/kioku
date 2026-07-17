@@ -174,6 +174,7 @@ async def _get_full_transcript_segments(
 
     # 4. Merge by segment_id — Redis wins on conflict
     merged: Dict[str, TranscriptionSegment] = {}
+    dropped = 0
 
     for seg in db_segments:
         key = seg.segment_id or f"pg:{seg.speaker or ''}:{seg.start_time:.3f}"
@@ -195,6 +196,7 @@ async def _get_full_transcript_segments(
                 segment_id=seg.segment_id,
             )
         except Exception as e:
+            dropped += 1
             logger.error(f"[Segments] PG segment error {key}: {e}")
 
     for seg_key, segment_json in redis_raw.items():
@@ -254,7 +256,15 @@ async def _get_full_transcript_segments(
                 segment_id=d.get('segment_id'),
             )
         except Exception as e:
+            dropped += 1
             logger.error(f"[Segments] Redis segment error {seg_key}: {e}")
+
+    # served < stored is the issue-#108 bug signature — make it loud.
+    if dropped:
+        logger.warning(
+            f"[Segments] meeting {internal_meeting_id}: dropped {dropped} stored "
+            f"segment(s) at serve time ({len(merged)} served)"
+        )
 
     # 5. Sort by absolute_start_time (or start_time as fallback)
     def sort_key(seg: TranscriptionSegment):

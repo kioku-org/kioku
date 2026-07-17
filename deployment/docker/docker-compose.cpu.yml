@@ -1,0 +1,22 @@
+# GPU-less deployment override (issue #109) — for hosts without an NVIDIA GPU
+# running STT_BACKEND=chirp (cloud transcription, no local model).
+#
+#   docker compose -f docker-compose.stateful.yml -f docker-compose.cpu.yml up -d
+#
+# Nulls the unconditional nvidia device reservations (and the host-specific
+# /dev passthroughs) so compose doesn't require the nvidia runtime. Ollama and
+# Qdrant indexing fall back to CPU. `!reset` needs docker compose >= 2.24.
+services:
+  kioku-stateful:
+    devices: !reset []
+    deploy:
+      resources:
+        reservations:
+          devices: !reset []
+  kioku-whisper:
+    environment:
+      - DEVICE=cpu
+    deploy:
+      resources:
+        reservations:
+          devices: !reset []
