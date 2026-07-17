@@ -1064,9 +1064,18 @@ class TranscriptionSegment(BaseModel):
     @field_validator('language')
     @classmethod
     def validate_language(cls, v):
-        """Validate that the language code is one of the accepted faster-whisper codes."""
+        """Coerce unknown language codes to None instead of raising.
+
+        This model is built from *stored* segments at serve time; raising here
+        silently drops segments that every ingest layer accepted (issue #108 —
+        chirp's "unknown" label emptied whole transcripts). The text is the
+        value, the label is metadata: degrade, don't drop.
+        """
         if v is not None and v != "" and v not in ACCEPTED_LANGUAGE_CODES:
-            raise ValueError(f"Invalid language code '{v}'. Must be one of: {sorted(ACCEPTED_LANGUAGE_CODES)}")
+            logging.getLogger(__name__).warning(
+                f"[Segments] coercing invalid language code '{v}' to None"
+            )
+            return None
         return v
 
     class Config:
