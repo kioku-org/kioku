@@ -87,6 +87,13 @@ RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
 ENV PATH=/root/.cargo/bin:$PATH
 WORKDIR /build
 COPY services/transcription/Cargo.toml services/transcription/Cargo.lock ./
+# Dependency-only build against a dummy main: the ~20min whisper.cpp CUDA
+# compile lands in this layer, cached until Cargo.{toml,lock} change — source
+# edits skip straight to the (seconds-long) final build below.
+RUN mkdir src && echo "fn main() {}" > src/main.rs \
+    && cargo build --release --features cuda \
+    && rm -rf src target/release/kioku-transcription* \
+              target/release/deps/kioku_transcription-*
 COPY services/transcription/src ./src
 RUN cargo build --release --features cuda
 
