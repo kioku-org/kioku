@@ -13,3 +13,8 @@ services:
       resources:
         reservations:
           devices: !reset []
+  kioku-whisper:
+    deploy:
+      resources:
+        reservations:
+          devices: !reset []

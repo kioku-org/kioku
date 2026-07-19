@@ -2,19 +2,18 @@
 
 OpenAI-Whisper-API-compatible transcription (`POST /v1/audio/transcriptions`,
 multipart WAV in, verbose_json out). One Rust service
-(`src/main.rs`, on the [kiku](https://crates.io/crates/kiku) engine) fills
-both roles:
+(`src/main.rs`, on the [kiku](https://crates.io/crates/kiku) engine), baked
+into the stateless bot image (`deployment/docker/Dockerfile.stateless`,
+built with `--features cuda`) and serving both roles from that image:
 
-- **Shared `kioku-whisper` compose service** (`Dockerfile.kiku`) — cloud STT
-  via OpenRouter (`STT_BACKEND=chirp` → `google/chirp-3`, `gpt4o` →
-  `openai/gpt-4o-mini-transcribe`). No GPU needed.
-- **In-pod transcriber** — the same binary built with `--features cuda`
-  (whisper.cpp CUDA), shipped into stateless bot pods by
-  `deployment/docker/Dockerfile.stateless` for deploys that can't reach a
-  shared service (RunPod bots). `STT_BACKEND=whisper`, ggml model named by
-  `MODEL_SIZE`, auto-downloaded to the pod's `/app/models` cache. Falls back
-  to CPU when no GPU is present. Local segments carry word-level timestamps
-  (Teams speaker attribution).
+- **Shared `kioku-whisper` compose service** — the bot image with
+  `WHISPER_ONLY=true`. `STT_BACKEND=whisper` for local whisper.cpp on GPU
+  (CPU fallback), or `chirp` (`google/chirp-3`) / `gpt4o`
+  (`openai/gpt-4o-mini-transcribe`) for cloud STT via OpenRouter.
+- **In-pod transcriber** — the same binary started next to the bot for
+  deploys that can't reach a shared service (RunPod bots). ggml model named
+  by `MODEL_SIZE`, auto-downloaded to the pod's `/app/models` cache. Local
+  segments carry word-level timestamps (Teams speaker attribution).
 
 ## Run (Rust)
 

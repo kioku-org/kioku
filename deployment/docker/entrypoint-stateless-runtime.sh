@@ -8,6 +8,13 @@ set -euo pipefail
 # /app/models (the BOT_MODEL_CACHE_DIR mount runtime-api adds to every pod).
 export STT_BACKEND="${STT_BACKEND:-whisper}"
 
+# The kiku binary links libcuda.so.1 (normally injected by the NVIDIA
+# runtime). On GPU-less hosts fall back to the shipped driver stub so the
+# binary still loads — cuInit fails and whisper.cpp runs on CPU.
+if ! ldconfig -p | grep -q libcuda.so.1; then
+  export LD_LIBRARY_PATH="/opt/cuda-stubs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+
 if [ "${WHISPER_ONLY:-}" = "true" ]; then
   echo "[KIOKU-WHISPER] Shared transcriber mode"
   cd /app
