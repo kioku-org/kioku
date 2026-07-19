@@ -140,7 +140,7 @@ services:
   kioku-whisper:
     image: kioku-whisper:latest
     build:
-      context: ../../services/transcription-service
+      context: ../../services/transcription
       dockerfile: Dockerfile.kiku
     container_name: kioku-whisper
     profiles: ["shared-whisper"]

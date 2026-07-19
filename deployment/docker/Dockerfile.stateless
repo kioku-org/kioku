@@ -147,9 +147,9 @@ RUN curl -fsSLO https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2
     && echo "/usr/local/cuda-12.3/lib64" > /etc/ld.so.conf.d/cuda.conf && ldconfig
 
 # Install Whisper transcription service (GPU)
-COPY services/transcription-service/requirements.txt /opt/transcription/
+COPY services/transcription/requirements.txt /opt/transcription/
 RUN pip3 install --no-cache-dir -r /opt/transcription/requirements.txt
-COPY services/transcription-service/main.py services/transcription-service/chirp.py /opt/transcription/
+COPY services/transcription/main.py services/transcription/chirp.py /opt/transcription/
 
 # Copy entrypoint
 COPY deployment/docker/entrypoint-stateless-runtime.sh /entrypoint.sh
