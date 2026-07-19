@@ -1,16 +1,20 @@
 # Transcription Service
 
 OpenAI-Whisper-API-compatible transcription (`POST /v1/audio/transcriptions`,
-multipart WAV in, verbose_json out). Two implementations live here:
+multipart WAV in, verbose_json out). One Rust service
+(`src/main.rs`, on the [kiku](https://crates.io/crates/kiku) engine) fills
+both roles:
 
-- **Rust (`src/main.rs`, `Dockerfile.kiku`)** — the shared `kioku-whisper`
-  compose service, built on the [kiku](https://crates.io/crates/kiku) engine.
-  Cloud STT via OpenRouter (`STT_BACKEND=chirp` → `google/chirp-3`, `gpt4o` →
-  `openai/gpt-4o-mini-transcribe`); local whisper.cpp (CPU) behind the
-  `local-whisper` cargo feature. No GPU needed.
-- **Python (`main.py`, `chirp.py`)** — in-pod GPU faster-whisper, shipped into
-  stateless bot pods by `deployment/docker/Dockerfile.stateless` for deploys
-  that can't reach a shared service (RunPod bots).
+- **Shared `kioku-whisper` compose service** (`Dockerfile.kiku`) — cloud STT
+  via OpenRouter (`STT_BACKEND=chirp` → `google/chirp-3`, `gpt4o` →
+  `openai/gpt-4o-mini-transcribe`). No GPU needed.
+- **In-pod transcriber** — the same binary built with `--features cuda`
+  (whisper.cpp CUDA), shipped into stateless bot pods by
+  `deployment/docker/Dockerfile.stateless` for deploys that can't reach a
+  shared service (RunPod bots). `STT_BACKEND=whisper`, ggml model named by
+  `MODEL_SIZE`, auto-downloaded to the pod's `/app/models` cache. Falls back
+  to CPU when no GPU is present. Local segments carry word-level timestamps
+  (Teams speaker attribution).
 
 ## Run (Rust)
 
@@ -51,10 +55,11 @@ In the stack it deploys via the `shared-whisper` compose profile — see
 }
 ```
 
-The python in-pod service additionally supports faster-whisper tuning
-(VAD knobs, temperature fallback, `timestamp_granularities=word` for
-word-level timing used in Teams speaker attribution) — see `.env.example`
-and `docs/models.md`. Its test suite lives in `tests/` (`pytest tests/ -v`).
+Local (whisper) segments also carry a `words` array
+(`{word, start, end, probability}`). Dropped from the python era: VAD
+filtering, temperature fallback, and per-segment confidence fields
+(faster-whisper features kiku's whisper.cpp backend doesn't expose) — the
+bot's phrase-based hallucination filter still applies.
 
 Known limitation (both backends): whisper hallucinates on silence (bug #24) —
 mitigated bot-side in `core/src/services/hallucinations/`.

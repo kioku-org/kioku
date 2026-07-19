@@ -76,12 +76,25 @@ RUN for m in shared/whisper shared/buffer gmeet/capture gmeet/pipeline \
 RUN rm -rf node_modules/onnxruntime-node node_modules/onnxruntime-web \
            node_modules/onnxruntime-common node_modules/@huggingface
 
-# ─── Stage 3: Runtime (Playwright + Whisper) ──────────────────────────────────
+# ─── Stage 3: Build Rust transcription service (kiku, whisper.cpp CUDA) ───────
+# Needs the CUDA devel image for nvcc; GPU-less build hosts are fine (ggml
+# compiles for its default arch list, the driver is only needed at run time).
+FROM nvidia/cuda:12.3.2-devel-ubuntu2204 AS transcription-builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl build-essential cmake git libclang-dev pkg-config ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+ENV PATH=/root/.cargo/bin:$PATH
+WORKDIR /build
+COPY services/transcription/Cargo.toml services/transcription/Cargo.lock ./
+COPY services/transcription/src ./src
+RUN cargo build --release --features cuda
+
+# ─── Stage 4: Runtime (Playwright + Whisper) ──────────────────────────────────
 # Plain ubuntu base instead of nvidia/cuda:12.3.2-cudnn9-runtime (~3.2GB of CUDA
-# layers). The only GPU consumer is faster-whisper/ctranslate2, which needs just
-# cuBLAS + cuDNN — installed as targeted apt packages below (same 12.3/cudnn9
-# versions the old base shipped, minus NCCL/NPP/cuSPARSE/NVTX dead weight).
-# Driver libs are injected by the NVIDIA container runtime at run time.
+# layers). The only GPU consumer is the kiku transcription service (whisper.cpp
+# CUDA), which needs just cuBLAS + cudart — installed as targeted apt packages
+# below. Driver libs are injected by the NVIDIA container runtime at run time.
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -135,21 +148,22 @@ COPY services/vexa-bot/core/entrypoint.sh /app/vexa-bot/entrypoint.sh
 COPY services/vexa-bot/core/pool-wait.js /app/vexa-bot/core/pool-wait.js
 RUN chmod +x /app/vexa-bot/entrypoint.sh
 
-# cuBLAS + cuDNN for faster-whisper/ctranslate2, from NVIDIA's apt repo (the
-# pip nvidia-* wheels are ~2.3GB vs ~1.5GB here; apt installs to the default
-# linker path, so no LD_LIBRARY_PATH needed). Pinned to the same major versions
-# the old nvidia/cuda:12.3.2-cudnn9 base provided.
+# cuBLAS + cudart for whisper.cpp CUDA, from NVIDIA's apt repo (apt installs to
+# the default linker path via the ld.so.conf entry below). cuDNN is gone with
+# faster-whisper — whisper.cpp doesn't use it.
 RUN curl -fsSLO https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb \
     && dpkg -i cuda-keyring_1.1-1_all.deb && rm cuda-keyring_1.1-1_all.deb \
     && apt-get update && apt-get install -y --no-install-recommends \
-       libcublas-12-3 libcudnn9-cuda-12 \
+       libcublas-12-3 cuda-cudart-12-3 \
     && rm -rf /var/lib/apt/lists/* \
     && echo "/usr/local/cuda-12.3/lib64" > /etc/ld.so.conf.d/cuda.conf && ldconfig
 
-# Install Whisper transcription service (GPU)
-COPY services/transcription/requirements.txt /opt/transcription/
-RUN pip3 install --no-cache-dir -r /opt/transcription/requirements.txt
-COPY services/transcription/main.py services/transcription/chirp.py /opt/transcription/
+# Transcription service (kiku, whisper.cpp CUDA). The binary dynamic-links
+# libcuda.so.1, normally injected by the NVIDIA container runtime; the driver
+# stub is shipped at a NON-default path so GPU-less hosts can still run it
+# (LD_LIBRARY_PATH=/opt/cuda-stubs → cuInit fails → whisper.cpp CPU fallback).
+COPY --from=transcription-builder /build/target/release/kioku-transcription /opt/transcription/kioku-transcription
+COPY --from=transcription-builder /usr/local/cuda-12.3/lib64/stubs/libcuda.so /opt/cuda-stubs/libcuda.so.1
 
 # Copy entrypoint
 COPY deployment/docker/entrypoint-stateless-runtime.sh /entrypoint.sh

@@ -697,9 +697,8 @@ dependencies = [
 
 [[package]]
 name = "kiku"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba56218d5c777b008d98881bbaf696c749031e19192d5a806a0fe6342700fbda"
+version = "0.2.0"
+source = "git+https://github.com/kioku-org/kiku?rev=267b534eea59a79510b4120db1cba06125103e22#267b534eea59a79510b4120db1cba06125103e22"
 dependencies = [
  "anyhow",
  "axum",

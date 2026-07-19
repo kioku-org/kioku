@@ -4,10 +4,14 @@ set -euo pipefail
 # Shared-transcriber mode (whisper pool shard, see meeting_api/transcriber_pool.py):
 # run only the transcription service, no bot. Env-based because docker/runpod
 # backends pass Cmd as *arguments* to this entrypoint, not as a replacement.
+# In-pod default is local whisper; cwd /app so kiku's model cache lands in
+# /app/models (the BOT_MODEL_CACHE_DIR mount runtime-api adds to every pod).
+export STT_BACKEND="${STT_BACKEND:-whisper}"
+
 if [ "${WHISPER_ONLY:-}" = "true" ]; then
   echo "[KIOKU-WHISPER] Shared transcriber mode"
-  cd /opt/transcription
-  exec python3 main.py
+  cd /app
+  exec /opt/transcription/kioku-transcription
 fi
 
 echo "[KIOKU-BOT] Starting bot pod..."
@@ -24,8 +28,8 @@ TRANS_PID=""
 case "$TX_URL" in
   ""|http://localhost*|http://127.0.0.1*)
     echo "[KIOKU-BOT] Starting transcription service..."
-    cd /opt/transcription
-    python3 main.py &
+    cd /app
+    /opt/transcription/kioku-transcription &
     TRANS_PID=$!
     # Give transcription service time to start
     sleep 3

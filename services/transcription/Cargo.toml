@@ -5,7 +5,7 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
-kiku = "0.1"
+kiku = "0.2"
 anyhow = "1"
 axum = { version = "0.8", features = ["multipart"] }
 tokio = { version = "1", features = ["full"] }
@@ -16,3 +16,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [features]
 local-whisper = ["kiku/local-whisper"]
+cuda = ["local-whisper", "kiku/cuda"]
+
+# Temporary until kiku 0.2.0 is published to crates.io.
+[patch.crates-io]
+kiku = { git = "https://github.com/kioku-org/kiku", rev = "267b534eea59a79510b4120db1cba06125103e22" }

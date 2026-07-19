@@ -28,6 +28,7 @@ fn env_or(name: &str, default: &str) -> String {
 
 struct App {
     engine: Engine,
+    cloud: bool,
     semaphore: Semaphore,
     reserved_slots: usize,
     retry_after: String,
@@ -54,8 +55,9 @@ async fn main() -> anyhow::Result<()> {
         // local whisper.cpp: ggml model name or path (needs --features local-whisper)
         _ => env_or("MODEL_SIZE", "large-v3-turbo"),
     };
+    let cloud = matches!(backend.as_str(), "chirp" | "gpt4o");
     let cfg = Config {
-        use_local: !matches!(backend.as_str(), "chirp" | "gpt4o"),
+        use_local: !cloud,
         openrouter_url: env_or("OPENROUTER_URL", "https://openrouter.ai/api/v1"),
         openrouter_api_key: std::env::var("OPENROUTER_API_KEY").ok().filter(|v| !v.trim().is_empty()),
         model: model.clone(),
@@ -72,6 +74,7 @@ async fn main() -> anyhow::Result<()> {
     let max_active: usize = env_or("MAX_ACTIVE_REQUESTS", &env_or("MAX_CONCURRENT_TRANSCRIPTIONS", "20")).parse()?;
     let app = Arc::new(App {
         engine,
+        cloud,
         semaphore: Semaphore::new(max_active),
         reserved_slots: env_or("REALTIME_RESERVED_SLOTS", "1").parse()?,
         retry_after: env_or("BUSY_RETRY_AFTER_S", "1"),
@@ -216,14 +219,18 @@ async fn transcribe(
 
     // Timeout guards the permit: OpenRouter hangs indefinitely on some
     // model/payload combos (gpt-4o JSON path, probed 2026-07-17).
-    // ponytail: local-whisper builds block this worker thread during inference;
-    // the semaphore caps how many, and the shipped image is cloud-only.
-    let transcript = match tokio::time::timeout(
+    let fut = tokio::time::timeout(
         std::time::Duration::from_secs_f64(app.timeout_s),
         app.engine.transcribe(&wav, "wav", language.as_deref()),
-    )
-    .await
-    {
+    );
+    // Local whisper inference is CPU/GPU-bound inside the future's poll:
+    // block_in_place keeps it off the async workers. (The timeout can't
+    // preempt a blocking poll — it only bites on the cloud path.)
+    #[cfg(feature = "local-whisper")]
+    let result = tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(fut));
+    #[cfg(not(feature = "local-whisper"))]
+    let result = fut.await;
+    let transcript = match result {
         Err(_) => {
             warn!("Worker {} transcription timed out after {}s", app.worker_id, app.timeout_s);
             return err(StatusCode::GATEWAY_TIMEOUT, "transcription timed out");
@@ -239,19 +246,32 @@ async fn transcribe(
     // Label must be a whisper-valid code; cloud models don't echo detection
     // and meeting-api's validation silently drops segments on e.g. "unknown".
     let language_label = language.unwrap_or_else(|| {
-        if app.backend == "chirp" || app.backend == "gpt4o" {
+        if app.cloud {
             app.language_label.clone()
         } else {
             transcript.language.clone()
         }
     });
-    let segments: Vec<Value> = if transcript.segments.len() > 1 {
-        // Local whisper gives real per-segment timestamps; pass them through.
-        transcript.segments.iter().enumerate()
-            .map(|(i, s)| segment_json(i, s.start, s.end, s.text.trim()))
-            .collect()
-    } else {
+    let segments: Vec<Value> = if app.cloud {
+        // Cloud providers return no timestamps — synthesize confirmable segments.
         split_segments(&text, duration)
+    } else {
+        // Local whisper: real per-segment timestamps + word timing pass through.
+        transcript.segments.iter().enumerate()
+            .map(|(i, s)| {
+                let mut v = segment_json(i, s.start, s.end, s.text.trim());
+                if !s.words.is_empty() {
+                    v["words"] = s.words.iter()
+                        .map(|w| json!({
+                            "word": w.word, "start": w.start,
+                            "end": w.end, "probability": w.probability,
+                        }))
+                        .collect::<Vec<_>>()
+                        .into();
+                }
+                v
+            })
+            .collect()
     };
 
     info!(
