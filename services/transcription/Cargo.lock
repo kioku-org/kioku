@@ -698,7 +698,7 @@ dependencies = [
 [[package]]
 name = "kiku"
 version = "0.2.0"
-source = "git+https://github.com/kioku-org/kiku?rev=267b534eea59a79510b4120db1cba06125103e22#267b534eea59a79510b4120db1cba06125103e22"
+source = "git+https://github.com/kioku-org/kiku?rev=b3ceb8c44f6d969e8e869f4373853073c286a399#b3ceb8c44f6d969e8e869f4373853073c286a399"
 dependencies = [
  "anyhow",
  "axum",

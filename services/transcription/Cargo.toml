@@ -20,4 +20,4 @@ cuda = ["local-whisper", "kiku/cuda"]
 
 # Temporary until kiku 0.2.0 is published to crates.io.
 [patch.crates-io]
-kiku = { git = "https://github.com/kioku-org/kiku", rev = "267b534eea59a79510b4120db1cba06125103e22" }
+kiku = { git = "https://github.com/kioku-org/kiku", rev = "b3ceb8c44f6d969e8e869f4373853073c286a399" }
