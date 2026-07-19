@@ -79,7 +79,7 @@ RUN rm -rf node_modules/onnxruntime-node node_modules/onnxruntime-web \
 # ─── Stage 3: Build Rust transcription service (kiku, whisper.cpp CUDA) ───────
 # Needs the CUDA devel image for nvcc; GPU-less build hosts are fine (ggml
 # compiles for its default arch list, the driver is only needed at run time).
-FROM nvidia/cuda:12.3.2-devel-ubuntu2204 AS transcription-builder
+FROM nvidia/cuda:12.3.2-devel-ubuntu22.04 AS transcription-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl build-essential cmake git libclang-dev pkg-config ca-certificates \
     && rm -rf /var/lib/apt/lists/*
