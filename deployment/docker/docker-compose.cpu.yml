@@ -13,10 +13,3 @@ services:
       resources:
         reservations:
           devices: !reset []
-  kioku-whisper:
-    environment:
-      - DEVICE=cpu
-    deploy:
-      resources:
-        reservations:
-          devices: !reset []

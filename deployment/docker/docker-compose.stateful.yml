@@ -129,44 +129,33 @@ services:
       retries: 5
       start_period: 90s
 
-  # One shared Whisper instance for all local bots (opt-in). Reuses the bot image
-  # (it already ships transcription-service + CUDA libs) with an entrypoint override
-  # so no extra image is needed. Enable with COMPOSE_PROFILES=shared-whisper and
+  # One shared transcription instance for all local bots (opt-in) — the Rust
+  # kiku service (cloud STT via OpenRouter, no GPU/local model). Enable with
+  # COMPOSE_PROFILES=shared-whisper and
   # BOT_TRANSCRIPTION_SERVICE_URL=http://kioku-whisper:8000 in .env; a plain
   # `docker compose up -d` without the profile deploys exactly as before.
-  # ponytail: local-backend only — RunPod bots can't reach this hostname and must
-  # keep their in-pod model (entrypoint-stateless falls back automatically).
+  # ponytail: RunPod bots can't reach this hostname and keep their in-pod GPU
+  # whisper (entrypoint-stateless falls back automatically). Local whisper.cpp
+  # needs a build with --features local-whisper; cloud-only ships by default.
   kioku-whisper:
-    image: ${VEXA_BOT_IMAGE:-ghcr.io/kioku-org/kioku-stateless:latest}
+    image: kioku-whisper:latest
+    build:
+      context: ../../services/transcription-service
+      dockerfile: Dockerfile.kiku
     container_name: kioku-whisper
     profiles: ["shared-whisper"]
-    entrypoint: ["/bin/sh", "-c", "cd /opt/transcription && exec python3 main.py"]
     environment:
-      - MODEL_SIZE=${BOT_WHISPER_MODEL:-large-v3-turbo}
-      - DEVICE=cuda
-      - COMPUTE_TYPE=${BOT_WHISPER_COMPUTE_TYPE:-int8_float32}
-      # STT_BACKEND=chirp (Google Chirp 3) or gpt4o (OpenAI gpt-4o-transcribe)
-      # routes transcription through OpenRouter (needs OPENROUTER_API_KEY);
-      # no local model / GPU is used in those modes.
-      # GPU-less host? Add -f docker-compose.cpu.yml to drop the nvidia reservations.
-      - STT_BACKEND=${STT_BACKEND:-whisper}
+      # STT_BACKEND=chirp (Google Chirp 3) or gpt4o (OpenAI gpt-4o-*) via
+      # OpenRouter (needs OPENROUTER_API_KEY).
+      - STT_BACKEND=${STT_BACKEND:-chirp}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - CHIRP_MODEL=${CHIRP_MODEL:-google/chirp-3}
       - GPT4O_MODEL=${GPT4O_MODEL:-openai/gpt-4o-mini-transcribe}
       - CHIRP_TARGET_RMS=${CHIRP_TARGET_RMS:-0.1}
       - CHIRP_LANGUAGE_LABEL=${CHIRP_LANGUAGE_LABEL:-en}
-    volumes:
-      - whisper-models:/app/models
     networks:
       - kioku-network
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 30s

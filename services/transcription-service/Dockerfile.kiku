@@ -1,0 +1,16 @@
+# Rust transcription service on the kiku engine (cloud STT via OpenRouter).
+# The CUDA/faster-whisper python service stays in Dockerfile (in-pod GPU path).
+FROM rust:1-slim AS builder
+WORKDIR /app
+COPY Cargo.toml ./
+COPY src ./src
+RUN cargo build --release
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=builder /app/target/release/kioku-transcription-service .
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+EXPOSE 8000
+CMD ["./kioku-transcription-service"]
