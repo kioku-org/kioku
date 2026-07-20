@@ -25,7 +25,7 @@ graph TD
         DB[(PostgreSQL :5432)]
         RD[(Redis :6379)]
         MN[(MinIO :9000)]
-        QD[(Qdrant :6334 gRPC)]
+        QD[(Qdrant :6334 HTTP / :6335 gRPC)]
         OL[Ollama :11434]
         CF[cloudflared — optional]
     end
@@ -33,7 +33,7 @@ graph TD
     subgraph bots["kioku-stateless (per-meeting, ephemeral)"]
         direction TB
         BOT[Playwright bot]
-        WH[embedded faster-whisper :8000]
+        WH[embedded transcription :8000 — kiku/whisper.cpp, or cloud STT]
     end
 
     kioku-stateful -->|Docker socket or RunPod REST API| bots
@@ -55,7 +55,8 @@ socket locally, or the RunPod REST API) and removed after the meeting ends.
 ```
 deployment/docker/
 ├── docker-compose.stateful.yml   # the one real service: kioku-stateful
-├── docker-compose.stateless.yml  # a one-shot Whisper-model warmup job only — not the bot image itself
+├── docker-compose.cpu.yml        # GPU-less override — drops nvidia device reservations
+├── docker-compose.stateless.yml  # a one-shot whisper-model warmup job only — not the bot image itself
 ├── Dockerfile.stateful
 ├── Dockerfile.stateless
 ├── .env.example
@@ -138,6 +139,7 @@ All data persists across restarts in named volumes:
 | `kioku-ollama-data` | Embedding model weights |
 | `kioku-cookie-data` | Bot session cookies |
 | `kioku-recordings-data` | Recording pipeline scratch/output |
+| `kioku-whisper-models` | Cached local whisper.cpp model weights (used by the optional `kioku-whisper` shared-transcription service) |
 
 Plus bind-mounts for the Docker socket, `runtime-profiles.yaml`, and (if configured) Cloudflare Tunnel credentials.
 

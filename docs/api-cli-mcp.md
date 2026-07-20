@@ -9,7 +9,8 @@ All REST endpoints are served by the **Hivemind API** on port 9100 (or `api.kiok
 
 ### Authentication
 
-All endpoints except `/health` require a JWT bearer token:
+All endpoints require a JWT bearer token, except `/health`, `/auth/register/*`,
+`/auth/signin`, and `/auth/token` (the routes that issue or exchange for a token):
 
 ```
 Authorization: Bearer <token>
@@ -43,6 +44,8 @@ default workspace is used.
 | `GET` | `/workspaces` | List every workspace the token belongs to |
 | `POST` | `/workspaces` | Create an additional workspace |
 | `GET` / `PUT` | `/workspace/config` | Get/update the active workspace's config |
+| `POST` | `/workspaces/:workspace_id_or_slug/invites` | Invite into a specific (non-active) workspace |
+| `POST` | `/workspaces/:workspace_id_or_slug/join` | Accept a pending invite and join that workspace |
 | `GET` | `/workspace/members` | List members |
 | `GET` / `POST` | `/workspace/invites` | List/create invites |
 | `GET` / `POST` | `/workspace/auth-keys` | List/create long-lived API keys |
@@ -133,6 +136,8 @@ kioku keys --delete <id-or-prefix>
 kioku ws
 kioku ws <name>
 kioku ws --create "New Team"
+kioku ws <name> --invite <email>   # invite into a specific non-active workspace
+kioku ws --join <name>              # accept a pending invite and switch to it
 ```
 
 **Teammates**

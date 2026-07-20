@@ -41,7 +41,7 @@ authoritative, up-to-date list.
 
 | Variable | Default | Description |
 |---|---|---|
-| `REDIS_PASSWORD` | — | Redis AUTH password (required if Redis is exposed publicly, e.g. RunPod overflow) |
+| `REDIS_PASSWORD` | `kioku-redis` | Redis AUTH password — change from the default if Redis is exposed publicly, e.g. RunPod overflow |
 
 ## Storage
 
@@ -59,7 +59,8 @@ authoritative, up-to-date list.
 |---|---|---|
 | `QDRANT_API_KEY` | — | Qdrant API key (optional) |
 
-Note: Hivemind connects to Qdrant on the **gRPC** port (`6334`), not the REST port (`6333`).
+Note: this deployment remaps Qdrant's default ports — HTTP/REST is `6334` and gRPC is
+`6335` (not Qdrant's stock `6333`/`6334`). Hivemind connects on the **gRPC** port (`6335`).
 
 ## AI Integrations (Optional)
 
@@ -72,6 +73,20 @@ Note: Hivemind connects to Qdrant on the **gRPC** port (`6334`), not the REST po
 | `ZOOM_CLIENT_ID` | Zoom OAuth client ID |
 | `ZOOM_CLIENT_SECRET` | Zoom OAuth client secret |
 | `TTS_API_TOKEN` | TTS service auth token |
+
+## Transcription
+
+Passed to each `kioku-stateless` bot pod and, if the `shared-whisper` compose profile is
+enabled, the shared `kioku-whisper` service — both run the same Rust
+([kiku](https://crates.io/crates/kiku)/whisper.cpp) transcription binary. See
+[GPU vs CPU Modes](/deployment/gpu-cpu-modes).
+
+| Variable | Default | Description |
+|---|---|---|
+| `STT_BACKEND` | `whisper` | `whisper` (local whisper.cpp, GPU with CPU fallback) \| `chirp` (Google Chirp 3 via OpenRouter) \| `gpt4o` (OpenAI gpt-4o-mini-transcribe via OpenRouter) |
+| `BOT_WHISPER_MODEL` | `large-v3-turbo` | ggml model name for the local `whisper` backend (maps to the service's `MODEL_SIZE`) |
+| `OPENROUTER_API_KEY` | — | Required for `chirp`/`gpt4o` backends |
+| `BOT_TRANSCRIPTION_SERVICE_URL` | — | Set to `http://kioku-whisper:8000` to point local bots at the shared `kioku-whisper` instance instead of each spawning its own in-pod model. RunPod bots ignore this and always keep their in-pod service. |
 
 ## Dashboard / OAuth
 

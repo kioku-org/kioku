@@ -108,7 +108,7 @@ downtime-risking migration of either service's existing credential table.
 
 The single unified MCP server (`services/mcp`, `kioku-mcp`, port 18888) hosts both the
 knowledge tools and the meeting/bot tools behind one endpoint. For meeting/bot tools, it
-calls `GET /vexa/token` on Hivemind first (`resolve_vexa_key` in `handler.rs`) to resolve
+calls `GET /vexa/token` on Hivemind first (`resolve_vexa_key` in `services/mcp/src/auth.rs`) to resolve
 whichever Kioku credential it was given (JWT, `kioku_...` key, or a raw Vexa key) into the
 caller's per-user Vexa API key, then forwards to the Vexa gateway as `X-API-Key`. For
 knowledge tools, it forwards the caller's original bearer token straight to Hivemind, which

@@ -15,7 +15,7 @@ sequenceDiagram
     participant MA as meeting-api
     participant RA as runtime-api
     participant BOT as kioku-stateless bot
-    participant WH as faster-whisper
+    participant WH as transcription (kiku)
     participant RD as Redis
     participant OL as Ollama
     participant QD as Qdrant
@@ -59,9 +59,10 @@ By default, Kioku calls no external APIs. External calls are only made if you ex
 
 | Service | Trigger | Data sent |
 |---|---|---|
-| OpenAI API | `OPENAI_API_KEY` set | Session messages to chat completions API |
-| Anthropic API | `ANTHROPIC_API_KEY` set | Session messages to Messages API |
+| Dashboard AI chat provider | `AI_MODEL` + `AI_API_KEY` set (`AI_MODEL` selects the provider, e.g. `openai/gpt-4o`, `anthropic/claude-...`, or an Azure/OpenRouter-compatible endpoint) | Chat messages sent to whichever provider `AI_MODEL` points at |
+| Anthropic API | `ANTHROPIC_API_KEY` set | agent-api's in-meeting AI agent (a Claude Code CLI container) sends session content to Claude — this is the only LLM provider agent-api reads |
 | RunPod API | `RUNPOD_API_KEY` set | Remote bot execution and its required capture/transcription traffic |
+| OpenRouter API | `STT_BACKEND=chirp` or `gpt4o` | Raw meeting audio, sent for cloud transcription (Google Chirp 3 / OpenAI gpt-4o-mini-transcribe) instead of local whisper.cpp |
 | Cloudflare Tunnel | `cloudflared` running | Encrypted tunnel traffic (no plaintext) |
 
 ## Data at Rest
@@ -72,4 +73,4 @@ By default, Kioku calls no external APIs. External calls are only made if you ex
 | Vector embeddings | Qdrant (`kioku-qdrant-data` volume) | Plaintext |
 | Optional meeting recordings | MinIO (`kioku-minio-data` volume) and `kioku-recordings-data` | Plaintext |
 | Bot session cookies | Cookie service (`kioku-cookie-data` volume) | Plaintext |
-| Model weights | Ollama / Whisper volumes | N/A (public models) |
+| Model weights | Ollama / whisper.cpp volumes | N/A (public models) |

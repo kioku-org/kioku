@@ -11,7 +11,7 @@ Meeting memory is Kioku's core feature: a bot joins your meeting, transcribes it
 flowchart LR
     A[POST /bots] --> B[kioku-stateless\nspawns]
     B --> C[Bot joins\nmeeting]
-    C --> D[Audio → Whisper\n→ Redis stream]
+    C --> D[Audio → transcription\n→ Redis stream]
     D --> E[meeting-api\nfinalizes]
     E --> F[Ollama embeds\nsegments]
     F --> G[Qdrant stores\nvectors]
@@ -20,14 +20,19 @@ flowchart LR
 
 ## Transcription Engine
 
-Each bot container runs a self-contained faster-whisper server (`localhost:8000` inside the pod):
+Each bot container runs a self-contained transcription service (`localhost:8000` inside
+the pod) — a Rust binary on the [kiku](https://crates.io/crates/kiku)/whisper.cpp engine,
+with two backend modes:
 
-- **Model**: `large-v3-turbo` by default (configurable via `BOT_WHISPER_MODEL`)
-- **Compute**: `int8` quantization — best balance of speed, quality, and VRAM usage
-- **GPU**: NVIDIA CUDA when available; falls back to CPU
-- **Language**: auto-detected per segment; or set explicitly in the bot request
+- **`whisper` (default)** — local whisper.cpp. `large-v3-turbo` model by default
+  (configurable via `BOT_WHISPER_MODEL`). NVIDIA CUDA when available; falls back to CPU.
+- **`chirp` / `gpt4o`** — cloud STT (Google Chirp 3 / OpenAI gpt-4o-mini-transcribe) via
+  OpenRouter, no GPU or local model needed. Requires `OPENROUTER_API_KEY`. Sends raw
+  meeting audio off your infrastructure — see [Data flow](/security/data-flow).
 
-Model weights are downloaded once into a shared host volume and reused by all bot containers — no redundant downloads.
+Language is auto-detected per segment, or set explicitly in the bot request. For the local
+backend, model weights are downloaded once into a shared host volume and reused by all bot
+containers — no redundant downloads.
 
 ## Supported Platforms
 

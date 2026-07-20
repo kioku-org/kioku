@@ -7,9 +7,9 @@ Document memory lets you upload documents — PDF, DOCX, PPTX, TXT, or MD files:
 
 ## Upload
 
-### Dashboard
-
-Drag a PDF onto the **Documents** panel.
+<Note>
+  The dashboard has no document-upload UI yet (tracked in issue [#44](https://github.com/kioku-org/kioku/issues/44)) — use the REST API, CLI, or an MCP client.
+</Note>
 
 ### REST API
 
@@ -53,7 +53,7 @@ curl -X POST http://localhost:9100/knowledge/search \
   -d '{"query": "Q3 revenue projections", "limit": 5}'
 ```
 
-A result tagged `chunk_type: document` came from a PDF; `chunk_type: transcript` came from a meeting.
+A result tagged `chunk_type: pdf_document` (or `docx_document`/`pptx_document`/`text_document`) came from an uploaded file; `chunk_type: transcript` came from a meeting.
 
 ## List and Delete
 

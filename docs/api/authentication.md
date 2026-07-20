@@ -1,7 +1,9 @@
 ---
 title: "Authentication"
 ---
-All API endpoints except `/health` and `/auth/register/*` require a JWT bearer token.
+All API endpoints require a JWT bearer token, except `/health`, `/auth/register/*`,
+`/auth/signin`, and `/auth/token` (the routes that issue or exchange for a token in the
+first place).
 
 ```
 Authorization: Bearer <token>

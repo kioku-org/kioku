@@ -17,7 +17,7 @@ workspace-schema split, and voice/agent extensions on top of the upstream Vexa c
 | runtime-api-runpod | 8092 | Python (FastAPI) | Container orchestration — RunPod backend (only runs if `RUNPOD_API_KEY` is set) |
 | cookie | 8099 | Python (FastAPI) | Stores browser session cookies for authenticated bot mode |
 | tts-service | 8002 | Python | Piper text-to-speech |
-| transcription-service | 8000 | Python | Standalone faster-whisper server (also embedded per-pod, see below) |
+| transcription | 8000 | Rust ([kiku](https://crates.io/crates/kiku)/whisper.cpp) | Local whisper.cpp (GPU, CPU fallback) or cloud STT (Chirp/gpt-4o-mini-transcribe via OpenRouter); embedded per-pod, optionally a shared instance (see below) |
 | mcp | 18888 | Rust (`kioku-mcp`) | The one unified MCP server — see [MCP overview](/mcp/overview) |
 | redis | 6379 | — | Transcription streams, bot pool/reaper coordination |
 | minio | 9000 | — | Recording storage |
@@ -45,8 +45,11 @@ WebSocket (`/ws`), and live-meeting-context injection for the agent-chat routes.
 | `runpod` | `ORCHESTRATOR_BACKEND=runpod` | RunPod REST API. Spawns ephemeral GPU pods per meeting. |
 
 Container templates live in `profiles.yaml` (hot-reloaded via SIGHUP), with three profiles
-today: `meeting` (the Playwright bot, GPU), `browser-session` (persistent authenticated
-Chrome + VNC), and `agent` (a Claude Code CLI container for agent-api sessions).
+defined today: `meeting` (the Playwright bot, GPU), `whisper` (shared-whisper pool shard —
+see [GPU vs CPU Modes](/deployment/gpu-cpu-modes)), and `browser-session` (persistent
+authenticated Chrome + VNC). agent-api's container manager requests a fourth profile,
+`agent`, for its Claude Code CLI sessions, but `profiles.yaml` has no `agent:` entry —
+agent-container spawning via runtime-api is not wired up yet.
 
 ## Bot Lifecycle
 
@@ -56,7 +59,7 @@ Chrome + VNC), and `agent` (a Claude Code CLI container for agent-api sessions).
 
 2. MEETING
    Bot joins Google Meet/Zoom/Teams
-   Audio captured → embedded faster-whisper transcribes → Redis stream → meeting-api collector
+   Audio captured → embedded transcription service (kiku/whisper.cpp, or cloud STT) transcribes → Redis stream → meeting-api collector
    Bot sends status callbacks (joining, awaiting_admission, started, status_change, exited)
 
 3. STOP (one of three paths)
@@ -94,7 +97,7 @@ Kioku adds a custom `runpod` backend (`runtime_api/backends/runpod.py`) that spa
 ephemeral GPU pods via the RunPod REST API — this is 100% a Kioku addition, not present in
 upstream Vexa.
 
-- Bot pods run the `kioku-stateless` image (Playwright + embedded faster-whisper + GPU).
+- Bot pods run the `kioku-stateless` image (Playwright + embedded transcription (kiku) + GPU).
 - **Key precedence**: `RUNPOD_ACCOUNT_API_KEY` is preferred over `RUNPOD_API_KEY` — RunPod
   auto-injects its own pod-scoped `RUNPOD_API_KEY` into every pod it hosts, which would
   otherwise shadow the account-level key needed to call RunPod's own API.

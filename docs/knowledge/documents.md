@@ -16,7 +16,7 @@ curl -X POST http://localhost:9100/knowledge/documents \
 ### CLI
 
 ```bash
-kioku knowledge-upload ./report.pdf
+kioku docs report.pdf
 # Uploaded report.pdf
 ```
 
@@ -26,22 +26,22 @@ kioku knowledge-upload ./report.pdf
 {
     "id": "doc-1",
     "filename": "report.pdf",
-    "status": "processing"
+    "status": "completed"
 }
 ```
 
-Processing happens asynchronously — the PDF text is extracted, chunked, and embedded on the server.
+Processing is synchronous — the request blocks while the server extracts, chunks, and embeds the text, and only returns once `status` is `completed` (or the upload is rejected/marked `empty` if no text was found).
 
 ## List Documents
 
 ```bash
-kioku knowledge-documents
+kioku docs
 ```
 
 ## Delete Document
 
 ```bash
-kioku knowledge-delete doc-1
+kioku docs --delete doc-1
 # Deleted document doc-1
 ```
 

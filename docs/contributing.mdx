@@ -27,8 +27,13 @@ kioku/
 │   ├── admin-api/                # Admin/billing API (Python)
 │   ├── agent-api/                # AI agent chat backend (Python)
 │   ├── runtime-api/              # Bot pod orchestration — local Docker or RunPod (Python)
+│   ├── transcription/             # STT service (Rust, kiku/whisper.cpp) — local GPU/CPU
+│   │                               # or cloud (Chirp/gpt-4o-mini-transcribe via OpenRouter)
+│   ├── vexa-bot/                  # Meeting-joining browser bot (TypeScript, Playwright)
 │   ├── dashboard/                 # Next.js web dashboard
-│   └── cookie/                    # Google session cookie service (Python)
+│   ├── cookie/                    # Google session cookie service (Python)
+│   ├── libs/                      # Shared Rust libs (admin-models, meeting-models, schema-sync)
+│   └── modules/                   # Shared bot-pipeline modules (gmeet, recorder, recording, ...)
 ├── deployment/
 │   └── docker/
 │       ├── Dockerfile.stateful     # Always-on monolith image (all services above)
@@ -48,7 +53,6 @@ all source now lives directly under `services/`, no submodule init needed.
 cd services/hivemind
 cargo check                    # Fast type check
 cargo test                     # Integration tests (needs running server)
-cargo insta test --accept      # Update snapshots
 ```
 
 ### CLI (Rust)

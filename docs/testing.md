@@ -30,25 +30,26 @@ cargo test --lib --bins --tests -- --nocapture
 
 ### Test Coverage
 
-**cc-auth** (3 tests):
-- Auth serialization/deserialization
-- Default credentials path
-- Token expiry detection
+**cc-auth** (3 tests, `tests/auth_test.rs`):
+- Auth file roundtrip (write to disk, read back)
+- Full-field serialization
+- Deserialization with an omitted optional field (`active_workspace_id`)
 
-**cc-cli** (11 tests):
+**cc-cli** (24 tests, inline `#[cfg(test)]` modules — no `tests/` dir):
 - Server URL resolution (CLI override, env var, default)
 - CLI argument parsing
-- Auth key delete target resolution (prefix, ID, unknown)
-- API key delete target resolution (ID, provider, ambiguous)
+- Document delete target resolution (exact ID, prefix, ambiguous, unknown)
+- Auth key delete target resolution (ID, prefix, unknown)
+- MCP config/URL building (both servers present, port replacement, subdomain vs. path fallback)
+- Bot-kill target resolution (exact ID, prefix, ambiguous, unknown) + segment-key selection
+- Google Calendar date parsing (valid, invalid month, wrong format) + week-range calculation
 
-**cc-kioku** (7 tests):
-- Auth session roundtrip
-- Session defaults
-- Knowledge search result format
-- Meeting ingest defaults
-- Company auth key optional fields
-- Message roundtrip
-- Upload response fields
+**cc-kioku** (12 tests: 11 in `tests/types_test.rs`, 1 inline in `src/client.rs`):
+- Auth session roundtrip, session defaults, workspace config/auth-key fields
+- Knowledge search request defaults + result nesting
+- Meeting ingest defaults, message roundtrip, content-part text, upload response fields
+- API error format
+- Document MIME type inference from extension
 
 ## Hivemind Unit Tests
 
@@ -64,10 +65,11 @@ SQLX_OFFLINE=true cargo test --bin kioku-hivemind
 These test the full API stack. Requires a running Hivemind instance.
 
 ```bash
-# Start the stack first
+# Start the stack first (scripts/setup.sh and scripts/manage.sh predate the
+# current single-container image and don't reflect it — use compose directly)
 cd deployment/docker
-./scripts/setup.sh
-./scripts/manage.sh start
+cp .env.example .env   # fill in secrets
+docker compose -f docker-compose.stateful.yml up -d
 
 # Run integration tests
 cd ../../services/hivemind
@@ -114,7 +116,10 @@ GitHub Actions runs two workflows:
 
 ### Service Tests (`.github/workflows/service-tests.yml`)
 
-Triggered on push to `master` when `services/**` changes:
+Triggered on push or PR to `main`/`master`, path-filtered to `services/dashboard/**`,
+`services/mcp/**`, `services/hivemind/**`, and `services/cli/**` (not all of `services/**`
+— changes to meeting-api, admin-api, agent-api, api-gateway, runtime-api, cookie,
+transcription, or vexa-bot don't trigger this workflow):
 
 | Job | What it tests |
 |---|---|
@@ -128,25 +133,26 @@ Triggered on push to `master` when `services/**` changes:
 | `mcp-lint` | ruff (⚠ same staleness as above) |
 | `integration` | Full integration: Postgres + Qdrant + hivemind + CLI + MCP + dashboard |
 
-### RunPod Integration Test (`.github/workflows/runpod-test.yml`)
+### RunPod Integration Test (`test` job in `.github/workflows/ci.yml`)
 
-Triggered on push to `master` (via `Build and Push Docker Images` completion):
+Not a separate workflow file — it's the `test` job inside `ci.yml`, gated on the
+`build-stateful`/`build-stateless` jobs completing (`needs:`), same workflow that builds
+and pushes the images:
 
-1. Deploys a stateful pod with all services
-2. Runs health checks (Redis, Ollama, Hivemind, meeting-api, vexa-gateway, runtime-api)
-3. Runs hivemind integration tests (including embedding-dependent)
-4. Runs CLI integration tests
-5. Spawns a stateless bot pod
-6. Cleans up
+1. Deploys a stateful pod on RunPod from the just-built images
+2. Runs `deployment/docker/scripts/ci-smoke-test.sh` (Hivemind `/health`, plus a rejected
+   unauthenticated bot request and an authenticated bot-list call against Vexa)
+3. Runs hivemind integration tests against the live pod
+4. Runs CLI integration tests against the live pod
+5. Destroys the test pod
 
-The workflow also supports manual reruns against a published image SHA:
+`ci.yml` has no `image_sha` input — the only `workflow_dispatch` input is `skip_tests`. To
+manually trigger a run (e.g. to rebuild images without a new commit, or skip the RunPod
+test):
 
 ```bash
-gh workflow run "RunPod Integration Test" -f image_sha=<short-or-full-git-sha>
+gh workflow run ci.yml -f skip_tests=false
 ```
-
-Use this when you need to validate a specific published image without waiting for
-the `workflow_run` trigger from `build-images.yml`.
 
 ## Writing New Tests
 

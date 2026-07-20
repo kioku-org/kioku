@@ -26,13 +26,21 @@ workspace knowledge.
 
 ## Search your knowledge
 
-Use **Search** to find relevant excerpts across your meeting transcripts, uploaded documents,
-and ingested sessions. Results are scoped to your active workspace.
+<Note>
+  The dashboard has no knowledge-search or document-upload UI yet (tracked in issue
+  [#44](https://github.com/kioku-org/kioku/issues/44)) — use the REST API, CLI, or an MCP
+  client for both, until that ships.
+</Note>
+
+`POST /knowledge/search` finds relevant excerpts across your meeting transcripts, uploaded
+documents, and ingested sessions, scoped to your active workspace. The CLI wraps it as
+`kioku search "<query>"`.
 
 ## Upload documents
 
-Open **Documents** and upload a PDF, DOCX, PPTX, TXT, or Markdown file up to 50 MB. Kioku
-extracts its text, indexes it, and makes it available to search alongside meetings.
+`POST /knowledge/documents` (or `kioku docs <path>`) accepts a PDF, DOCX, PPTX, TXT, or
+Markdown file up to 50 MB. Kioku extracts its text, indexes it, and makes it available to
+search alongside meetings.
 
 ## Connect an AI client
 
@@ -47,7 +55,7 @@ has ready-to-paste configurations.
 
 ## Use the API
 
-Create an API key from **Settings**. The hosted Hivemind API is available at
+Create an API key from your **Profile** page. The hosted Hivemind API is available at
 `https://api.kioku.chat`.
 
 ```bash

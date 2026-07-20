@@ -78,15 +78,17 @@ Ingest a raw meeting transcript into the knowledge base.
 
 ### session
 
-Ingest a coding or working session into the knowledge base.
+Ingest a raw content dump (notes, diffs, conversation logs) into the knowledge base.
+`title` and `content` are required; `content` is paragraph-chunked (400 words/chunk) and
+embedded — there's no separate `summary`/`decisions` input, a 500-char preview is derived
+from `content` automatically.
 
 ```json
 {
     "tool": "session",
     "arguments": {
         "title": "Fix Qdrant gRPC issue",
-        "summary": "Identified that qdrant-client uses gRPC but Qdrant had no grpc_port configured.",
-        "decisions": ["Use gRPC port 6335 for Qdrant"],
+        "content": "Identified that qdrant-client uses gRPC but Qdrant had no grpc_port configured. Fixed by setting grpc_port: 6335.",
         "tags": ["rust", "qdrant", "hivemind"]
     }
 }
@@ -207,10 +209,12 @@ The efficient one-call option: transcript + recordings + a share link together.
 
 ### create_transcript_share_link
 
-Create a short-lived public URL for a meeting's transcript.
+Create a short-lived public URL for a meeting's transcript. `meeting_id` and
+`meeting_platform` are both required (unlike most other meeting tools, `meeting_platform`
+has no default here).
 
 ```json
-{ "tool": "create_transcript_share_link", "arguments": { "meeting_id": "abc-defg-hij", "ttl_seconds": 3600 } }
+{ "tool": "create_transcript_share_link", "arguments": { "meeting_id": "abc-defg-hij", "meeting_platform": "google_meet", "ttl_seconds": 3600 } }
 ```
 
 ## Use Cases
@@ -242,4 +246,4 @@ the `vexa.post_meeting` prompt (`get_meeting_bundle` → summary/decisions/actio
 Ask Claude:
 > Save what we just worked on to my knowledge base.
 
-Claude calls `session` with a summary of the session, decisions made, and tags.
+Claude calls `session` with a title, the session content, and tags.

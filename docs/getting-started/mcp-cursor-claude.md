@@ -50,7 +50,7 @@ needed.
 
 ## Claude Code
 
-Add to your project's `.claude/mcp.json` or run `kioku mcp` and paste the (corrected) output.
+Add to your project's `.mcp.json` (project root) or run `kioku mcp` and paste the (corrected) output.
 
 ## Cursor
 

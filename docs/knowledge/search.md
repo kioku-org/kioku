@@ -7,7 +7,7 @@ Search across all your knowledge base — documents and meetings — with semant
 
 1. Query text is embedded using the same Ollama model (`nomic-embed-text-v2-moe`)
 2. Embedding is sent to Qdrant for vector similarity search
-3. Results are filtered by company ID (multi-tenant isolation)
+3. Results are filtered by workspace ID (multi-tenant isolation)
 4. Top N results returned with similarity scores
 
 ## REST API

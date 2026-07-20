@@ -16,7 +16,7 @@ description: "Steps to harden a Kioku deployment before going to production."
 ## Networking
 
 - [ ] Only expose ports 9100, 8056, 3001, 18888 (or none if using Cloudflare Tunnel)
-- [ ] PostgreSQL (5432), Qdrant (6334 gRPC / 6333 REST), MinIO (9000), Ollama (11434) stay internal
+- [ ] PostgreSQL (5432), Qdrant (6334 HTTP / 6335 gRPC), MinIO (9000), Ollama (11434) stay internal
 - [ ] If using RunPod overflow: expose Redis (6379) and meeting-api (8080) with password auth
 - [ ] Set `CORS_ORIGINS` to your actual domain instead of `*`
 - [ ] Set `NEXTAUTH_URL` and `VEXA_PUBLIC_URL` to your actual public URLs
@@ -42,8 +42,8 @@ description: "Steps to harden a Kioku deployment before going to production."
 ## GPU
 
 - [ ] `nvidia-container-toolkit` installed and verified (`docker run --gpus all nvidia/cuda:12.0-base nvidia-smi`)
-- [ ] Whisper model pre-warmed before first meeting (start a test bot)
-- [ ] `COMPUTE_TYPE=int8` set for optimal VRAM efficiency
+- [ ] Local whisper model pre-warmed before first meeting (start a test bot) — skip if using `STT_BACKEND=chirp`/`gpt4o` cloud transcription
+- [ ] `BOT_WHISPER_MODEL` sized to available VRAM (see [GPU vs CPU Modes](/deployment/gpu-cpu-modes))
 
 ## Monitoring
 
@@ -66,7 +66,7 @@ Check that all processes show `RUNNING`. Any `FATAL` or `EXITED` status needs in
 docker exec kioku-stateful pg_dump -U kioku kioku > backup.sql
 
 # Qdrant (snapshot)
-curl -X POST http://localhost:6333/collections/kioku/snapshots
+curl -X POST http://localhost:6334/collections/knowledge/snapshots
 
 # Full volume backup (stop container first or use consistent snapshot)
 docker run --rm -v kioku-postgres-data:/data -v $(pwd):/backup \

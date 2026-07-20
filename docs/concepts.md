@@ -31,7 +31,7 @@ Meetings are ingested from Vexa's bot platform. The lifecycle:
 
 1. A bot is requested via `kioku meet <link>` (or `POST /vexa/bots`)
 2. The bot joins the meeting (Google Meet, Zoom, or MS Teams)
-3. Audio is captured and transcribed in real-time by an embedded faster-whisper server inside the bot pod
+3. Audio is captured and transcribed in real-time by an embedded transcription service (kiku/whisper.cpp, or cloud STT via OpenRouter) inside the bot pod
 4. When the meeting ends, the transcript is sent to Hivemind
 5. Transcript segments are embedded and become searchable knowledge
 

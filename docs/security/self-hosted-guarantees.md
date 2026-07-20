@@ -25,20 +25,22 @@ them.
 
 | Service | Env var | What it enables |
 |---|---|---|
-| OpenAI | `OPENAI_API_KEY` | LLM for chat sessions |
-| Anthropic | `ANTHROPIC_API_KEY` | Claude for chat sessions |
+| Dashboard AI chat (any `AI_MODEL`-selected provider — OpenAI, Anthropic, Azure OpenAI, OpenRouter, etc.) | `AI_MODEL` + `AI_API_KEY` | LLM for the dashboard's chat feature |
+| Anthropic | `ANTHROPIC_API_KEY` | agent-api's in-meeting AI agent (Claude Code CLI) — the only LLM provider agent-api reads |
+| OpenRouter | `OPENROUTER_API_KEY` | Cloud speech-to-text (`STT_BACKEND=chirp`/`gpt4o`) — sends raw meeting audio off your infrastructure instead of using local whisper.cpp |
 | RunPod | `RUNPOD_API_KEY` or `RUNPOD_ACCOUNT_API_KEY` | Remote bot execution; capture and transcription data traverse RunPod infrastructure |
 | Cloudflare | `cloudflared` binary | Public tunnel for your server |
 
-If you set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`, the associated feature can send its
-request content to that provider. Public dashboard, API, and MCP endpoints also require TLS,
-strong credentials, and network access controls.
+If you set `AI_API_KEY`/`AI_MODEL`, `ANTHROPIC_API_KEY`, or `OPENROUTER_API_KEY`, the
+associated feature can send its request content (chat messages, agent session content, or
+raw meeting audio, respectively) to that provider. Public dashboard, API, and MCP endpoints
+also require TLS, strong credentials, and network access controls.
 
 ## Other external dependencies
 
 - **Cloudflare Tunnel** — public traffic traverses Cloudflare when you enable its tunnel
 - **Container images** — pulled from GHCR (`ghcr.io/kioku-org/...`); inspect the Dockerfiles and build from source if you need full supply-chain control
-- **Update check** — the CLI's `kioku upgrade-check` calls the GitHub releases API; no personal data sent, but network call occurs
+- **Update check** — the CLI's `kioku upgrade` calls the GitHub releases API; no personal data sent, but network call occurs
 
 ## Encryption at Rest
 
@@ -48,7 +50,11 @@ Kioku does **not** encrypt data at rest in volumes. To protect data at rest:
 2. Or use an encrypted cloud volume
 3. Or run PostgreSQL with TDE (Transparent Data Encryption) — not configured out of the box
 
-Application-level field encryption is applied to some sensitive fields in PostgreSQL using `HIVEMIND_ENCRYPTION_SECRET`. The scope of this is limited — most content (transcripts, document text in Qdrant) is stored plaintext.
+Kioku does not apply application-level field encryption today. `HIVEMIND_ENCRYPTION_SECRET`
+is required at deploy time, but the Hivemind service has no code that actually reads or
+uses it — passwords and API keys are bcrypt-hashed (one-way, not encryption), and
+everything else (transcripts, document text, session messages) is stored plaintext in
+PostgreSQL and Qdrant.
 
 ## Audit and Compliance
 

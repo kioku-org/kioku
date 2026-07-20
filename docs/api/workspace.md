@@ -41,6 +41,13 @@ Creates a workspace and returns a new token that includes the added membership.
 
 Requires the `admin` role in the target workspace (not necessarily the caller's active one).
 
+### Join a Workspace via Invite
+<Endpoint method="POST" path="/workspaces/:workspace_id_or_slug/join" />
+
+Accepts a pending invite matching the caller's email for the target workspace (identified
+by id or slug) and returns a fresh token with the new membership added — the sibling of
+`POST /auth/register/member` for already-registered users. CLI: `kioku ws --join <name>`.
+
 ## Members
 
 ### List Members

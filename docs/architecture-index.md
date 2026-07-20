@@ -14,33 +14,42 @@ Kioku ships as two Docker images:
   process list.
 - **`kioku-stateless`** — the ephemeral, per-meeting bot pod. Spawned on demand by
   runtime-api, one per active meeting, torn down when the bot exits. Bundles Playwright +
-  Chromium + Xvfb + PulseAudio + the bot (TypeScript) + an embedded faster-whisper server.
+  Chromium + Xvfb + PulseAudio + the bot (TypeScript) + an embedded transcription service
+  (Rust, [kiku](https://crates.io/crates/kiku)/whisper.cpp on GPU with CPU fallback, or
+  cloud STT via OpenRouter).
 
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                    kioku-stateful (single container)                      │
-│                                                                            │
-│  Client-facing:                                                          │
-│    dashboard :3001 (Next.js)      api-gateway :8056 (Rust — public API)  │
-│    hivemind :9100 (Rust — knowledge/auth/CLI API)                        │
-│    mcp :18888 (Rust — kioku-mcp, unified MCP server)                     │
-│                                                                            │
-│  Internal-only (not published to the host):                              │
-│    meeting-api :8080 (Python)     admin-api :8001 (Python)               │
-│    agent-api :8100 (Python)       tts :8002 (Python)                     │
-│    cookie :8099 (Python)                                                  │
-│    runtime-api-local :8091 (Docker backend)                              │
-│    runtime-api-runpod :8092 (RunPod backend, only if RUNPOD_API_KEY set) │
-│                                                                            │
-│  Infra: postgres · redis · qdrant · minio · ollama · sshd (:2222)        │
-│  Optional: cloudflared (only if a tunnel config is mounted)              │
-└───────────────────────────────┬────────────────────────────────────────┘
-                                 │ spawns via Docker socket or RunPod REST API
-                                 ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│              kioku-stateless (one ephemeral pod per meeting)              │
-│  Playwright + Chromium + Xvfb          faster-whisper :8000 (embedded)   │
-└──────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph stateful["kioku-stateful (single container)"]
+        direction TB
+        subgraph clientFacing["Client-facing"]
+            direction LR
+            DASH["dashboard :3001 (Next.js)"]
+            GW["api-gateway :8056 (Rust — public API)"]
+            HM["hivemind :9100 (Rust — knowledge/auth/CLI API)"]
+            MCP["mcp :18888 (Rust — kioku-mcp, unified MCP server)"]
+        end
+        subgraph internal["Internal-only (not published to the host)"]
+            direction LR
+            MA["meeting-api :8080 (Python)"]
+            AA["admin-api :8001 (Python)"]
+            AG["agent-api :8100 (Python)"]
+            TTS["tts :8002 (Python)"]
+            CK["cookie :8099 (Python)"]
+            RAL["runtime-api-local :8091 (Docker backend)"]
+            RAR["runtime-api-runpod :8092 (RunPod backend, only if RUNPOD_API_KEY set)"]
+        end
+        INFRA["Infra: postgres · redis · qdrant · minio · ollama · sshd (:2222)"]
+        CF["Optional: cloudflared (only if a tunnel config is mounted)"]
+    end
+
+    subgraph stateless["kioku-stateless (one ephemeral pod per meeting)"]
+        direction LR
+        BOT["Playwright + Chromium + Xvfb"]
+        TX["transcription :8000 (kiku, embedded)"]
+    end
+
+    stateful -->|spawns via Docker socket or RunPod REST API| stateless
 ```
 
 `api-gateway` is not a thin reverse proxy — it validates API keys against admin-api,
@@ -62,8 +71,8 @@ the standalone `mcp` service (`kioku-mcp`, a Rust binary), which now hosts every
    meeting-api) requests a bot
 2. runtime-api spawns a `kioku-stateless` pod (Docker container locally, or a RunPod pod)
 3. The bot joins the meeting (Google Meet, Zoom, or MS Teams), captures audio
-4. The pod's embedded faster-whisper server transcribes in real time → segments stream to
-   Redis
+4. The pod's embedded transcription service (kiku/whisper.cpp, or cloud STT via
+   OpenRouter) transcribes in real time → segments stream to Redis
 5. meeting-api's collector consumer writes segments to Postgres
 6. On exit, meeting-api finalizes the meeting and posts the transcript to Hivemind
 7. Hivemind chunks and embeds the transcript via Ollama → stores vectors in Qdrant

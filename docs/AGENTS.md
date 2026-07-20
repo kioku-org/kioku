@@ -28,4 +28,7 @@
 
 - Document the public API and CLI commands
 - Don't document internal implementation details
-- Don't document Vexa internals (separate docs in `services/vexa/docs/`)
+- Don't document Vexa internals in depth — Vexa is no longer a separate submodule/docs
+  tree (its source was folded directly into `services/`), so treat it like any other
+  internal service and only document what's covered elsewhere in these docs
+  ([Vexa](/architecture/vexa), [Vexa Proxy API](/api/vexa))

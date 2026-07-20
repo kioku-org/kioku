@@ -26,7 +26,7 @@ description: "Fixes for common Kioku issues."
 
 ## "callback_url cannot target localhost"
 
-runtime-api rejects bot requests whose callback URL points to localhost. Fix: set `ALLOW_PRIVATE_CALLBACKS=true` in the runtime-api-local supervisor environment inside `entrypoint-stateful-runtime.sh`, then restart the container.
+runtime-api rejects bot requests whose callback URL points to localhost. `entrypoint-stateful-runtime.sh` already hardcodes `ALLOW_PRIVATE_CALLBACKS="true"` for both `runtime-api-local` and `runtime-api-runpod`, so this shouldn't occur on a stock image — if you see it, you're likely running a customized entrypoint; check that the generated `/etc/supervisor/conf.d/kioku.conf` still sets it for the relevant program, then restart the container.
 
 ## Dashboard shows "Server error"
 
@@ -36,8 +36,8 @@ runtime-api rejects bot requests whose callback URL points to localhost. Fix: se
 
 ## Transcription is silent / empty transcript
 
-1. Verify faster-whisper loaded: check bot container logs for `Model loaded`
-2. Check `COMPUTE_TYPE` is compatible with your GPU — use `int8` for broad compatibility
+1. Verify the transcription service loaded: check bot container logs for the kiku/whisper.cpp startup line
+2. If using `STT_BACKEND=chirp`/`gpt4o` (cloud STT), verify `OPENROUTER_API_KEY` is set and valid
 3. Verify audio is being captured: bot logs show `audio frames received`
 4. If using CPU: transcription may lag behind real time; the transcript appears after the meeting ends
 
@@ -89,7 +89,7 @@ This happens after `docker image prune -a` removes unused images. If it happens 
 Common causes:
 1. Missing required env var — check the container logs: `docker logs kioku-stateful | head -100`
 2. Port conflict — another process on the host took a needed port before the container started
-3. Missing GPU — if `COMPUTE_TYPE=cuda` but no GPU is visible, processes that require it will fail. Check: `docker exec kioku-stateful nvidia-smi`
+3. Missing GPU — if GPU passthrough (`deploy.resources` in the compose file) is configured but no NVIDIA GPU is visible to the container, GPU-dependent processes (Ollama, Qdrant indexing) will fail. Check: `docker exec kioku-stateful nvidia-smi`
 
 ## supervisorctl: no such file or socket
 

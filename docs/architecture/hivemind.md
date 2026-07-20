@@ -80,6 +80,7 @@ See [Multi-Tenancy](/core-concepts/multi-tenancy) for the tenant-isolation model
 | GET | `/workspaces` | JWT | List every workspace the token's memberships include |
 | POST | `/workspaces` | JWT | Create an additional workspace; returns a token with the new membership added |
 | POST | `/workspaces/:workspace_id_or_slug/invites` | JWT admin-of-that-workspace | Invite into a specific (non-active) workspace by id or slug |
+| POST | `/workspaces/:workspace_id_or_slug/join` | JWT | Accept a pending invite as an already-registered user (by workspace id or slug); returns a fresh token with the new membership added |
 | GET | `/workspace/auth-keys` | JWT | List long-lived API keys |
 | POST | `/workspace/auth-keys` | JWT admin | Create a `kioku_...` API key |
 | DELETE | `/workspace/auth-keys/:key_id` | JWT admin | Delete an API key |
@@ -161,7 +162,7 @@ All settings are read from env vars (no prefix; `HIVEMIND__JWT_SECRET`-style dou
 | Bind host/port | `HOST`/`PORT` | `0.0.0.0` / `9100` |
 | Embedding API URL | `EMBEDDING_API_URL` | `http://localhost:11434` |
 | Embedding model | `EMBEDDING_MODEL` | `nomic-embed-text-v2-moe` |
-| Qdrant URL | `QDRANT_URL` | `http://localhost:6334` (gRPC port, not the 6333 REST port) |
+| Qdrant URL | `QDRANT_URL` | Code default `http://localhost:6334`; deployment (`entrypoint-stateful-runtime.sh`) overrides to `http://localhost:6335` — Qdrant's actual gRPC port. `6334` is Qdrant's HTTP/REST port, not gRPC. |
 | Qdrant API key | `QDRANT_API_KEY` | empty |
 
 ## Migrations
@@ -177,3 +178,5 @@ All settings are read from env vars (no prefix; `HIVEMIND__JWT_SECRET`-style dou
 | 007 | `007_kioku_key_prefix.sql` | Widen `key_prefix` for `kioku_` keys (vs. legacy `cmp_`) |
 | 008 | `008_company_tier.sql` | Add `companies.tier` (`free`/`pro`/`teams`, default `free`) |
 | 009 | `009_rename_company_to_workspace.sql` | Full rename: `companies`→`workspaces`, `company_members`→`workspace_members`, `company_invites`→`workspace_invites`, `company_config`→`workspace_config`, `company_api_keys`→`workspace_api_keys`, and every `company_id` column → `workspace_id` |
+| 010 | `010_meetings_vexa_unique.sql` | Dedupe meetings double-ingested by concurrent `run_all_tasks` trigger sites; add a unique index on `(workspace_id, vexa_meeting_id)` so meeting ingestion is idempotent at the DB level |
+| 011 | `011_revoke_bot_only_vexa_tokens.sql` | Clear cached per-user Vexa tokens minted with `scope=bot` only (pre-dated the `tx` scope requirement for transcript/meeting reads) — forces re-provisioning with `scopes=bot,tx` on next use |

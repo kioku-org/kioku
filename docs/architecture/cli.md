@@ -103,6 +103,7 @@ kioku ws                          # list your workspaces (* marks the active one
 kioku ws <name-or-slug>           # switch the active workspace
 kioku ws --create "New Team"      # create a workspace and switch to it
 kioku ws <name> --invite <email>  # invite an email into that (non-active) workspace
+kioku ws --join <name>            # accept a pending invite and switch to that workspace
 ```
 
 ### Teammates

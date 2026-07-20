@@ -61,7 +61,7 @@ works against both the knowledge and meeting toolsets — see [MCP overview](/mc
 
 1. **Spawn** — runtime-api creates a bot pod (Docker container locally, or a RunPod pod)
 2. **Join** — bot launches Playwright, navigates to the meeting URL
-3. **Transcribe** — audio captured → embedded faster-whisper → Redis stream → meeting-api
+3. **Transcribe** — audio captured → embedded transcription service (kiku/whisper.cpp, or cloud STT via OpenRouter) → Redis stream → meeting-api
 4. **Alone-detection** — Google Meet and MS Teams auto-leave after a configurable timeout
    once alone in the meeting; Zoom has no alone-detection yet
 5. **Exit** — bot leaves (user stop, alone-timeout, or max-duration timeout)

@@ -125,6 +125,7 @@ All data is stored in named Docker volumes:
 | `kioku-redis-data` | Transcription streams |
 | `kioku-ollama-data` | Embedding model weights |
 | `kioku-cookie-data` | Bot browser session cookies |
+| `kioku-recordings-data` | Recording pipeline scratch/output |
 
 These survive container restarts and `docker compose down`. Only `docker volume rm` deletes them.
 

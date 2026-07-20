@@ -22,10 +22,14 @@ Kioku uses four storage backends, all running locally inside (or alongside) the 
 - `knowledge_documents` — document metadata (text not stored, only embeddings in Qdrant)
 - `coding_sessions` — ingested arbitrary content (e.g. coding sessions)
 - `sessions` — AI chat sessions
-- `messages` — session messages and agent traces
+- `messages` — session messages
+- `trace_steps` — per-session agent execution traces (tool calls, status, timing)
 - `workspace_api_keys` — long-lived API key records
 
-Passwords are hashed (bcrypt). Sensitive fields use application-level encryption (`HIVEMIND_ENCRYPTION_SECRET`).
+Passwords and API keys are hashed (bcrypt). Despite `HIVEMIND_ENCRYPTION_SECRET` being a
+required deployment secret, Hivemind's Rust source has no code path that reads it —
+everything else (transcripts, document text, session messages) is stored as plaintext in
+PostgreSQL, not application-level-encrypted.
 
 ## Qdrant Collections
 
@@ -39,7 +43,7 @@ All embeddings are in a single collection named `knowledge`. Each vector stores:
 
 Recordings are off by default (`RECORDING_ENABLED=false`). When enabled:
 - Audio is captured by the bot and streamed to MinIO during the meeting
-- Stored as `.webm` or `.mp4` in the `vexa-recordings` bucket
+- Stored as a `.webm` or `.wav` master file in the `vexa-recordings` bucket
 - Accessible via the Vexa API
 
 ## Backup
@@ -50,8 +54,8 @@ None of Kioku's storage backends include built-in backup scheduling. On self-hos
 # PostgreSQL logical dump
 docker exec kioku-stateful pg_dump -U $DB_USER $DB_NAME > meetings-backup.sql
 
-# Qdrant snapshot (live, non-destructive)
-curl -X POST http://localhost:6333/collections/kioku/snapshots
+# Qdrant snapshot (live, non-destructive) — HTTP port is 6334 in this deployment, not Qdrant's stock 6333
+curl -X POST http://localhost:6334/collections/knowledge/snapshots
 
 # Volume-level backup (best done while container is stopped)
 docker run --rm \

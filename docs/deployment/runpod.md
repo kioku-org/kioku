@@ -21,7 +21,7 @@ graph TD
 
     subgraph stateless["kioku-stateless pod (GPU, per-meeting)"]
         BOT[Playwright bot]
-        WH[embedded faster-whisper]
+        WH[embedded transcription — kiku/whisper.cpp, or cloud STT]
     end
 
     RA -->|RunPod REST API| stateless
@@ -51,9 +51,10 @@ Images are built and pushed by GitHub Actions on every push to `master`/`main` a
 (separate from `deployment/docker/.env`) — required keys: `RUNPOD_API_KEY`,
 `HIVEMIND_JWT_SECRET`, `HIVEMIND_ENCRYPTION_SECRET`, `VEXA_ADMIN_API_TOKEN`.
 
-It builds the pod's environment automatically (covering ~35 keys — DB, Hivemind, RunPod,
-storage, OAuth, `MIN_BOT_POOL`, etc.), **forces `USE_LOCAL_RESOURCE=false`** (there's no
-Docker socket on a RunPod pod), and auto-generates `NEXTAUTH_SECRET` if you didn't set one.
+It builds the pod's environment automatically (covering ~40 keys — DB, Hivemind, RunPod,
+storage, OAuth, `MIN_BOT_POOL`, etc.), **defaults `USE_LOCAL_RESOURCE=false`** (there's no
+Docker socket on a RunPod pod — override only if you know this pod really does have one),
+and auto-generates `NEXTAUTH_SECRET` if you didn't set one.
 It exposes ports `22, 6379, 8080, 9100, 8056, 3001, 18888, 8002, 8099` — including TTS
 (8002) and cookie (8099), which earlier revisions of this script missed.
 
@@ -70,7 +71,7 @@ Tear down with `./destroy.sh <pod-id>` (prompts for confirmation).
 1. In RunPod console, create a **Persistent Pod** (CPU type):
    - Image: `ghcr.io/kioku-org/kioku-stateful:latest`
    - Volume: attach a network volume at `/data`
-   - Ports: 9100, 8056, 3001, 18888, 8002, 8099
+   - Ports: 22, 6379, 8080, 9100, 8056, 3001, 18888, 8002, 8099
 
 2. Set env vars via RunPod's **Environment Variables** panel — see `.env.example` for the full list
 
@@ -140,7 +141,7 @@ e.g. because the stateful pod (which also hosts Redis) itself got recreated mid-
 ## Bot Pod Lifecycle
 
 1. **Spawn** — runtime-api-runpod calls the RunPod REST API → GPU pod created (or an idle warm-pool pod is claimed)
-2. **Boot** — pod pulls the image (~30–60s on cold-spawn, instant on a pool claim), starts the embedded faster-whisper server + bot
+2. **Boot** — pod pulls the image (~30–60s on cold-spawn, instant on a pool claim), starts the embedded transcription service (kiku/whisper.cpp) + bot
 3. **Meeting** — bot joins, transcribes, streams to Redis
 4. **Exit** — bot exits → reaper detects (polls every `RUNPOD_POLL_INTERVAL`, default 15s) → pod deleted
 
@@ -152,7 +153,7 @@ e.g. because the stateful pod (which also hosts Redis) itself got recreated mid-
 
 ## GPU Sizing
 
-| GPU | VRAM | Concurrent bots (large-v3-turbo, int8) |
+| GPU | VRAM | Concurrent bots (large-v3-turbo) |
 |---|---|---|
 | RTX 3070 | 8 GB | 4–5 |
 | RTX 3090 | 24 GB | 14–15 |
@@ -165,7 +166,7 @@ e.g. because the stateful pod (which also hosts Redis) itself got recreated mid-
 |---|---|---|
 | Stateful CPU pod | ~$0.10–0.20/hr | Always-on if hosted on RunPod |
 | Bot GPU pod | ~$0.27–0.46/hr | Only costs while a meeting is in progress (or while pooled idle, if `MIN_BOT_POOL` is set) |
-| Network volume (20 GB) | ~$0.10/GB/mo | ~$2/mo |
+| Network volume (50 GB default) | ~$0.10/GB/mo | ~$5/mo |
 
 A 1-hour meeting costs ~$0.27–0.46 in GPU compute.
 

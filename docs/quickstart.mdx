@@ -13,13 +13,14 @@ Get Kioku running locally in 5 minutes.
 
   <Step title="Clone and setup">
     ```bash
-    git clone --recurse-submodules https://github.com/kioku-org/kioku.git
-    cd kioku
-    git submodule update --init --recursive
-    cd deployment/docker
+    git clone https://github.com/kioku-org/kioku.git
+    cd kioku/deployment/docker
 
     cp .env.example .env
     ```
+
+    (`services/vexa` was a Git submodule historically — it's since been fully absorbed;
+    all source lives directly under `services/` now, no submodule init needed.)
   </Step>
 
   <Step title="Configure environment">
@@ -48,14 +49,20 @@ Get Kioku running locally in 5 minutes.
 
   <Step title="Verify health">
     ```bash
-    docker exec kioku-stateful supervisorctl status
     curl http://localhost:9100/health      # Hivemind
     curl http://localhost:8056/            # Vexa API gateway
     curl http://localhost:18888/health     # MCP server
     curl http://localhost:3001             # Dashboard
     ```
 
-    Every process in `supervisorctl status` should show `RUNNING`.
+    <Note>
+      `docker exec kioku-stateful supervisorctl status` is often suggested for this but
+      doesn't actually work on this image — supervisord starts with `-c
+      /etc/supervisor/conf.d/kioku.conf`, which has no `[unix_http_server]` section, so
+      `supervisorctl` has no socket to connect to. See
+      [Troubleshooting](/troubleshooting#supervisorctl-no-such-file-or-socket). The curl
+      checks above are the reliable way to verify health.
+    </Note>
   </Step>
 
   <Step title="Install CLI">
@@ -80,11 +87,17 @@ Get Kioku running locally in 5 minutes.
 | Hivemind API | `9100` | Core API (auth, workspaces, knowledge search) |
 | MCP server | `18888` | Unified MCP server (knowledge + meeting tools) |
 | Vexa API Gateway | `8056` | Meeting bot API |
-| Vexa Admin API | `8001` | Admin operations (internal-only by default) |
+| Vexa Admin API | `8001` | Admin operations — internal-only, not exposed to the host |
 | Dashboard | `3001` | Web UI |
-| MinIO Console | `9001` | Object storage UI |
-| Ollama | `11434` | Local embedding model server |
-| Qdrant | `6334` (gRPC) / `6333` (REST) | Vector DB |
+| MinIO Console | `9001` | Object storage UI — internal-only, not exposed to the host |
+| Ollama | `11434` | Local embedding model server — internal-only, not exposed to the host |
+| Qdrant | `6334` (HTTP/REST) / `6335` (gRPC) | Vector DB — internal-only, not exposed to the host |
+
+Only Hivemind, MCP, the Vexa gateway, the dashboard, and sshd (`2222`) are published to the
+host by `docker-compose.stateful.yml`. Everything else above is reachable only from inside
+the container (`docker exec kioku-stateful curl localhost:<port>/...`) or from
+`kioku-stateless` bot pods on `kioku-network` — see
+[Docker Compose](/deployment/docker-compose#ports-exposed-to-host).
 
 ## Management
 
