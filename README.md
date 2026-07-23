@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="./assets/kioku.png" alt="Kioku" />
+  <img
+    src="./assets/kioku.png"
+    alt="Kioku"
+    width="180"
+  />
 </p>
 
 <h1 align="center">Kioku</h1>
