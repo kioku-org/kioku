@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/kioku-logo.png" alt="Kioku" />
+  <img src="./assets/kioku.png" alt="Kioku" />
 </p>
 
 <h1 align="center">Kioku</h1>
