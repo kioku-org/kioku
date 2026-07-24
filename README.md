@@ -36,22 +36,22 @@
   </a>
 </p>
 
-<p align="center">
+<!-- <p align="center">
   <img src="https://img.shields.io/badge/self--hosted-ready-18181b?style=flat-square" alt="Self-hosted" />
   <img src="https://img.shields.io/badge/REST-API-18181b?style=flat-square" alt="REST API" />
   <img src="https://img.shields.io/badge/MCP-compatible-18181b?style=flat-square" alt="MCP Compatible" />
   <img src="https://img.shields.io/badge/built_with-Rust-dea584?style=flat-square&logo=rust&logoColor=white" alt="Built with Rust" />
   <img src="https://img.shields.io/badge/open_source-yes-18181b?style=flat-square&logo=opensourceinitiative&logoColor=white" alt="Open Source" />
-</p>
+</p> -->
 
 <p align="center">
   <a href="https://docs.kioku.chat"><strong>Documentation</strong></a>
-  ·
-  <a href="https://github.com/kioku-org/kioku"><strong>GitHub</strong></a>
+  <!-- · -->
+  <!-- <a href="https://github.com/kioku-org/kioku"><strong>GitHub</strong></a> -->
   ·
   <a href="https://github.com/kioku-org/kioku/issues"><strong>Issues</strong></a>
-  ·
-  <a href="mailto:hello@kioku.chat"><strong>Contact</strong></a>
+  <!-- · -->
+  <!-- <a href="mailto:hello@kioku.chat"><strong>Contact</strong></a> -->
 </p>
 
 <br />
