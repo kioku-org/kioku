@@ -59,9 +59,9 @@
 ## Showcase
 
 <p align="center">
-  <a href="./assets/showcase.mp4">
-    <img src="./assets/showcase.gif" alt="Kioku showcase" width="100%" />
-  </a>
+  <video width="100%" autoplay muted loop playsinline controls>
+    <source src="./assets/showcase.mp4" type="video/mp4" />
+  </video>
 </p>
 
 <p align="center">
