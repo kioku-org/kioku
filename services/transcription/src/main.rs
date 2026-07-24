@@ -50,12 +50,13 @@ async fn main() -> anyhow::Result<()> {
 
     let backend = env_or("STT_BACKEND", "chirp").to_lowercase();
     let model = match backend.as_str() {
+        "openrouter" => env_or("OPENROUTER_MODEL", "x-ai/grok-stt-1.0"),
         "chirp" => env_or("CHIRP_MODEL", "google/chirp-3"),
         "gpt4o" => env_or("GPT4O_MODEL", "openai/gpt-4o-mini-transcribe"),
         // local whisper.cpp: ggml model name or path (needs --features local-whisper)
         _ => env_or("MODEL_SIZE", "large-v3-turbo"),
     };
-    let cloud = matches!(backend.as_str(), "chirp" | "gpt4o");
+    let cloud = matches!(backend.as_str(), "openrouter" | "chirp" | "gpt4o");
     let cfg = Config {
         use_local: !cloud,
         openrouter_url: env_or("OPENROUTER_URL", "https://openrouter.ai/api/v1"),

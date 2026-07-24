@@ -8,8 +8,9 @@ built with `--features cuda`) and serving both roles from that image:
 
 - **Shared `kioku-whisper` compose service** — the bot image with
   `WHISPER_ONLY=true`. `STT_BACKEND=whisper` for local whisper.cpp on GPU
-  (CPU fallback), or `chirp` (`google/chirp-3`) / `gpt4o`
-  (`openai/gpt-4o-mini-transcribe`) for cloud STT via OpenRouter.
+  (CPU fallback), or `openrouter` with `OPENROUTER_MODEL` for cloud STT.
+  `chirp` (`google/chirp-3`) and `gpt4o`
+  (`openai/gpt-4o-mini-transcribe`) remain as legacy aliases.
 - **In-pod transcriber** — the same binary started next to the bot for
   deploys that can't reach a shared service (RunPod bots). ggml model named
   by `MODEL_SIZE`, auto-downloaded to the pod's `/app/models` cache. Local
@@ -19,7 +20,8 @@ built with `--features cuda`) and serving both roles from that image:
 
 ```bash
 # cloud, needs OPENROUTER_API_KEY
-STT_BACKEND=chirp OPENROUTER_API_KEY=sk-or-... cargo run --release
+STT_BACKEND=openrouter OPENROUTER_MODEL=x-ai/grok-stt-1.0 \
+  OPENROUTER_API_KEY=sk-or-... cargo run --release
 
 curl -X POST localhost:8000/v1/audio/transcriptions \
   -F file=@tests/test_audio.wav -F model=whisper-1
