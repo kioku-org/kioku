@@ -32,7 +32,8 @@ import { SegmentPublisher } from './services/segment-publisher';
 import { SpeakerStreamManager } from '@vexa/gmeet-pipeline';
 import { ChunkedTranscriber } from '@vexa/mixed-pipeline';
 import { createChunkedHost } from './services/chunked-host';
-import { resolveSpeakerName, clearSpeakerNameCache, isTrackLocked, isNameTaken, reportTrackAudio, getLockedMapping } from './services/speaker-identity';
+import { resolveSpeakerName, clearSpeakerNameCache, isTrackLocked, reportTrackAudio, getLockedMapping } from './services/speaker-identity';
+import { GmeetSpeakerRouter } from './services/gmeet-speaker-routing';
 import { isHallucination } from '@vexa/gmeet-pipeline';
 import { SpeakerStreamHandle } from './services/audio';
 import { RawCaptureService, uploadCaptureToS3, StreamCaptureWriter, openRetentionWriter, MeetingEvent } from '@vexa/recorder';
@@ -170,6 +171,7 @@ export async function disposeMixedChunkedPipeline(): Promise<void> {
 }
 
 let speakerManager: SpeakerStreamManager | null = null;
+const gmeetSpeakerRouter = new GmeetSpeakerRouter();
 /** Poller that drains window.__vexaAudioQueue into handlePerSpeakerAudioData */
 let audioQueuePoller: ReturnType<typeof setInterval> | null = null;
 /** Whitelist of allowed language codes — if set, segments in other languages are discarded */
@@ -1606,49 +1608,60 @@ function isDuplicateSpeakerName(name: string, excludeSpeakerId: string): boolean
   return false;
 }
 
-async function handlePerSpeakerAudioData(speakerIndex: number, audioDataArray: number[]): Promise<void> {
+async function handlePerSpeakerAudioData(speakerIndex: number, audioDataArray: number[], capturedSpeakerName?: string): Promise<void> {
   if (!speakerManager || !segmentPublisher || !page || page.isClosed()) return;
-
-  // Report audio activity for Zoom active-speaker disambiguation
-  reportTrackAudio(speakerIndex);
-
-  const speakerId = `speaker-${speakerIndex}`;
   const audioData = new Float32Array(audioDataArray);
 
   const platformKey = currentPlatform === 'google_meet' ? 'googlemeet'
     : currentPlatform === 'teams' ? 'msteams'
     : currentPlatform || 'unknown';
 
-  // ─── GMeet / Teams / Zoom: voting + locking ────────────────────────────────
-  // All three platforms use the shared resolveSpeakerName() pipeline with
-  // per-platform DOM resolvers (resolveGoogleMeetSpeakerName,
-  // resolveTeamsSpeakerName, resolveZoomSpeakerName).
-  //
-  // Live observation 2026-04-26 confirmed Zoom Web's MediaStream pool is
-  // small (~6 streams) and stream_id is stable per speaker (88%+ of audible
-  // ticks per stream attribute to one dominant speaker). speakerIndex is
-  // captured at first connectElement() per stream_id and never changes for
-  // that stream — equivalent to gmeet's stable per-tile track. Vote-and-lock
-  // works correctly here; PR #181's per-chunk DOM-poll override was the bug.
-  if (!speakerManager.hasSpeaker(speakerId)) {
-    log(`[🔊 NEW SPEAKER] Track ${speakerIndex} — first audio received, resolving name...`);
-    const name = await resolveSpeakerName(page, speakerIndex, platformKey, currentBotConfig?.botName);
-    // Start unmapped — only assign if name is genuinely unique
-    const safeName = (name && !isDuplicateSpeakerName(name, speakerId)) ? name : '';
-    log(`[🎙️ SPEAKER ACTIVE] Track ${speakerIndex} → "${safeName || '(unmapped)'}" — streaming audio`);
-    speakerManager.addSpeaker(speakerId, safeName);
-    lastReResolveTime.set(speakerId, Date.now());
-    if (safeName) {
-      await segmentPublisher.publishSpeakerEvent({
-        speaker: safeName,
-        type: 'joined',
-        timestamp: Date.now(),
-      });
-      log(`[📡 SPEAKER EVENT] "${safeName}" joined → Redis`);
+  let speakerId: string;
+
+  if (platformKey === 'googlemeet') {
+    // Google Meet media channels are an anonymous pool and can carry different
+    // participants over time. The browser binds a safe name to each audio frame
+    // at capture time; route by that stable participant identity so a channel
+    // rotation can never rename or contaminate an existing person's buffer.
+    const route = gmeetSpeakerRouter.route(speakerIndex, capturedSpeakerName);
+    speakerId = route.speakerId;
+    if (!speakerManager.hasSpeaker(speakerId)) {
+      log(`[🔊 NEW SPEAKER] GMeet channel ${speakerIndex} → "${route.speakerName || '(unmapped)'}"`);
+      speakerManager.addSpeaker(speakerId, route.speakerName);
+      if (route.speakerName) {
+        await segmentPublisher.publishSpeakerEvent({
+          speaker: route.speakerName,
+          type: 'joined',
+          timestamp: Date.now(),
+        });
+        log(`[📡 SPEAKER EVENT] "${route.speakerName}" joined → Redis`);
+      }
     }
   } else {
-    const currentName = speakerManager.getSpeakerName(speakerId) || '';
-    let locked = isTrackLocked(speakerIndex);
+    // Report audio activity for Zoom active-speaker disambiguation.
+    reportTrackAudio(speakerIndex);
+    speakerId = `speaker-${speakerIndex}`;
+
+    // Teams / Zoom retain their platform-specific DOM resolver and lock logic.
+    if (!speakerManager.hasSpeaker(speakerId)) {
+      log(`[🔊 NEW SPEAKER] Track ${speakerIndex} — first audio received, resolving name...`);
+      const name = await resolveSpeakerName(page, speakerIndex, platformKey, currentBotConfig?.botName);
+      // Start unmapped — only assign if name is genuinely unique
+      const safeName = (name && !isDuplicateSpeakerName(name, speakerId)) ? name : '';
+      log(`[🎙️ SPEAKER ACTIVE] Track ${speakerIndex} → "${safeName || '(unmapped)'}" — streaming audio`);
+      speakerManager.addSpeaker(speakerId, safeName);
+      lastReResolveTime.set(speakerId, Date.now());
+      if (safeName) {
+        await segmentPublisher.publishSpeakerEvent({
+          speaker: safeName,
+          type: 'joined',
+          timestamp: Date.now(),
+        });
+        log(`[📡 SPEAKER EVENT] "${safeName}" joined → Redis`);
+      }
+    } else {
+      const currentName = speakerManager.getSpeakerName(speakerId) || '';
+      let locked = isTrackLocked(speakerIndex);
 
     // Sync locked name → speaker-streams buffer. Once a track is locked, the
     // re-resolve block below is skipped (!locked gate). If the buffer was empty
@@ -1688,17 +1701,9 @@ async function handlePerSpeakerAudioData(speakerIndex: number, audioDataArray: n
           return 0;
         });
         if (lastParticipantCount > 0 && currentCount !== lastParticipantCount) {
-          if (platformKey === 'googlemeet') {
-            // The shared in-page module handles count changes itself (clears
-            // unlocked votes, KEEPS locks — per-tile streams end on leave, so
-            // locked mappings stay valid). Nuking locks here discarded correct
-            // names on every join/leave.
-            log(`[SpeakerIdentity] Participant count changed: ${lastParticipantCount} → ${currentCount} (gmeet: in-page module handles it; locks kept).`);
-          } else {
-            log(`[SpeakerIdentity] Participant count changed: ${lastParticipantCount} → ${currentCount}. Invalidating all mappings (including locks).`);
-            clearSpeakerNameCache();
-            locked = false; // Force re-resolve below
-          }
+          log(`[SpeakerIdentity] Participant count changed: ${lastParticipantCount} → ${currentCount}. Invalidating all mappings (including locks).`);
+          clearSpeakerNameCache();
+          locked = false; // Force re-resolve below
         }
         lastParticipantCount = currentCount;
       } catch {}
@@ -1724,21 +1729,6 @@ async function handlePerSpeakerAudioData(speakerIndex: number, audioDataArray: n
         log(`[📡 SPEAKER EVENT] "${newName}" joined → Redis`);
       }
 
-      // Participant-order fallback REMOVED for gmeet: track index has no
-      // relationship to participant-list order, so it systematically assigned
-      // WRONG names whenever speaking detection was broken — exactly when it
-      // fired. Unmapped ("") is strictly better than misattributed. The shared
-      // in-page module's self-learning indicator detection (gmeet-speakers.ts)
-      // now covers the stale-CSS-selector case the fallback was meant to patch;
-      // its forensic dump is available via __vexaGmeetSpeakers.getState().
-      if (!currentName && platformKey === 'googlemeet') {
-        const firstAudio = speakerLastAudioMs.get(speakerId) || Date.now();
-        if (Date.now() - firstAudio > 15_000 && Math.random() < 0.05) {
-          try {
-            const diag = await page.evaluate(() => (window as any).__vexaGmeetSpeakers?.getState?.() ?? null);
-            log(`[SpeakerIdentity] Track ${speakerIndex} unmapped 15s+. Attribution state: ${JSON.stringify(diag)?.slice(0, 600)}`);
-          } catch { /* page gone */ }
-        }
       }
     }
   }
@@ -1763,7 +1753,10 @@ async function handlePerSpeakerAudioData(speakerIndex: number, audioDataArray: n
     });
   }
   retainAudio(speakerIndex, nowMs, audioData); // faithful tee of the per-speaker channel
-  speakerManager.feedAudio(speakerId, audioData); // pipeline (capture.v1 consumer)
+  // Named GMeet routes may reappear on a different anonymous channel after a
+  // real conversational gap. Preserve the capture timestamp so the manager
+  // closes non-contiguous turns instead of concatenating them on a fake clock.
+  speakerManager.feedAudio(speakerId, audioData, platformKey === 'googlemeet' ? nowMs : undefined);
 }
 
 /**
@@ -1798,8 +1791,10 @@ async function cleanupPerSpeakerPipeline(): Promise<void> {
         const w = window as any;
         try { w.__vexaGmeetCapture?.stop(); } catch { /* ignore */ }
         try { w.__vexaGmeetSpeakers?.destroy?.(); } catch { /* ignore */ }
+        try { w.__vexaGmeetChannelBinding?.reset?.(); } catch { /* ignore */ }
         try { w.__vexaZoomSpeakers?.destroy?.(); } catch { /* ignore */ }
         w.__vexaGmeetCapture = null;
+        w.__vexaGmeetChannelBinding = null;
         // Legacy: clear any old interval handles if a stale page is in play
         const intervals = w.__vexaPerSpeakerIntervals || [];
         intervals.forEach((id: any) => clearInterval(id));
@@ -1831,6 +1826,8 @@ async function cleanupPerSpeakerPipeline(): Promise<void> {
     speakerManager.removeAll();
     speakerManager = null;
   }
+  gmeetSpeakerRouter.reset();
+  speakerLastAudioMs.clear();
 
   // Flush remaining confirmed batches before session_end
   if (segmentPublisher && confirmedBatches.size > 0) {
@@ -1950,11 +1947,15 @@ export async function startPerSpeakerAudioCapture(pageToCaptureFrom: Page): Prom
   // polled by Node.js every 100ms. This bypasses Playwright's exposeFunction / CDP
   // binding bridge, which silently drops calls from AudioWorklet message handlers
   // and ScriptProcessor onaudioprocess in headless Chrome.
-  const handleCount = await pageToCaptureFrom.evaluate(async () => {
+  const handleCount = await pageToCaptureFrom.evaluate(async (isGoogleMeet: boolean) => {
     const w = window as any;
     if (w.__vexaPerSpeakerIntervals !== undefined) return w.__vexaPerSpeakerActiveStreams ?? 0;
 
     w.__vexaAudioQueue = [];
+    if (isGoogleMeet && w.VexaBrowserUtils?.GmeetChannelBinding) {
+      w.__vexaGmeetChannelBinding = new w.VexaBrowserUtils.GmeetChannelBinding();
+      w.logBot?.('[PerSpeaker] overlap-safe GMeet channel binding installed');
+    }
 
     // Preferred: AudioWorklet via shared module (confirmed to process real audio in headless Chrome)
     if (w.VexaBrowserUtils?.createGmeetCapture) {
@@ -1962,7 +1963,6 @@ export async function startPerSpeakerAudioCapture(pageToCaptureFrom: Page): Prom
         log: (m: string) => w.logBot?.('[PerSpeaker] ' + m),
         onAudio: (index: number, pcm: Float32Array) => {
           try {
-            w.__vexaGmeetSpeakers?.reportTrackAudio?.(index);
             w.__vexaOnAudioCallCount = (w.__vexaOnAudioCallCount || 0) + 1;
             const cnt = w.__vexaOnAudioCallCount;
             if (cnt <= 3 || cnt % 50 === 0) {
@@ -1975,7 +1975,10 @@ export async function startPerSpeakerAudioCapture(pageToCaptureFrom: Page): Prom
               w.__vexaAudioQueue = [];
             }
             if (w.__vexaAudioQueue.length < 300) {
-              w.__vexaAudioQueue.push({ i: index, d: Array.from(pcm) });
+              const name = isGoogleMeet
+                ? w.__vexaGmeetChannelBinding?.resolve(index, w.__vexaGmeetSpeakers?.litNames?.() || [], Date.now())
+                : undefined;
+              w.__vexaAudioQueue.push({ i: index, d: Array.from(pcm), n: name });
             }
           } catch (e: any) {
             console.error('[PerSpeaker] onAudio ERROR:', e && e.message);
@@ -2031,8 +2034,10 @@ export async function startPerSpeakerAudioCapture(pageToCaptureFrom: Page): Prom
           let maxVal = 0;
           for (let k = 0; k < data.length; k++) { const a = Math.abs(data[k]); if (a > maxVal) maxVal = a; }
           if (maxVal > 0.005 && w.__vexaAudioQueue.length < 300) {
-            w.__vexaGmeetSpeakers?.reportTrackAudio?.(index);
-            w.__vexaAudioQueue.push({ i: index, d: Array.from(data) });
+            const name = isGoogleMeet
+              ? w.__vexaGmeetChannelBinding?.resolve(index, w.__vexaGmeetSpeakers?.litNames?.() || [], Date.now())
+              : undefined;
+            w.__vexaAudioQueue.push({ i: index, d: Array.from(data), n: name });
           }
         };
 
@@ -2073,7 +2078,7 @@ export async function startPerSpeakerAudioCapture(pageToCaptureFrom: Page): Prom
     w.__vexaPerSpeakerIntervals = [rescanInterval];
 
     return streamCount;
-  });
+  }, currentPlatform === 'google_meet');
 
   log(`[PerSpeaker] Browser-side audio capture started with ${handleCount} streams`);
 
@@ -2085,7 +2090,7 @@ export async function startPerSpeakerAudioCapture(pageToCaptureFrom: Page): Prom
       if (audioQueuePoller !== null) { clearInterval(audioQueuePoller); audioQueuePoller = null; }
       return;
     }
-    let chunks: Array<{ i: number; d: number[] }>;
+    let chunks: Array<{ i: number; d: number[]; n?: string }>;
     try {
       chunks = await pageToCaptureFrom.evaluate(() => {
         const w = window as any;
@@ -2098,7 +2103,7 @@ export async function startPerSpeakerAudioCapture(pageToCaptureFrom: Page): Prom
     }
     if (chunks.length > 0) log(`[PerSpeaker] drained ${chunks.length} chunks from queue`);
     for (const chunk of chunks) {
-      handlePerSpeakerAudioData(chunk.i, chunk.d).catch(() => {});
+      handlePerSpeakerAudioData(chunk.i, chunk.d, chunk.n).catch(() => {});
     }
   }, 100);
   log('[PerSpeaker] queue poller started');

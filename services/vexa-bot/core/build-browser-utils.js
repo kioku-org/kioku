@@ -88,6 +88,7 @@ ${teamsSpeakersContent}
     BrowserWhisperLiveService: utils.BrowserWhisperLiveService,
     generateBrowserUUID: utils.generateBrowserUUID,
     createGmeetSpeakers: gm.createGmeetSpeakers,
+    GmeetChannelBinding: gm.GmeetChannelBinding,
     createZoomSpeakers: zm.createZoomSpeakers,
     createGmeetCapture: (gcModule.exports || {}).createGmeetCapture,
     createTeamsSpeakers: (tsModule.exports || {}).createTeamsSpeakers

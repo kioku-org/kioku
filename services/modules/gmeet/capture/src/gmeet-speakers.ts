@@ -69,6 +69,89 @@ export interface GmeetSpeakers {
   destroy(): void;
 }
 
+export interface GmeetChannelBindingOptions {
+  /** Consecutive unambiguous audio/glow frames required before binding. Default 2. */
+  confirmFrames?: number;
+  /** A name cannot move away from a channel that emitted audio this recently. Default 1500ms. */
+  ownerHoldMs?: number;
+}
+
+/**
+ * Bind anonymous Meet audio channels to participant names without relabeling
+ * audio during overlap.
+ *
+ * A binding is learned only when exactly one tile is glowing while this channel
+ * contains audio. Once learned, it is held while zero or multiple tiles glow,
+ * which is the common case during overlap. A contradictory single-glow signal
+ * is treated as a possible channel rotation: the old label is withheld until
+ * the new signal is confirmed, so audio is never knowingly emitted under a
+ * stale name.
+ */
+export class GmeetChannelBinding {
+  private readonly confirmFrames: number;
+  private readonly ownerHoldMs: number;
+  private readonly bindings = new Map<number, string>();
+  private readonly owners = new Map<string, number>();
+  private readonly lastAudioMs = new Map<number, number>();
+  private readonly pending = new Map<number, { name: string; frames: number }>();
+
+  constructor(opts: GmeetChannelBindingOptions = {}) {
+    this.confirmFrames = Math.max(1, opts.confirmFrames ?? 2);
+    this.ownerHoldMs = Math.max(0, opts.ownerHoldMs ?? 1500);
+  }
+
+  resolve(channel: number, litNames: string[], tsMs: number = Date.now()): string | undefined {
+    this.lastAudioMs.set(channel, tsMs);
+    const current = this.bindings.get(channel);
+
+    // Overlap (or a temporarily missing glow) carries the last safe binding.
+    // It never supplies new identity evidence.
+    if (litNames.length !== 1) {
+      this.pending.delete(channel);
+      return current;
+    }
+
+    const candidate = litNames[0];
+    if (candidate === current) {
+      this.pending.delete(channel);
+      return current;
+    }
+
+    const previous = this.pending.get(channel);
+    const frames = previous?.name === candidate ? previous.frames + 1 : 1;
+    this.pending.set(channel, { name: candidate, frames });
+
+    // A contradictory exclusive signal means the old channel label is unsafe.
+    // Emit UNKNOWN while confirming rather than leaking audio to the old person.
+    if (frames < this.confirmFrames) return undefined;
+
+    const owner = this.owners.get(candidate);
+    if (owner !== undefined && owner !== channel) {
+      const ownerLastAudio = this.lastAudioMs.get(owner) ?? 0;
+      if (tsMs - ownerLastAudio <= this.ownerHoldMs) return undefined;
+      this.bindings.delete(owner);
+      this.pending.delete(owner);
+    }
+
+    if (current && this.owners.get(current) === channel) this.owners.delete(current);
+    this.bindings.set(channel, candidate);
+    this.owners.set(candidate, channel);
+    this.pending.delete(channel);
+    return candidate;
+  }
+
+  getBinding(channel: number): string | undefined {
+    return this.bindings.get(channel);
+  }
+
+  reset(): void {
+    this.bindings.clear();
+    this.owners.clear();
+    this.lastAudioMs.clear();
+    this.pending.clear();
+  }
+}
+
 /** What probeDom() returns: enough of the live structure to decide whether
  *  channel↔name can be STRUCTURAL (audio element carries a participant id) or
  *  needs a SEMANTIC (aria/role) speaking signal instead of obfuscated classes. */

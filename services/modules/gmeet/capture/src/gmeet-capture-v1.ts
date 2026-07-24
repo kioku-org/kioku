@@ -18,7 +18,7 @@
  * codec (encodeAudioFrame now carries speakerName). Same module, two services.
  */
 import { createGmeetCapture, type GmeetCaptureOptions } from './gmeet-capture';
-import { createGmeetSpeakers } from './gmeet-speakers';
+import { createGmeetSpeakers, GmeetChannelBinding } from './gmeet-speakers';
 import type { CaptureV1Sink } from './contract/capture-v1';
 
 export interface GmeetCaptureV1Options {
@@ -55,6 +55,7 @@ export function pickBoundName(litNames: string[]): string | undefined {
 
 export function createGmeetCaptureV1(opts: GmeetCaptureV1Options): GmeetCaptureV1 {
   const now = opts.now ?? (() => Date.now());
+  const channelBinding = new GmeetChannelBinding();
 
   // Glow watcher: drives both the per-chunk binding (litNames) AND the legacy
   // active-speaker hint stream on capture.v1 (kept for audit + the mixed lane).
@@ -71,8 +72,9 @@ export function createGmeetCaptureV1(opts: GmeetCaptureV1Options): GmeetCaptureV
     ...opts.capture,
     log: opts.log,
     onAudio: (index, pcm) => {
-      const speakerName = pickBoundName(speakers.litNames());
-      opts.sink.audioChunk({ speakerId: `spk-${index}`, speakerIndex: index, samples: pcm, ts: now(), speakerName });
+      const ts = now();
+      const speakerName = channelBinding.resolve(index, speakers.litNames(), ts);
+      opts.sink.audioChunk({ speakerId: `spk-${index}`, speakerIndex: index, samples: pcm, ts, speakerName });
     },
   });
 
