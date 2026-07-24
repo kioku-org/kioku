@@ -60,7 +60,7 @@
 
 <p align="center">
   <a href="./assets/showcase.mp4">
-    <img src="./assets/showcase.jpg" alt="Kioku showcase" width="100%" />
+    <img src="./assets/showcase.gif" alt="Kioku showcase" width="100%" />
   </a>
 </p>
 
