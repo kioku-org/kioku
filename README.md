@@ -56,6 +56,18 @@
 
 <br />
 
+## Showcase
+
+<p align="center">
+  <a href="./assets/showcase.mp4">
+    <img src="./assets/showcase.jpg" alt="Kioku showcase" width="100%" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="./assets/showcase.mp4"><strong>Watch the showcase</strong></a>
+</p>
+
 ## Documentation
 
 The complete documentation is available at **[docs.kioku.chat](https://docs.kioku.chat)**.
