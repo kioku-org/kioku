@@ -423,7 +423,33 @@ stderr_logfile=/var/log/dashboard.err
 SUPERVISOR
 
 # ── Optional: Cloudflare Tunnel ───────────────────────────────────────────────
-if [[ -f /etc/cloudflared/config.yml ]]; then
+if [[ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]]; then
+    install -d -m 700 /run/kioku
+    (umask 077; printf '%s' "$CLOUDFLARE_TUNNEL_TOKEN" > /run/kioku/cloudflare-tunnel-token)
+    chmod 600 /run/kioku/cloudflare-tunnel-token
+    cat > /usr/local/bin/kioku-cloudflare.sh <<'CLOUDFLARE_RUN'
+#!/usr/bin/env bash
+set -euo pipefail
+options=(tunnel --no-autoupdate --metrics 127.0.0.1:20241)
+if [[ -n "${CLOUDFLARE_CONFIG_PATH:-}" ]]; then
+    options+=(--config "$CLOUDFLARE_CONFIG_PATH")
+fi
+exec /usr/local/bin/cloudflared "${options[@]}" run --token-file /run/kioku/cloudflare-tunnel-token
+CLOUDFLARE_RUN
+    chmod 700 /usr/local/bin/kioku-cloudflare.sh
+    cat >> /etc/supervisor/conf.d/kioku.conf <<'CLOUDFLARED'
+
+[program:cloudflared]
+command=/usr/local/bin/kioku-cloudflare.sh
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+stdout_logfile=/var/log/cloudflared.log
+stderr_logfile=/var/log/cloudflared.err
+CLOUDFLARED
+    echo "[KIOKU] Cloudflare tunnel token configured, enabling connector"
+elif [[ -f /etc/cloudflared/config.yml ]]; then
     cat >> /etc/supervisor/conf.d/kioku.conf <<'CLOUDFLARED'
 
 [program:cloudflared]

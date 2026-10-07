@@ -17,6 +17,23 @@ published stateful and stateless images by immutable digest, and omit
 `TEMPLATE_ID`, `BASH_ENV`, and `DASHBOARD_RELEASE_DIR` to use their baked startup
 files and dashboard directly.
 
+To rebuild only the stateful image after a deployment change, reuse the completed
+build cache and retain the existing bot image:
+
+```bash
+gh workflow run ci.yml --ref <branch> -f images=stateful -f clean_build=false
+```
+
+For custom domains, set `CLOUDFLARE_TUNNEL_TOKEN` in the private `.env`. The
+startup script supervises `cloudflared` and writes its token to a file with mode
+0600 under `/run/kioku`; the token is not passed in process arguments. For a
+locally configured tunnel, keep its ingress YAML on the network volume and set
+`CLOUDFLARE_CONFIG_PATH=/data/cloudflared/config.yml`. Use local service URLs:
+dashboard port 3001, Hivemind API port 9100, meeting gateway port 8056, and MCP
+port 18888. Set `NEXTAUTH_URL` to the dashboard domain and both
+`VEXA_PUBLIC_URL` and `VEXA_PUBLIC_API_URL` to the meeting gateway domain. Google
+OAuth must register `<NEXTAUTH_URL>/api/auth/callback/google` as a redirect URI.
+
 Create a startup template from the checked-out deployment files:
 
 ```bash

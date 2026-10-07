@@ -22,9 +22,24 @@ on:
         required: false
         type: boolean
         default: false
+      images:
+        description: 'Images to build'
+        required: false
+        type: choice
+        default: all
+        options:
+          - all
+          - stateful
+          - stateless
+      clean_build:
+        description: 'Rebuild every stage without layer caching'
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   build-stateful:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.images != 'stateless' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -60,7 +75,7 @@ jobs:
           push: true
           # Manual production rebuilds compile every stage from source.
           pull: true
-          no-cache: ${{ github.event_name == 'workflow_dispatch' }}
+          no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.clean_build }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -71,6 +86,7 @@ jobs:
           cache-to: type=gha,scope=stateful,mode=max,ignore-error=true
 
   build-stateless:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.images != 'stateful' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -105,7 +121,7 @@ jobs:
             TRANSCRIPTION_BUILDER_IMAGE=${{ inputs.cpu_only && 'ubuntu:22.04' || 'nvidia/cuda:12.3.2-devel-ubuntu22.04' }}
             TRANSCRIPTION_FEATURES=${{ !inputs.cpu_only && 'cuda' || '' }}
           pull: true
-          no-cache: ${{ github.event_name == 'workflow_dispatch' }}
+          no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.clean_build }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
