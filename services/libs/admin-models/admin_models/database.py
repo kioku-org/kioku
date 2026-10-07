@@ -42,7 +42,7 @@ if not all([DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD]):
 # For psycopg2: SSL is handled via query parameters in the URL
 DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 ssl_params = f"?sslmode={DB_SSL_MODE}" if DB_SSL_MODE else ""
-DATABASE_URL_SYNC = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}{ssl_params}"
+DATABASE_URL_SYNC = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}{ssl_params}"
 
 # Configure SSL for asyncpg
 # asyncpg uses ssl parameter (True/False/ssl.SSLContext)
