@@ -5,6 +5,18 @@ are spawned automatically by runtime-api when a meeting is requested.
 
 ## CPU production with OpenRouter
 
+For a complete rebuild, run the CI workflow on the desired source branch:
+
+```bash
+gh workflow run ci.yml --ref <branch> -f cpu_only=true
+```
+
+Manual builds pull the base images and disable layer caching. The CPU bot build
+uses cloud transcription without compiling or installing CUDA. Deploy the
+published stateful and stateless images by immutable digest, and omit
+`TEMPLATE_ID`, `BASH_ENV`, and `DASHBOARD_RELEASE_DIR` to use their baked startup
+files and dashboard directly.
+
 Create a startup template from the checked-out deployment files:
 
 ```bash

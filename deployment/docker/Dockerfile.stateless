@@ -3,6 +3,8 @@
 # Build: docker build -f deployment/docker/Dockerfile.stateless -t ghcr.io/kioku-org/kioku-stateless .
 # ==============================================================================
 
+ARG TRANSCRIPTION_BUILDER_IMAGE=nvidia/cuda:12.3.2-devel-ubuntu22.04
+
 # ─── Stage 1: Build Zoom SDK native addon ─────────────────────────────────────
 FROM node:20-bullseye AS native-builder
 
@@ -79,7 +81,8 @@ RUN rm -rf node_modules/onnxruntime-node node_modules/onnxruntime-web \
 # ─── Stage 3: Build Rust transcription service (kiku, whisper.cpp CUDA) ───────
 # Needs the CUDA devel image for nvcc; GPU-less build hosts are fine (ggml
 # compiles for its default arch list, the driver is only needed at run time).
-FROM nvidia/cuda:12.3.2-devel-ubuntu22.04 AS transcription-builder
+FROM ${TRANSCRIPTION_BUILDER_IMAGE} AS transcription-builder
+ARG TRANSCRIPTION_FEATURES=cuda
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl build-essential cmake git libclang-dev pkg-config ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -91,11 +94,15 @@ COPY services/transcription/Cargo.toml services/transcription/Cargo.lock ./
 # compile lands in this layer, cached until Cargo.{toml,lock} change — source
 # edits skip straight to the (seconds-long) final build below.
 RUN mkdir src && echo "fn main() {}" > src/main.rs \
-    && cargo build --release --features cuda \
+    && cargo build --release --features "$TRANSCRIPTION_FEATURES" \
     && rm -rf src target/release/kioku-transcription* \
               target/release/deps/kioku_transcription-*
 COPY services/transcription/src ./src
-RUN cargo build --release --features cuda
+RUN cargo build --release --features "$TRANSCRIPTION_FEATURES" \
+    && mkdir -p /build/cuda-stubs \
+    && if [ -f /usr/local/cuda-12.3/lib64/stubs/libcuda.so ]; then \
+         cp /usr/local/cuda-12.3/lib64/stubs/libcuda.so /build/cuda-stubs/libcuda.so.1; \
+       fi
 
 # ─── Stage 4: Runtime (Playwright + Whisper) ──────────────────────────────────
 # Plain ubuntu base instead of nvidia/cuda:12.3.2-cudnn9-runtime (~3.2GB of CUDA
@@ -103,6 +110,7 @@ RUN cargo build --release --features cuda
 # CUDA), which needs just cuBLAS + cudart — installed as targeted apt packages
 # below. Driver libs are injected by the NVIDIA container runtime at run time.
 FROM ubuntu:22.04
+ARG TRANSCRIPTION_FEATURES=cuda
 
 ENV DEBIAN_FRONTEND=noninteractive \
     DISPLAY=:99 \
@@ -158,19 +166,21 @@ RUN chmod +x /app/vexa-bot/entrypoint.sh
 # cuBLAS + cudart for whisper.cpp CUDA, from NVIDIA's apt repo (apt installs to
 # the default linker path via the ld.so.conf entry below). cuDNN is gone with
 # faster-whisper — whisper.cpp doesn't use it.
-RUN curl -fsSLO https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb \
+RUN if [ "$TRANSCRIPTION_FEATURES" = "cuda" ]; then \
+    curl -fsSLO https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb \
     && dpkg -i cuda-keyring_1.1-1_all.deb && rm cuda-keyring_1.1-1_all.deb \
     && apt-get update && apt-get install -y --no-install-recommends \
        libcublas-12-3 cuda-cudart-12-3 \
     && rm -rf /var/lib/apt/lists/* \
-    && echo "/usr/local/cuda-12.3/lib64" > /etc/ld.so.conf.d/cuda.conf && ldconfig
+    && echo "/usr/local/cuda-12.3/lib64" > /etc/ld.so.conf.d/cuda.conf && ldconfig; \
+    fi
 
 # Transcription service (kiku, whisper.cpp CUDA). The binary dynamic-links
 # libcuda.so.1, normally injected by the NVIDIA container runtime; the driver
 # stub is shipped at a NON-default path so GPU-less hosts can still run it
 # (LD_LIBRARY_PATH=/opt/cuda-stubs → cuInit fails → whisper.cpp CPU fallback).
 COPY --from=transcription-builder /build/target/release/kioku-transcription /opt/transcription/kioku-transcription
-COPY --from=transcription-builder /usr/local/cuda-12.3/lib64/stubs/libcuda.so /opt/cuda-stubs/libcuda.so.1
+COPY --from=transcription-builder /build/cuda-stubs/ /opt/cuda-stubs/
 
 # Copy entrypoint
 COPY deployment/docker/entrypoint-stateless-runtime.sh /entrypoint.sh

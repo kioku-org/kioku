@@ -17,6 +17,11 @@ on:
         required: false
         type: boolean
         default: false
+      cpu_only:
+        description: 'Build cloud-transcription bot image without CUDA'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build-stateful:
@@ -96,6 +101,9 @@ jobs:
           context: .
           file: deployment/docker/Dockerfile.stateless
           push: true
+          build-args: |
+            TRANSCRIPTION_BUILDER_IMAGE=${{ inputs.cpu_only && 'ubuntu:22.04' || 'nvidia/cuda:12.3.2-devel-ubuntu22.04' }}
+            TRANSCRIPTION_FEATURES=${{ !inputs.cpu_only && 'cuda' || '' }}
           pull: true
           no-cache: ${{ github.event_name == 'workflow_dispatch' }}
           labels: |
