@@ -36,6 +36,13 @@ RUN cargo build --release
 # before pinning, to avoid a GLIBC mismatch against the runtime stage.
 FROM qdrant/qdrant:v1.18.2-gpu-nvidia AS qdrant-gpu
 
+# MinIO retired its public server binary download endpoint. Build the tagged
+# open-source server and client instead of depending on that endpoint.
+FROM golang:1.24-bookworm AS minio-builder
+ENV CGO_ENABLED=0
+RUN go install github.com/minio/minio@RELEASE.2025-10-15T17-29-55Z \
+    && go install github.com/minio/mc@RELEASE.2025-08-13T08-35-41Z
+
 # ─── Stage 2: Install Python services into venv ───────────────────────────────
 # python:3.11-slim-bookworm puts Python at /usr/local/bin and stdlib at
 # /usr/local/lib/python3.11. Stage 4 (Ubuntu 22.04 + deadsnakes) puts Python
@@ -174,13 +181,9 @@ COPY --from=qdrant-gpu /etc/vulkan/icd.d/nvidia_icd.json /etc/vulkan/icd.d/nvidi
 # Ollama
 RUN curl -fsSL https://ollama.com/install.sh | sh
 
-# MinIO server + mc client
-RUN curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio \
-        -o /usr/local/bin/minio \
-    && chmod +x /usr/local/bin/minio \
-    && curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc \
-        -o /usr/local/bin/mc \
-    && chmod +x /usr/local/bin/mc
+# MinIO server + mc client (static binaries built from tagged source)
+COPY --from=minio-builder /go/bin/minio /usr/local/bin/minio
+COPY --from=minio-builder /go/bin/mc /usr/local/bin/mc
 
 # Cloudflared
 RUN curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
