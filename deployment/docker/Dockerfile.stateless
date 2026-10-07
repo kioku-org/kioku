@@ -6,10 +6,13 @@
 ARG TRANSCRIPTION_BUILDER_IMAGE=nvidia/cuda:12.3.2-devel-ubuntu22.04
 
 # ─── Stage 1: Build Zoom SDK native addon ─────────────────────────────────────
-FROM node:20-bullseye AS native-builder
+FROM ubuntu:22.04 AS native-builder
 
-RUN apt-get update && apt-get install -y \
-    build-essential cmake python3 libssl-dev qtbase5-dev \
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake python3 libssl-dev qtbase5-dev ca-certificates curl gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app/vexa-bot
