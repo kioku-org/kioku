@@ -4,7 +4,7 @@ set -euo pipefail
 # ─── Configuration ────────────────────────────────────────────────────────────
 PG_MAJOR="${PG_MAJOR:-16}"
 PG_BIN="/usr/lib/postgresql/${PG_MAJOR}/bin"
-PGDATA="/data/postgresql"
+PGDATA="${PGDATA:-/data/postgresql}"
 DB_NAME="${DB_NAME:-kioku}"
 DB_USER="${DB_USER:-kioku}"
 DB_PASSWORD="${DB_PASSWORD:-kioku}"
@@ -37,6 +37,10 @@ if [[ -n "${RUNPOD_POD_ID:-}" ]]; then
     BOT_MEETING_API_URL="https://${RUNPOD_POD_ID}-8080.proxy.runpod.net"
     BOT_TTS_URL="https://${RUNPOD_POD_ID}-8002.proxy.runpod.net"
     BOT_COOKIE_URL="https://${RUNPOD_POD_ID}-8099.proxy.runpod.net"
+    export NEXTAUTH_URL="${NEXTAUTH_URL:-https://${RUNPOD_POD_ID}-3001.proxy.runpod.net}"
+    export VEXA_PUBLIC_URL="${VEXA_PUBLIC_URL:-https://${RUNPOD_POD_ID}-8056.proxy.runpod.net}"
+    export VEXA_PUBLIC_API_URL="${VEXA_PUBLIC_API_URL:-https://${RUNPOD_POD_ID}-8056.proxy.runpod.net}"
+
 else
     # Bot containers run on kioku-network and reach stateful services by container name
     REDIS_BOT_URL="redis://:${REDIS_PASSWORD}@kioku-stateful:6379/0"
@@ -50,9 +54,22 @@ fi
 # share one model across all local bots — see docker-compose.stateful.yml.
 BOT_TRANSCRIPTION_SERVICE_URL="${BOT_TRANSCRIPTION_SERVICE_URL:-http://localhost:8000}"
 
+# CPU deployments using cloud STT do not need GPU bot or transcriber pods.
+if [[ "${BOT_COMPUTE_TYPE:-GPU}" == "CPU" ]]; then
+    python3 - <<'CPU_PROFILES'
+import pathlib
+import yaml
+path = pathlib.Path("/opt/vexa/services/runtime-api/profiles.yaml")
+data = yaml.safe_load(path.read_text())
+for profile in data.get("profiles", data).values():
+    profile["gpu"] = False
+path.write_text(yaml.safe_dump(data, sort_keys=False))
+CPU_PROFILES
+fi
+
 # ─── Prepare directories ──────────────────────────────────────────────────────
 mkdir -p \
-    /data/postgresql /data/qdrant /data/redis /data/minio /data/ollama/models \
+    "$PGDATA" /data/qdrant /data/redis /data/minio /data/ollama/models \
     /data/cookie /data/recordings \
     /etc/qdrant /run/sshd /var/run/postgresql /root/.ssh /var/log/containers
 chmod 700 /root/.ssh
@@ -88,8 +105,41 @@ if [[ ! -f "$PGDATA/PG_VERSION" ]]; then
     sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$DB_NAME" -c "GRANT ALL ON SCHEMA hivemind TO ${DB_USER};"
     sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$DB_NAME" -c "GRANT ALL ON SCHEMA vexa TO ${DB_USER};"
     sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$DB_NAME" -c "ALTER ROLE ${DB_USER} IN DATABASE ${DB_NAME} SET search_path TO hivemind,public;"
+    if [[ -n "${POSTGRES_BACKUP_DIR:-}" && -f "$POSTGRES_BACKUP_DIR/latest.dump" ]]; then
+        echo "[KIOKU] Restoring PostgreSQL from the latest volume backup..."
+        sudo -u postgres "$PG_BIN/pg_restore" --dbname="$DB_NAME" --clean --if-exists --exit-on-error "$POSTGRES_BACKUP_DIR/latest.dump"
+    fi
     sudo -u postgres "$PG_BIN/pg_ctl" -D "$PGDATA" -m fast -w stop
 fi
+
+# Network volumes may reject PostgreSQL's required owner/mode. In that case
+# PGDATA can live on the container disk while consistent dumps live on the volume.
+if [[ -n "${POSTGRES_BACKUP_DIR:-}" ]]; then
+    mkdir -p "$POSTGRES_BACKUP_DIR"
+fi
+cat > /usr/local/bin/kioku-backup-postgres.sh <<'PG_BACKUP'
+#!/usr/bin/env bash
+set -euo pipefail
+trap 'rm -f /tmp/kioku-postgres-backup.dump' EXIT
+for _ in $(seq 1 60); do
+    if pg_isready -h localhost -U "${DB_USER:-kioku}" -d "${DB_NAME:-kioku}" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 2
+done
+while true; do
+    pg_dump -h localhost -U "${DB_USER:-kioku}" -d "${DB_NAME:-kioku}" -Fc -f /tmp/kioku-postgres-backup.dump
+    # Publish only a completed dump. Keep the previous generation for recovery.
+    cp /tmp/kioku-postgres-backup.dump "${POSTGRES_BACKUP_DIR}/latest.dump.tmp"
+    if [[ -f "${POSTGRES_BACKUP_DIR}/latest.dump" ]]; then
+        cp "${POSTGRES_BACKUP_DIR}/latest.dump" "${POSTGRES_BACKUP_DIR}/previous.dump"
+    fi
+    mv "${POSTGRES_BACKUP_DIR}/latest.dump.tmp" "${POSTGRES_BACKUP_DIR}/latest.dump"
+    echo "[KIOKU] PostgreSQL backup completed"
+    sleep "${POSTGRES_BACKUP_INTERVAL_SECONDS:-60}"
+done
+PG_BACKUP
+chmod +x /usr/local/bin/kioku-backup-postgres.sh
 
 # ─── Redis ────────────────────────────────────────────────────────────────────
 sed -i 's/^bind 127.0.0.1.*/bind 0.0.0.0/' /etc/redis/redis.conf 2>/dev/null || true
@@ -123,7 +173,13 @@ set -euo pipefail
 echo "[KIOKU] Waiting for Ollama before pulling embedding model..."
 for _ in $(seq 1 60); do
     if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
-        ollama pull nomic-embed-text-v2-moe
+        model="${EMBEDDING_MODEL:-nomic-embed-text-v2-moe}"
+        base_model="${EMBEDDING_BASE_MODEL:-$model}"
+        ollama pull "$base_model"
+        if [[ -n "${CPU_EMBEDDING_THREADS:-}" ]]; then
+            printf 'FROM %s\nPARAMETER num_thread %s\n' "$base_model" "$CPU_EMBEDDING_THREADS" > /tmp/kioku-embedding.Modelfile
+            ollama create "$model" -f /tmp/kioku-embedding.Modelfile
+        fi
         exit 0
     fi
     sleep 5
@@ -145,7 +201,7 @@ cat > /usr/local/bin/kioku-wait-for-embedding-model.sh <<'WAITSCRIPT'
 set -euo pipefail
 echo "[KIOKU] Waiting for embedding model before starting hivemind..."
 for _ in $(seq 1 60); do
-    if curl -fsS http://127.0.0.1:11434/api/tags 2>/dev/null | grep -q 'nomic-embed-text-v2-moe'; then
+    if curl -fsS http://127.0.0.1:11434/api/tags 2>/dev/null | grep -q "${EMBEDDING_MODEL:-nomic-embed-text-v2-moe}"; then
         echo "[KIOKU] Embedding model present, starting hivemind."
         exit 0
     fi
@@ -175,6 +231,16 @@ chmod +x /usr/local/bin/kioku-init-minio.sh
 
 # ─── Supervisord config ───────────────────────────────────────────────────────
 cat > /etc/supervisor/conf.d/kioku.conf <<SUPERVISOR
+[unix_http_server]
+file=/var/run/supervisor.sock
+chmod=0700
+
+[rpcinterface:supervisor]
+supervisor.rpcinterface_factory=supervisor.rpcinterface:make_main_rpcinterface
+
+[supervisorctl]
+serverurl=unix:///var/run/supervisor.sock
+
 [supervisord]
 nodaemon=true
 logfile=/var/log/supervisord.log
@@ -188,6 +254,16 @@ autostart=true
 autorestart=true
 stdout_logfile=/var/log/postgres.log
 stderr_logfile=/var/log/postgres.err
+
+[program:postgresql-backup]
+command=/usr/local/bin/kioku-backup-postgres.sh
+autostart=$([[ -n "${POSTGRES_BACKUP_DIR:-}" ]] && echo true || echo false)
+autorestart=true
+startsecs=0
+stopasgroup=true
+killasgroup=true
+stdout_logfile=/var/log/postgresql-backup.log
+stderr_logfile=/var/log/postgresql-backup.err
 
 [program:redis]
 command=/usr/bin/redis-server /etc/redis/redis.conf --daemonize no
@@ -294,7 +370,7 @@ stderr_logfile=/var/log/tts.err
 command=/opt/venv/bin/uvicorn runtime_api.main:app --host 0.0.0.0 --port 8091
 directory=/opt/vexa/services/runtime-api
 environment=ORCHESTRATOR_BACKEND="docker",REDIS_URL="${REDIS_LOCAL_URL}",DOCKER_HOST="unix:///var/run/docker.sock",DOCKER_NETWORK="kioku-network",BROWSER_IMAGE="${BOT_IMAGE}",TRANSCRIPTION_SERVICE_URL="http://localhost:8000",TTS_SERVICE_URL="${BOT_TTS_URL}",INTERNAL_API_SECRET="${INTERNAL_API_SECRET:-}",PROFILES_PATH="/opt/vexa/services/runtime-api/profiles.yaml",LOG_LEVEL="${LOG_LEVEL:-INFO}",VEXA_ENV="${VEXA_ENV:-production}",HOST="0.0.0.0",PORT="8091",BOT_MODEL_CACHE_DIR="${BOT_MODEL_CACHE_DIR:-}",BOT_WHISPER_MODEL="${BOT_WHISPER_MODEL:-}",ALLOW_PRIVATE_CALLBACKS="true"
-autostart=true
+autostart=${USE_LOCAL_RESOURCE:-true}
 autorestart=true
 stdout_logfile=/var/log/runtime-api-local.log
 stderr_logfile=/var/log/runtime-api-local.err
@@ -312,7 +388,7 @@ stderr_logfile=/var/log/runtime-api-runpod.err
 
 [program:hivemind]
 command=/bin/bash -c '/usr/local/bin/kioku-wait-for-embedding-model.sh; exec /usr/local/bin/kioku-hivemind'
-environment=DB_HOST="localhost",DB_PORT="5432",DB_NAME="${DB_NAME}",DB_USER="${DB_USER}",DB_PASSWORD="${DB_PASSWORD}",DB_MAX_CONNECTIONS="10",DB_SCHEMA="hivemind",JWT_SECRET="${HIVEMIND_JWT_SECRET}",JWT_TTL_SECONDS="2592000",ENCRYPTION_SECRET="${HIVEMIND_ENCRYPTION_SECRET}",INTERNAL_SECRET="${INTERNAL_API_SECRET:-}",VEXA_API_URL="http://localhost:8056",VEXA_ADMIN_API_URL="http://localhost:8001",VEXA_ADMIN_TOKEN="${VEXA_ADMIN_API_TOKEN}",HOST="0.0.0.0",PORT="9100",EMBEDDING_API_URL="http://localhost:11434",EMBEDDING_MODEL="nomic-embed-text-v2-moe",QDRANT_URL="http://localhost:6335",QDRANT_API_KEY="${QDRANT_API_KEY:-}",PPTX_EXTRACT_SCRIPT="/opt/hivemind/scripts/extract_pptx.py"
+environment=DB_HOST="localhost",DB_PORT="5432",DB_NAME="${DB_NAME}",DB_USER="${DB_USER}",DB_PASSWORD="${DB_PASSWORD}",DB_MAX_CONNECTIONS="10",DB_SCHEMA="hivemind",JWT_SECRET="${HIVEMIND_JWT_SECRET}",JWT_TTL_SECONDS="2592000",ENCRYPTION_SECRET="${HIVEMIND_ENCRYPTION_SECRET}",INTERNAL_SECRET="${INTERNAL_API_SECRET:-}",VEXA_API_URL="http://localhost:8056",VEXA_ADMIN_API_URL="http://localhost:8001",VEXA_ADMIN_TOKEN="${VEXA_ADMIN_API_TOKEN}",HOST="0.0.0.0",PORT="9100",EMBEDDING_API_URL="http://localhost:11434",EMBEDDING_MODEL="${EMBEDDING_MODEL:-nomic-embed-text-v2-moe}",QDRANT_URL="http://localhost:6335",QDRANT_API_KEY="${QDRANT_API_KEY:-}",PPTX_EXTRACT_SCRIPT="/opt/hivemind/scripts/extract_pptx.py"
 autostart=true
 autorestart=true
 stdout_logfile=/var/log/hivemind.log
@@ -337,7 +413,7 @@ stderr_logfile=/var/log/cookie.err
 
 [program:dashboard]
 command=node server.js
-directory=/opt/dashboard
+directory=${DASHBOARD_RELEASE_DIR:-/opt/dashboard}
 environment=NODE_ENV="production",PORT="3001",HOSTNAME="0.0.0.0",VEXA_API_URL="http://localhost:8056",VEXA_PUBLIC_API_URL="${VEXA_PUBLIC_API_URL:-}",VEXA_ADMIN_API_KEY="${VEXA_ADMIN_API_TOKEN:-}",VEXA_ADMIN_API_URL="http://localhost:8001",VEXA_ALLOW_DIRECT_LOGIN="${VEXA_ALLOW_DIRECT_LOGIN:-true}",NEXTAUTH_URL="${NEXTAUTH_URL:-https://dashboard.kioku.chat}",NEXTAUTH_SECRET="${NEXTAUTH_SECRET:-}",GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}",GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET:-}",AZURE_AD_CLIENT_ID="${AZURE_AD_CLIENT_ID:-}",AZURE_AD_CLIENT_SECRET="${AZURE_AD_CLIENT_SECRET:-}",AZURE_AD_TENANT_ID="${AZURE_AD_TENANT_ID:-}",SMTP_HOST="${SMTP_HOST:-}",SMTP_USER="${SMTP_USER:-}",SMTP_PASS="${SMTP_PASS:-}",NEXT_PUBLIC_DOCS_URL="${NEXT_PUBLIC_DOCS_URL:-https://docs.kioku.chat}",AI_MODEL="${AI_MODEL:-anthropic/claude-sonnet-5}",AI_API_KEY="${AI_API_KEY:-}"
 autostart=true
 autorestart=true

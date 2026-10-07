@@ -9,6 +9,13 @@ __pycache__
 *.pyd
 *.log
 session-*.md
+**/.env
+**/.env.*
+!**/.env.example
+**/node_modules
+**/.next
+**/target
+**/.venv
 
 apps
 assets

@@ -200,6 +200,7 @@ COPY --from=mcp-builder /app/target/release/kioku-mcp /usr/local/bin/kioku-mcp
 # Python venv + all service source
 COPY --from=python-builder /opt/venv  /opt/venv
 COPY --from=python-builder /opt/vexa  /opt/vexa
+COPY deployment/docker/configs/runtime-profiles.yaml /opt/vexa/services/runtime-api/profiles.yaml
 
 # Dashboard standalone bundle
 COPY --from=dashboard-builder /app/public               /opt/dashboard/public

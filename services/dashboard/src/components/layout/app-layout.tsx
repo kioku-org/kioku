@@ -28,21 +28,23 @@ export function AppLayout({ children }: AppLayoutProps) {
     return <>{children}</>;
   }
 
-  // For authenticated routes, wrap with AuthProvider and full layout
-  return (
-    <AuthProvider>
-      <div className="h-screen flex flex-col bg-background overflow-hidden">
-        <Header onMenuClick={() => setSidebarOpen(true)} />
-        <div className="flex flex-1 overflow-hidden">
-          <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-          <main className="flex-1 overflow-auto p-4 md:p-6">
-            <NotificationBanner />
-            {children}
-          </main>
-        </div>
-        <JoinModal />
-        <Toaster position="bottom-right" />
+  // Admin pages use AdminGuard in app/admin/layout.tsx and authenticate with
+  // an admin token independently of the regular user session.
+  const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
+  const appShell = (
+    <div className="h-screen flex flex-col bg-background overflow-hidden">
+      <Header onMenuClick={() => setSidebarOpen(true)} />
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <main className="flex-1 overflow-auto p-4 md:p-6">
+          <NotificationBanner />
+          {children}
+        </main>
       </div>
-    </AuthProvider>
+      <JoinModal />
+      <Toaster position="bottom-right" />
+    </div>
   );
+
+  return isAdminRoute ? appShell : <AuthProvider>{appShell}</AuthProvider>;
 }

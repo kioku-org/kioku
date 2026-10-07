@@ -53,6 +53,12 @@ jobs:
           context: .
           file: deployment/docker/Dockerfile.stateful
           push: true
+          # Manual production rebuilds compile every stage from source.
+          pull: true
+          no-cache: ${{ github.event_name == 'workflow_dispatch' }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
           tags: |
             ghcr.io/kioku-org/kioku-stateful:${{ steps.meta.outputs.tag }}
             ghcr.io/kioku-org/kioku-stateful:${{ steps.meta.outputs.sha }}
@@ -90,6 +96,11 @@ jobs:
           context: .
           file: deployment/docker/Dockerfile.stateless
           push: true
+          pull: true
+          no-cache: ${{ github.event_name == 'workflow_dispatch' }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
           tags: |
             ghcr.io/kioku-org/kioku-stateless:${{ steps.meta.outputs.tag }}
             ghcr.io/kioku-org/kioku-stateless:${{ steps.meta.outputs.sha }}

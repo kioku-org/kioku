@@ -29,6 +29,10 @@ require_env HIVEMIND_JWT_SECRET
 require_env HIVEMIND_ENCRYPTION_SECRET
 require_env VEXA_ADMIN_API_TOKEN
 
+case "${STT_BACKEND:-whisper}" in
+    openrouter|chirp|gpt4o) require_env OPENROUTER_API_KEY ;;
+esac
+
 IMAGE="${IMAGE:-ghcr.io/kioku-org/kioku-stateful:latest}"
 POD_NAME="${POD_NAME:-${RUNPOD_POD_NAME:-kioku-stateful}}"
 CONTAINER_DISK="${CONTAINER_DISK_GB:-${RUNPOD_DISK_GB:-20}}"
@@ -57,6 +61,9 @@ echo "Cloud:          $STATEFUL_RUNPOD_CLOUD_TYPE"
 echo "Compute:        $STATEFUL_COMPUTE_TYPE$([ "$STATEFUL_COMPUTE_TYPE" = "GPU" ] && echo " ($STATEFUL_GPU_TYPE)")"
 echo "Container disk: ${CONTAINER_DISK}GB"
 echo "Volume:         ${VOLUME_SIZE}GB → /data"
+if [[ -n "${NETWORK_VOLUME_ID:-}" ]]; then
+    echo "Network volume: ${NETWORK_VOLUME_ID} → /data"
+fi
 echo ""
 
 ENV_JSON="$(python3 <<'PY'
@@ -104,6 +111,21 @@ keys = [
     "USE_LOCAL_RESOURCE",
     "LOCAL_BOT_THRESHOLD",
     "MIN_BOT_POOL",
+    "STT_BACKEND",
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_MODEL",
+    "OPENROUTER_URL",
+    "BOT_COMPUTE_TYPE",
+    "EMBEDDING_MODEL",
+    "EMBEDDING_BASE_MODEL",
+    "CPU_EMBEDDING_THREADS",
+    "PGDATA",
+    "POSTGRES_BACKUP_DIR",
+    "POSTGRES_BACKUP_INTERVAL_SECONDS",
+    "NEXTAUTH_URL",
+    "VEXA_PUBLIC_API_URL",
+    "DASHBOARD_RELEASE_DIR",
+    "BASH_ENV",
 ]
 
 data = {}
@@ -164,6 +186,17 @@ CMD=(
     --env "$ENV_JSON"
 )
 
+if [[ -n "${NETWORK_VOLUME_ID:-}" ]]; then
+    CMD+=(--network-volume-id "$NETWORK_VOLUME_ID")
+fi
+if [[ -n "${STATEFUL_DATA_CENTER_ID:-}" ]]; then
+    CMD+=(--data-center-ids "$STATEFUL_DATA_CENTER_ID")
+fi
+
+if [[ -n "${TEMPLATE_ID:-}" ]]; then
+    CMD+=(--template-id "$TEMPLATE_ID")
+fi
+
 if [[ "$STATEFUL_RUNPOD_CLOUD_TYPE" == "COMMUNITY" ]]; then
     CMD+=(--public-ip)
 fi
@@ -172,11 +205,19 @@ if [[ "$STATEFUL_COMPUTE_TYPE" == "GPU" ]]; then
     CMD+=(--gpu-id "$STATEFUL_GPU_TYPE" --gpu-count 1)
 fi
 
-"${CMD[@]}"
+POD_JSON="$("${CMD[@]}")"
+printf '%s' "$POD_JSON" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+fields = ("id", "name", "imageName", "desiredStatus", "vcpuCount",
+          "memoryInGb", "gpuCount", "costPerHr", "containerDiskInGb",
+          "volumeInGb", "volumeMountPath", "networkVolumeId")
+print(json.dumps({key: data[key] for key in fields if key in data}, indent=2))
+'
 
 echo ""
 echo "Pod created."
-echo "  Check status: runpodctl get pod"
+echo "  Check status: runpodctl pod list"
 echo "  Remove pod:   ./destroy.sh <pod-id>"
 echo ""
 echo "Bot pods (${BOT_IMAGE}) will be spawned automatically"

@@ -23,6 +23,10 @@ profiles:
       TTS_SERVICE_URL: "${TTS_SERVICE_URL}"
       INTERNAL_API_SECRET: "${INTERNAL_API_SECRET:-}"
       TRANSCRIPTION_SERVICE_URL: "http://localhost:8000"
+      STT_BACKEND: "${STT_BACKEND:-whisper}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-x-ai/grok-stt-1.0}"
+      OPENROUTER_URL: "${OPENROUTER_URL:-https://openrouter.ai/api/v1}"
       MODEL_SIZE: "${BOT_WHISPER_MODEL:-large-v3-turbo}"
       COMPUTE_TYPE: "int8_float32"
       MODEL_PATH: "${BOT_MODEL_CACHE_DIR:-/opt/kioku/models}"
@@ -42,6 +46,10 @@ profiles:
     env:
       WHISPER_ONLY: "true"
       DEVICE: "cuda"
+      STT_BACKEND: "${STT_BACKEND:-whisper}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-x-ai/grok-stt-1.0}"
+      OPENROUTER_URL: "${OPENROUTER_URL:-https://openrouter.ai/api/v1}"
       MODEL_SIZE: "${BOT_WHISPER_MODEL:-large-v3-turbo}"
       COMPUTE_TYPE: "int8_float32"
       # RunPod shards sit on a public proxy URL — require auth there.
