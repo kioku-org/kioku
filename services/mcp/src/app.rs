@@ -6,7 +6,7 @@ use crate::error::error_result;
 use crate::tools;
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, GetPromptRequestParams, GetPromptResult,
-    ListPromptsResult, ListToolsResult, PaginatedRequestParams, ServerInfo,
+    ListPromptsResult, ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerInfo,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler};
@@ -22,7 +22,13 @@ pub struct KiokuMcpService {
 
 impl ServerHandler for KiokuMcpService {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::default()
+        ServerInfo {
+            capabilities: ServerCapabilities::builder()
+                .enable_tools()
+                .enable_prompts()
+                .build(),
+            ..ServerInfo::default()
+        }
     }
 
     fn list_tools(
