@@ -32,7 +32,13 @@ locally configured tunnel, keep its ingress YAML on the network volume and set
 dashboard port 3001, Hivemind API port 9100, meeting gateway port 8056, and MCP
 port 18888. Set `NEXTAUTH_URL` to the dashboard domain and both
 `VEXA_PUBLIC_URL` and `VEXA_PUBLIC_API_URL` to the meeting gateway domain. Google
-OAuth must register `<NEXTAUTH_URL>/api/auth/callback/google` as a redirect URI.
+OAuth must register `<NEXTAUTH_URL>/api/auth/callback/google` for account login,
+`<NEXTAUTH_URL>/cli-auth/calendar-callback` for CLI Google/Calendar sign-in, and
+`<NEXTAUTH_URL>/auth/google-calendar/callback` for separate Calendar connections.
+Route the API hostname's `/mcp` path to the consolidated MCP service on port
+18888 before its general Hivemind rule. Set `originRequest.httpHostHeader` to
+`127.0.0.1:18888` on both MCP routes so the MCP transport accepts the tunnel's
+origin requests. See `deployment/docker/cloudflared.yml.example`.
 
 Create a startup template from the checked-out deployment files:
 

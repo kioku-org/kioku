@@ -2,6 +2,13 @@ tunnel: <your-tunnel-id>
 credentials-file: /etc/cloudflared/creds/<your-tunnel-id>.json
 
 ingress:
+  # The consolidated MCP service handles knowledge and meeting tools.
+  # Keep the CLI's historical knowledge MCP URL available on the API host.
+  - hostname: api.example.com
+    path: ^/mcp(/.*)?$
+    service: http://kioku-mcp:18888
+    originRequest:
+      httpHostHeader: 127.0.0.1:18888
   - hostname: api.example.com
     service: http://kioku-hivemind:9100
   - hostname: meetings.example.com
@@ -10,4 +17,6 @@ ingress:
     service: http://kioku-dashboard:3001
   - hostname: mcp.example.com
     service: http://kioku-mcp:18888
+    originRequest:
+      httpHostHeader: 127.0.0.1:18888
   - service: http_status:404
